@@ -5,6 +5,7 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     $jdata = json_encode($udata);
     die($jdata);
 }
+    $authenticated_session = require_api_session();
     $user_o = DB::table('user')->where(['user'=>$account,'appid'=>$appid])->find();
 
     if($clientid == ''){
@@ -13,7 +14,7 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     }
 
     $res = DB::table('ver')->where(['appid'=>$appid,'current_ver'=>$ver])->find();
-    if($res['type']){
+    if($res && $res['type']){
         insert_userlog($user_o['id'],$appid,$alid,$g_date,$ver,$mac,$ip,$clientid,'[用户心跳] > 心跳失败,原因:版本过旧.');
         out(201,'当前版本已停用，请更新到最新版。',$app_res);
     }
@@ -92,8 +93,8 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
         out(201,'IP地址错误，请换绑后再登录。',$app_res);
     }
     
-    $newdate = date('Y-m-d H:i:s', time()+1);
-    $res = DB::table('heartbeat')->where(['id'=>$tokenid,'clientid'=>$clientid])->update(['hbtime'=>$newdate]);
+    $newdate = date('Y-m-d H:i:s');
+    $res = $token['hbtime'] === $newdate || DB::table('heartbeat')->where(['id'=>$tokenid,'clientid'=>$clientid])->update(['hbtime'=>$newdate]);
     if(!$res){
         insert_userlog($user_o['id'],$appid,$alid,$g_date,$ver,$mac,$ip,$clientid,'[用户心跳] > 心跳失败,原因:心跳更新失败.');
         DB::table('heartbeat')->where(['id'=>$tokenid,'clientid'=>$clientid])->del();

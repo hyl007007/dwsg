@@ -215,7 +215,7 @@ HTML;
 	<div class="panel-body">
 <?php
 require './db.class.php';
-if(defined("SAE_ACCESSKEY") || $_GET['jump']==1){
+if(defined("SAE_ACCESSKEY") || ($_GET['jump'] ?? 0)==1){
 	include_once '../include/config.php';
 	if(!DB_USER || !DB_PASSWD || !DB_NAME) {
 		echo '<div class="alert alert-danger">请先填写好数据库并保存后再安装！<hr/><a href="javascript:history.back(-1)"><< 返回上一页</a></div>';
@@ -254,15 +254,13 @@ if(defined("SAE_ACCESSKEY") || $_GET['jump']==1){
 	if($db_host==null || $db_port==null || $db_user==null || $db_pwd==null || $db_name==null || $db_qz==null){
 		echo '<div class="alert alert-danger">保存错误,请确保每项都不为空<hr/><a href="javascript:history.back(-1)"><< 返回上一页</a></div>';
 	} else {
-		$config="<?php
-/*数据库配置*/
-define('DB_HOST','{$db_host}');//数据库连接地址，默认：localhost或127.0.0.1
-define('DB_PORT','{$db_port}');//数据库端口号，默认3306
-define('DB_USER','{$db_user}');//数据库账号
-define('DB_PASSWD','{$db_pwd}');//数据库密码
-define('DB_NAME','{$db_name}');//数据库名称
-define('DB_PRE','{$db_qz}');//数据库表前缀(请勿修改,否则异常!)
-?>";
+		if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $db_qz)) {
+            die('数据库表前缀只能包含字母、数字和下划线。');
+        }
+        $config = "<?php\n/*数据库配置*/\n";
+        foreach (['HOST'=>$db_host,'PORT'=>$db_port,'USER'=>$db_user,'PASSWD'=>$db_pwd,'NAME'=>$db_name,'PRE'=>$db_qz] as $name=>$value) {
+            $config .= "define('DB_".$name."',".var_export((string)$value, true).");\n";
+        }
 		if(!$con=DB::connect($db_host,$db_user,$db_pwd,$db_name,$db_port)){
 			if(DB::connect_errno()==2002)
 				echo '<div class="alert alert-warning">连接数据库失败，数据库地址填写错误！<hr/><a href="javascript:history.back(-1)"><< 返回上一页</a></div>';
@@ -309,6 +307,7 @@ if(!DB_USER||!DB_PASSWD||!DB_NAME) {
 } else {
 	require './db.class.php';
 	$sql=file_get_contents("install.sql");
+    $sql=str_replace('`ty_', '`'.DB_PRE, $sql);
 	$sql=explode(';',$sql);
 	$cn = DB::connect(DB_HOST,DB_USER,DB_PASSWD,DB_NAME,DB_PORT);
 	if (!$cn) die('err:'.DB::connect_error());

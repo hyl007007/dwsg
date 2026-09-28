@@ -43,6 +43,23 @@ namespace 玩家数据结构
 			}
 		}
 
+		public bool 扣除道具(string 道具名字, int 数量)
+		{
+			if (数量 <= 0 || 获取指定道具数量(道具名字) < 数量) return false;
+			List<道具信息> 列表 = 获取道具分类列表(道具名字);
+			if (列表 == null) return false;
+			int 剩余 = 数量;
+			for (int i = 列表.Count - 1; i >= 0 && 剩余 > 0; i--)
+			{
+				if (列表[i].名字 != 道具名字) continue;
+				int 扣除 = System.Math.Min(剩余, (int)列表[i].数量);
+				列表[i].数量 -= 扣除;
+				剩余 -= 扣除;
+				if (列表[i].数量 <= 0) 列表.RemoveAt(i);
+			}
+			return 剩余 == 0;
+		}
+
 		public bool 删除道具(string 道具名字)
 		{
 			List<道具信息> list = 获取道具分类列表(道具名字);

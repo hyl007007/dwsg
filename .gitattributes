@@ -2,6 +2,7 @@
 *.cs text eol=lf
 *.php text eol=lf
 *.sql text eol=lf
+*.sh text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.meta text eol=lf
@@ -15,6 +16,7 @@
 *.psd binary
 *.pdf binary
 *.ttf binary
+*.otf binary
 *.woff binary
 *.woff2 binary
 *.wav binary

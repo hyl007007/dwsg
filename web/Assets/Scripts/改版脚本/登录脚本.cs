@@ -1,7 +1,6 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections;
-using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -14,84 +13,131 @@ public class 登录脚本 : MonoBehaviour
     public Text 密码;
     public Text user;
     public Text pwd;
-
-    private string userName;
-    private string userPwd;
+    public string 服务器地址 = "http://127.0.0.1:18080/api.php?appid=1";
+    public static string 会话令牌 { get; private set; }
+    public static int 心跳ID { get; private set; }
+    private bool 正在登录;
+    private string 客户端ID = Guid.NewGuid().ToString("N");
 
     private void Start()
     {
-        userName = PlayerPrefs.GetString("name");
-        userPwd = PlayerPrefs.GetString("pwd");
-        print(userName);
-        print(userPwd);
-        if (userName != "")
+        var 账号输入 = 账号.GetComponentInParent<InputField>();
+        if (账号输入 != null) 账号输入.text = PlayerPrefs.GetString("name", "");
+        else 账号.text = PlayerPrefs.GetString("name", "");
+        var 密码输入 = pwd.GetComponentInParent<InputField>();
+        if (密码输入 != null)
         {
-            账号.text = userName;
-            密码.text = userPwd;
+            密码输入.contentType = InputField.ContentType.Password;
+            密码输入.text = "";
         }
+        密码.text = "";
+        PlayerPrefs.DeleteKey("pwd");
+    }
+
+    private static string 读取输入(Text 元件)
+    {
+        if (元件 == null) return "";
+        var 输入 = 元件.GetComponentInParent<InputField>();
+        return 输入 != null ? 输入.text : 元件.text;
     }
 
     public void 登录()
     {
-        StartCoroutine(Login());
+        if (!正在登录) StartCoroutine(Login());
+    }
+
+    public static bool 尝试解析响应(string 响应, out Root 结果, out string 提示)
+    {
+        结果 = null;
+        提示 = "服务器返回了无效响应，请稍后重试。";
+        try
+        {
+            结果 = JsonConvert.DeserializeObject<Root>(响应);
+            if (结果 == null || 结果.data == null || 结果.data.result == null) return false;
+            提示 = 结果.data.result.ret_info ?? "服务器未提供结果说明。";
+            if (结果.data.code != 200) return false;
+            if (结果.data.result.tokenid <= 0 || string.IsNullOrEmpty(结果.data.result.session_token) ||
+                结果.data.result.session_token.Length != 64)
+            {
+                提示 = "服务器会话无效，请检查后台版本。";
+                return false;
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
+        catch (ArgumentException) { return false; }
     }
 
     IEnumerator Login()
     {
-        yield return new WaitForSeconds(1.5f);
-        WWWForm form = new WWWForm();
-        string 玩家账号 = user.text;
-        string 玩家密码 = pwd.text;
-        if (玩家账号 == "" || 玩家密码 == "")
+        正在登录 = true;
+        全局变量.是否为登录 = false;
+        会话令牌 = null;
+        心跳ID = 0;
+        try
         {
-            玩家账号 = 账号.text;
-            玩家密码 = 密码.text;
-        }
-        print(SystemInfo.deviceUniqueIdentifier);
-        form.AddField("user", 玩家账号);
-        form.AddField("pwd", 玩家密码);
-        form.AddField("action", "login");
-        form.AddField("ip", "");
-        form.AddField("mac", SystemInfo.deviceUniqueIdentifier);
-        form.AddField("md5", "");
-        form.AddField("ver", "");
-        form.AddField("uuid", "1123456789");
-        form.AddField("clientid", "8848865");
-        form.AddField("t", Convert.ToInt64((DateTime.Now.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, 0)).TotalSeconds).ToString());
-        UnityWebRequest webRequest = UnityWebRequest.Post("http://127.0.0.1:8000/api.php?appid=1", form);
-
-        yield return webRequest.SendWebRequest();
-        if (webRequest.result == UnityWebRequest.Result.ProtocolError)
-        {
-            Debug.Log(webRequest.error);
-        }
-        else
-        {
-            string rsp = webRequest.downloadHandler.text;
-            print(rsp);
-            Root root = JsonConvert.DeserializeObject<Root>(rsp);
-            if (root.data.code == 200)
+            string 当前账号 = 读取输入(user);
+            string 当前密码 = 读取输入(pwd);
+            string 玩家账号 = !string.IsNullOrEmpty(当前账号) ? 当前账号.Trim() : 读取输入(账号).Trim();
+            string 玩家密码 = !string.IsNullOrEmpty(当前密码) ? 当前密码 : 读取输入(密码);
+            if (玩家账号.Length == 0 || 玩家密码.Length == 0)
             {
-                log.text = Regex.Unescape(root.data.result.ret_info);
-                this.gameObject.SetActive(false);
-                开始游戏.SetActive(true);
-                PlayerPrefs.SetString("name", user.text);
-                PlayerPrefs.SetString("pwd", pwd.text);
+                log.text = "请输入账号和密码。";
+                yield break;
+            }
+            string 地址 = Environment.GetEnvironmentVariable("DWSG_AUTH_URL");
+            if (string.IsNullOrEmpty(地址)) 地址 = 服务器地址;
+            Uri 服务器;
+            if (!Uri.TryCreate(地址, UriKind.Absolute, out 服务器) ||
+                (服务器.Scheme != "http" && 服务器.Scheme != "https"))
+            {
+                log.text = "服务器地址配置错误。";
+                yield break;
+            }
+            WWWForm form = new WWWForm();
+            form.AddField("user", 玩家账号);
+            form.AddField("pwd", 玩家密码);
+            form.AddField("action", "login");
+            form.AddField("ip", "");
+            form.AddField("mac", SystemInfo.deviceUniqueIdentifier);
+            form.AddField("md5", "");
+            form.AddField("ver", "");
+            form.AddField("uuid", Guid.NewGuid().ToString("N"));
+            form.AddField("clientid", 客户端ID);
+            form.AddField("t", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+            using (UnityWebRequest 请求 = UnityWebRequest.Post(地址, form))
+            {
+                请求.timeout = 15;
+                yield return 请求.SendWebRequest();
+                if (请求.result != UnityWebRequest.Result.Success)
+                {
+                    log.text = "连接服务器失败，请检查网络和服务器地址。";
+                    yield break;
+                }
+                Root 结果;
+                string 提示;
+                if (!尝试解析响应(请求.downloadHandler.text, out 结果, out 提示))
+                {
+                    log.text = 提示;
+                    yield break;
+                }
+                会话令牌 = 结果.data.result.session_token;
+                心跳ID = 结果.data.result.tokenid;
+                PlayerPrefs.SetString("name", 玩家账号);
                 全局变量.是否为登录 = true;
+                log.text = 提示;
+                开始游戏.SetActive(true);
+                gameObject.SetActive(false);
             }
-            else
-            {
-                log.text = Regex.Unescape(root.data.result.ret_info);
-            }
-
         }
+        finally { 正在登录 = false; }
     }
 }
-
 
 public class Result
 {
     public int tokenid { get; set; }
+    public string session_token { get; set; }
     public string clientid { get; set; }
     public string user { get; set; }
     public string endtime { get; set; }
@@ -114,7 +160,7 @@ public class Data
     public Result result { get; set; }
     public string uuid { get; set; }
     public string token { get; set; }
-    public int t { get; set; }
+    public long t { get; set; }
 }
 
 [Serializable]

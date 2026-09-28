@@ -29,7 +29,7 @@ public class 创建角色脚本 : MonoBehaviour
     {
         if (全局变量.是否为登录==false)
         {
-            君主名对象.text = "997788";
+            君主名对象.text = "";
         }
     }
 
@@ -39,13 +39,22 @@ public class 创建角色脚本 : MonoBehaviour
         {
             return;
         }
-        全局变量.所有玩家数据表[第几个玩家].基础信息.名字 = 君主名对象.text;
+        string 名字 = 君主名对象.text.Trim();
+        if (名字.Length == 0 || 名字.Length > 20 || 名字.IndexOfAny(new[] { '<', '>', '\r', '\n' }) >= 0)
+        {
+            说明文本.text = "请输入 1 到 20 字的君主名，不能包含换行或尖括号。";
+            return;
+        }
         if (!(国家名对象.text != ""))
         {
             return;
         }
+        var 玩家 = 全局变量.所有玩家数据表[第几个玩家];
+        string 原名字 = 玩家.基础信息.名字;
+        玩家.基础信息.名字 = 名字;
         if (全局变量.所有玩家数据表[第几个玩家].加入指定国家(国家名对象.text))
         {
+            #if UNITY_EDITOR
             #region 测试账号
             if (全局变量.所有玩家数据表[第几个玩家].基础信息.名字 == "997788")
             {
@@ -90,6 +99,12 @@ public class 创建角色脚本 : MonoBehaviour
 
             }
             #endregion
+            #endif
+        }
+        else
+        {
+            玩家.基础信息.名字 = 原名字;
+            return;
         }
         SceneManager.LoadScene(1);
     }

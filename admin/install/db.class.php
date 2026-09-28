@@ -3,15 +3,23 @@
 if(extension_loaded('mysqli')) {
     class DB {
         private static $link;
+		private static $last_errno = 0;
+		private static $last_error = '';
 		public static function connect($db_host,$db_user,$db_pass,$db_name,$db_port){
-			self::$link = mysqli_connect($db_host, $db_user, $db_pass, $db_name, $db_port);
+			try {
+				self::$link = mysqli_connect($db_host, $db_user, $db_pass, $db_name, $db_port);
+			} catch (mysqli_sql_exception $error) {
+				self::$last_errno = $error->getCode();
+				self::$last_error = $error->getMessage();
+				return false;
+			}
 			return self::$link;
 		}
 		public static function connect_errno(){
-			return mysqli_connect_errno();
+			return self::$last_errno ?: mysqli_connect_errno();
 		}
 		public static function connect_error(){
-			return mysqli_connect_error();
+			return self::$last_error ?: mysqli_connect_error();
 		}
 		public static function fetch($q){
 			return mysqli_fetch_assoc($q);
@@ -26,7 +34,13 @@ if(extension_loaded('mysqli')) {
 			return $count[0];
 		}
 		public static function query($q){
-			return mysqli_query(self::$link,$q);
+			try {
+				return mysqli_query(self::$link,$q);
+			} catch (mysqli_sql_exception $error) {
+				self::$last_errno = $error->getCode();
+				self::$last_error = $error->getMessage();
+				return false;
+			}
 		}
 		public static function escape($str){
 			return mysqli_real_escape_string(self::$link,$str);
@@ -38,7 +52,7 @@ if(extension_loaded('mysqli')) {
 			return mysqli_errno(self::$link);
 		}
 		public static function error(){
-			return mysqli_error(self::$link);
+			return self::$last_error ?: mysqli_error(self::$link);
 		}
 		public static function close(){
 			return  mysqli_close(self::$link);

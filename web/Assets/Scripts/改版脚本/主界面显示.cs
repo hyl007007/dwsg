@@ -9,12 +9,15 @@ public class 主界面显示 : MonoBehaviour
     public Text 难度;
     void Start()
     {
-        if (true)
+        if (版本 != null)
         {
             版本.text = "版本: 叮当三国";
-            
+        }
+        if (难度 != null)
+        {
             switch (全局变量.难度)
             {
+                case 0:
                 case 1:
                     难度.text = "难度: 普通难度";
                     break;

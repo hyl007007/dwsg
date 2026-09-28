@@ -480,9 +480,7 @@ namespace 玩家数据结构
 			}
 			if (num > 25 && (double)num > 25.0 + 基础信息.将领数扩容数量)
 			{
-				全局变量.提示类.显示信息("将领数量异常!");
-				Directory.Delete(Application.persistentDataPath, recursive: true);
-				Application.Quit();
+				Debug.LogWarning("将领数量超过上限，请整理将领后再招募。");
 			}
 			return num;
 		}

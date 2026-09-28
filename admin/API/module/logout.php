@@ -5,7 +5,8 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     $jdata = json_encode($udata);
     die($jdata);
 }
-    $tokenid = !empty($d['tokenid']) ? purge($d['tokenid']) : '';
+    $authenticated_session = require_api_session();
+    $tokenid = (int)$authenticated_session['id'];
     $user_o = DB::table('user')->where(['user'=>$account,'appid'=>$appid])->find();
     
     if($clientid == ''){

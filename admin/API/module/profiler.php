@@ -5,7 +5,8 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     $jdata = json_encode($udata);
     die($jdata);
 }
-$tokenid = !empty($d['tokenid']) ? purge($d['tokenid']) : '';
+$authenticated_session = require_api_session();
+$tokenid = (int)$authenticated_session['id'];
 $user_o = DB::table('user')->where(['user'=>$account,'appid'=>$appid])->find();
 if($app_res['djzt']==1){
     DB::table('heartbeat')->where(['id'=>$tokenid,'clientid'=>$clientid])->del();
@@ -21,7 +22,7 @@ if($clientid == ''){
     out(201,'请传入客户端ID。',$app_res);
 }
 $res = DB::table('ver')->where(['appid'=>$appid,'current_ver'=>$ver])->find();
-if($res['type']){
+if($res && $res['type']){
     insert_userlog($user_o['id'],$appid,$alid,$g_date,$ver,$mac,$ip,$clientid,'['.$cztype.'] > '.$czzt.',原因:版本过旧.');
     out(201,'当前版本已停用，请更新到最新版。',$app_res);
 }

@@ -37,7 +37,7 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     }
 
     $nver = DB::table('ver')->where(['appid'=>$appid,'current_ver'=>$ver])->find();
-    if($nver['type']){
+    if($nver && $nver['type']){
         insert_userlog($user_o['id'],$appid,$alid,$g_date,$ver,$mac,$ip,$clientid,'[用户登录] > 登录失败,原因:版本过旧.');
         out(201,'当前版本已停用，请更新到最新版。',$app_res);
     }
@@ -80,7 +80,7 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     }
     if(!$user){
         $res = DB::table('user')->where(['user'=>$users,'appid'=>$appid])->find();
-        insert_userlog($user['id'], $appid,$alid, $g_date, $ver, $mac, $ip, $clientid, '[用户登录] > 登录失败,原因:密码错误.');
+        insert_userlog($res['id'] ?? 0, $appid,$alid, $g_date, $ver, $mac, $ip, $clientid, '[用户登录] > 登录失败,原因:密码错误.');
         out(201,'登录失败，账号或密码错误。',$app_res);
     }
     if($user['zt']!='1'){
@@ -157,11 +157,12 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
                 DB::table('heartbeat')->where(['id'=>$rxx['id']])->del();
             }else{
                 insert_userlog($user['id'], $appid,$alid, $g_date, $ver, $mac, $ip, $clientid, '[用户登录] > 登录失败,原因:当前授权在线数量已达上限.');
-                out(201,'登录失败，当前会员在线数量已达上限，如已离线请耐心等待'.$app_res['xt_time'].'秒后再登录。',$app_res);
+                out(201,'登录失败，当前会员在线数量已达上限，如已离线请耐心等待'.$app_res['xttime'].'秒后再登录。',$app_res);
             }
         }
     }
-    $add = ['appid'=>$appid,'uid'=>$user['id'],'logintime'=>$g_date,'hbtime'=>$g_date,'ip'=>$ip,'mac'=>$mac,'clientid'=>$clientid,'ver'=>$ver];
+    $session_credential = bin2hex(random_bytes(32));
+    $add = ['appid'=>$appid,'uid'=>$user['id'],'logintime'=>$g_date,'hbtime'=>$g_date,'ip'=>$ip,'mac'=>$mac,'clientid'=>$clientid,'ver'=>$ver,'session_token_hash'=>hash('sha256',$session_credential)];
     $tokenid = DB::table('heartbeat')->add($add);
     if(!$tokenid){
         insert_userlog($user['id'], $appid,$alid, $g_date, $ver, $mac, $ip, $clientid, '[用户登录] > 登录失败,原因:未知错误.');
@@ -169,6 +170,7 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     }
     $retginfo['tokenid'] = $tokenid;
     $retginfo['clientid'] = $clientid;
+    $retginfo['session_token'] = $session_credential;
 
     $upuser['logintime'] = $g_date;
     $upuser['ver'] = $ver;

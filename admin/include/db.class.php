@@ -29,7 +29,7 @@ class DB{
             }
 		}
 		if ($this->getMysqlVersion() > '4.1') {
-			mysqli_query($this->objdb,"SET NAMES 'utf8'");
+			mysqli_set_charset($this->objdb, 'utf8mb4');
 		}
 		@mysqli_select_db($this->objdb,DB_NAME) OR exit("连接数据库失败，未找到您填写的数据库");
 	}
@@ -645,6 +645,7 @@ class DB{
         $counts = count($add);
         $stra = ''; $strb = '';
         foreach($add as $key=>$val){
+            $val = mysqli_real_escape_string(self::getInstance()->objdb, (string)$val);
             if($nums == 1){
                 $stra .= '(`'.(string)$key.'`';
                 $strb .= '('.(string)"'$val'";
@@ -697,6 +698,7 @@ class DB{
         $counts = count($data);
         $str = '';
         foreach($data as $key=>$val){
+            $val = mysqli_real_escape_string(self::getInstance()->objdb, (string)$val);
             if($nums == $counts){
                 $str .= $key.' = '.(string)"'$val'";
             }else{
@@ -787,7 +789,20 @@ class DB{
         }
     }
 	
-	//数据库安装
+    // 参数化写入保留云数据中的空白、引号和换行。
+    public static function executePrepared($sql, array $values){
+        $link = self::getInstance()->objdb;
+        $statement = mysqli_prepare($link, $sql);
+        if (!$statement) return false;
+        try {
+            if ($values) mysqli_stmt_bind_param($statement, str_repeat('s', count($values)), ...$values);
+            return mysqli_stmt_execute($statement);
+        } finally {
+            mysqli_stmt_close($statement);
+        }
+    }
+
+    //数据库安装
     public static function establish($sql){
 		$link = self::getInstance()->objdb;
 		return mysqli_query($link,$sql);

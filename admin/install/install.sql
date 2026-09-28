@@ -14,7 +14,7 @@ CREATE TABLE `ty_admin` (
   `zt` int(11) DEFAULT '1',
   `bz` text,
   `appsid` text COMMENT '授权软件id集'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_api` (
   `id` int(11) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE `ty_api` (
   `in_api` varchar(255) NOT NULL,
   `callsl` int(11) DEFAULT '0',
   `addtime` datetime NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_apilog` (
   `id` int(11) NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE `ty_apilog` (
   `ip` varchar(255) DEFAULT NULL,
   `ver` varchar(255) DEFAULT NULL,
   `data` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_app` (
   `id` int(11) NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE `ty_app` (
   `djzt` int(11) NOT NULL DEFAULT '0',
   `qdjf` varchar(50) DEFAULT '1',
   `gid` varchar(20) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_applog` (
   `id` int(11) NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE `ty_applog` (
   `ip` varchar(50) DEFAULT NULL,
   `clientID` varchar(50) DEFAULT NULL,
   `info` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_black` (
   `id` int(11) NOT NULL,
@@ -102,7 +102,7 @@ CREATE TABLE `ty_black` (
   `data` varchar(100) NOT NULL,
   `bz` text,
   `addtime` datetime DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_card` (
   `id` int(11) NOT NULL,
@@ -122,7 +122,7 @@ CREATE TABLE `ty_card` (
   `flje` varchar(20) DEFAULT NULL COMMENT '返利金额',
   `flid` varchar(20) DEFAULT NULL COMMENT '返利id',
   `type` int(11) DEFAULT '0'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_cardlog` (
   `id` int(11) NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE `ty_cardlog` (
   `addtime` datetime NOT NULL,
   `data` text,
   `bz` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_cardtype` (
   `id` int(11) NOT NULL,
@@ -155,13 +155,13 @@ CREATE TABLE `ty_cardtype` (
   `type` int(11) DEFAULT '0' COMMENT '0代理不可用 1代理可用',
   `money` varchar(50) NOT NULL COMMENT '制卡价格',
   `length` int(11) DEFAULT '18'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_core` (
   `id` int(11) NOT NULL,
   `config_key` varchar(50) NOT NULL,
   `config_value` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_gameaccount` (
   `id` int(11) NOT NULL,
@@ -213,7 +213,7 @@ CREATE TABLE `ty_group` (
   `adds` int(11) DEFAULT '0',
   `addtime` datetime NOT NULL,
   `groupsid` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_heartbeat` (
   `id` int(11) NOT NULL,
@@ -224,8 +224,9 @@ CREATE TABLE `ty_heartbeat` (
   `appid` int(11) NOT NULL,
   `ver` varchar(50) NOT NULL,
   `mac` varchar(50) NOT NULL,
-  `ip` varchar(50) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+  `ip` varchar(50) NOT NULL,
+  `session_token_hash` char(64) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_kdlog` (
   `id` int(11) NOT NULL,
@@ -239,7 +240,7 @@ CREATE TABLE `ty_kdlog` (
   `kdsl` varchar(20) DEFAULT '1',
   `ver` varchar(50) DEFAULT NULL,
   `type` int(11) DEFAULT '0'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_md5` (
   `id` int(11) NOT NULL,
@@ -247,7 +248,7 @@ CREATE TABLE `ty_md5` (
   `ver` varchar(50) NOT NULL,
   `md5` varchar(50) NOT NULL,
   `addtime` datetime NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_moneylog` (
   `id` int(11) NOT NULL,
@@ -259,7 +260,7 @@ CREATE TABLE `ty_moneylog` (
   `glid` varchar(20) DEFAULT NULL COMMENT '返利关联id',
   `syje` varchar(50) NOT NULL COMMENT '代理剩余金额',
   `info` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_notice` (
   `id` int(11) NOT NULL,
@@ -267,7 +268,7 @@ CREATE TABLE `ty_notice` (
   `notice_title` varchar(255) NOT NULL,
   `notice_info` text NOT NULL,
   `addtime` datetime NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_user` (
   `id` int(11) NOT NULL,
@@ -297,7 +298,7 @@ CREATE TABLE `ty_user` (
   `gid` varchar(20) DEFAULT NULL,
   `integral` varchar(50) DEFAULT '0' COMMENT '积分',
   `iscode` int(11) DEFAULT '0' COMMENT '是否单码用户'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_usergroup` (
   `id` int(11) NOT NULL,
@@ -306,7 +307,7 @@ CREATE TABLE `ty_usergroup` (
   `color` varchar(20) DEFAULT '#2d3032',
   `data` text,
   `addtime` datetime NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_variable` (
   `id` int(11) NOT NULL,
@@ -316,7 +317,7 @@ CREATE TABLE `ty_variable` (
   `islogin` int(11) DEFAULT '0',
   `addtime` datetime NOT NULL,
   `callsl` int(11) DEFAULT '0'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `ty_variable1` (
   `id` int(11) NOT NULL,
@@ -337,7 +338,7 @@ CREATE TABLE `ty_ver` (
   `update_url` text,
   `update_info` text,
   `update_text` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
 ALTER TABLE `ty_admin`

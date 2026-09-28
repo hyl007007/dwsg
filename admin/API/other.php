@@ -4,10 +4,14 @@ header("content-type:text/html; charset=utf-8");
 date_default_timezone_set('PRC');
 
 include 'include/config.php';
-include 'include/core.im.php';
+include_once 'include/core.im.php';
 include 'include/db.class.php';
 include 'include/function.php';
 include 'version.php';
+require_once 'include/session.php';
+$khd_uuid = '';
+$khd_token = '';
+$alid = 0;
 
 function Arr_sign($arr,$key){//数组签名
     unset($arr['sign']);
@@ -116,6 +120,7 @@ function mi_sign($arr,$key,$md5 = true){ //数组签名
 function out($code,$msg = null,$mi = null) {
     global $khd_uuid;
     global $khd_token;
+    $mi = array_merge(['return_type'=>0, 'appkey'=>'', 'fwd_sign'=>''], is_array($mi) ? $mi : []);
     $time = time();
     $new_token = md5($khd_token.$time);
     if($mi['return_type']==0){
@@ -259,6 +264,10 @@ if($app_res['mi_type'] == 0){//明文模式
 }
 
 $d = $data_arr;
+if (!is_array($d) || !isset($d['action']) || !is_string($d['action'])) out(201, '请指定接口。', $app_res);
+foreach (['user','pwd','clientid','tokenid','session_token','uuid','token','ver','mac','ip','md5'] as $field) {
+    if (isset($d[$field]) && !is_scalar($d[$field])) out(201, '请求参数类型错误。', $app_res);
+}
 $khd_uuid = isset($d['uuid']) ? purge($d['uuid']) : '';  //客户端uuid
 $khd_token = isset($d['token']) ? purge($d['token']) : '';  //客户端token
 $clientid = isset($d['clientid']) ? purge($d['clientid']) : ''; //客户端ID
@@ -280,7 +289,7 @@ if($res){
 function insert_userlog($uid,$appid,$alid,$date,$ver,$mac,$ip,$clientid,$info){
     global $app_res;
     global $d;
-    $adds = ['uid'=>$uid,'alid'=>$alid,'appid'=>$appid,'addtime'=>$date,'ver'=>$ver,'mac'=>$mac,'ip'=>$ip,'clientid'=>$clientid,'info'=>$info];
+    $adds = ['uid'=>(int)$uid,'alid'=>(int)$alid,'appid'=>$appid,'addtime'=>$date,'ver'=>$ver,'mac'=>$mac,'ip'=>$ip,'clientid'=>$clientid,'info'=>$info];
     if($app_res['jl_xt'] && $d['action']=='heartbeat'){
         DB::table('applog')->add($adds);
     }elseif($app_res['jl_sy'] && $d['action']!='heartbeat'){
@@ -295,7 +304,9 @@ if($d['action']){
         $ap['mac'] = $mac;
         $ap['ip'] = $ip;
         $ap['ver'] = $ver;
-        $ap['data'] = json_encode($data_arr);
+        $log_data = $data_arr;
+        foreach (['pwd','password','session_token','token'] as $sensitive) unset($log_data[$sensitive]);
+        $ap['data'] = json_encode($log_data, JSON_UNESCAPED_UNICODE);
         $ap['addtime'] = date('Y-m-d H:i:s');
         if($app_res['jl_xt'] && $d['action']=='heartbeat'){
             $alid = DB::table('apilog')->add($ap);
