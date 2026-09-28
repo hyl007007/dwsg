@@ -7,6 +7,17 @@ run="$base/state/run"
 logs="$base/state/game-logs"
 action=${1:-status}
 alive() { [ -s "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+active_game() {
+    pgrep -u dwsg -f '^/opt/dwsg/client[^/]*/DWSG[.]exe([[:space:]]|$)' | head -n 1 || true
+}
+active_preview_url() {
+    current=$(active_game)
+    port=18082
+    if [ -n "$current" ] && tr '\0' '\n' < "/proc/$current/environ" | grep -qx 'DISPLAY=:120'; then
+        port=18086
+    fi
+    printf 'http://127.0.0.1:%s/vnc.html?autoconnect=1&resize=scale\n' "$port"
+}
 stop_service() {
     if alive "$1" && tr '\0' ' ' < "/proc/$(cat "$1")/cmdline" | grep -Fq -- "$2"; then kill "$(cat "$1")"; fi
 }
@@ -15,6 +26,12 @@ if [ -n "$display_pid" ]; then printf '%s\n' "$display_pid" > "$run/xvfb.pid"; f
 
 case "$action" in
 play)
+    current=$(active_game)
+    if [ -n "$current" ] && ! tr '\0' '\n' < "/proc/$current/cmdline" | head -n 1 | grep -qx '/opt/dwsg/client/DWSG.exe'; then
+        echo "Game: already running (PID $current); keeping the current player."
+        echo "Game: $(active_preview_url)"
+        exit 0
+    fi
     test -f "$base/client/DWSG.exe" || { echo 'Client build is missing.'; exit 1; }
     test -f "$base/state/vnc.pass" || { echo 'Preview password is missing.'; exit 1; }
     mkdir -p "$run" "$logs" "$base/state/wine" "$base/state/tmp"
@@ -63,9 +80,10 @@ stop-play)
     echo 'Isolated game stopped.'
     ;;
 status)
-    if pgrep -u dwsg -f '/opt/dwsg/client/DWSG.exe' >/dev/null; then echo 'Game: running'; else echo 'Game: stopped'; fi
-    if alive "$run/web-preview.pid"; then echo 'Browser preview: running'; else echo 'Browser preview: stopped'; fi
-    echo 'Game: http://127.0.0.1:18082/vnc.html?autoconnect=1&resize=scale'
+    if [ -n "$(active_game)" ]; then echo 'Game: running'; else echo 'Game: stopped'; fi
+    url=$(active_preview_url)
+    if curl --fail --silent --output /dev/null --max-time 1 "$url"; then echo 'Browser preview: running'; else echo 'Browser preview: stopped'; fi
+    echo "Game: $url"
     ;;
 *) echo 'Usage: game-preview.sh play|stop-play|status'; exit 2 ;;
 esac
