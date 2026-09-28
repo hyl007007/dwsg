@@ -17,13 +17,15 @@ $taskInfo.CreateNoWindow = $true
 $taskInfo.RedirectStandardInput = $true
 $taskInfo.RedirectStandardOutput = $true
 $taskInfo.RedirectStandardError = $true
-$taskInfo.StandardInputEncoding = [System.Text.UTF8Encoding]::new($false)
 $taskInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $taskInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
 $taskProcess = [System.Diagnostics.Process]::Start($taskInfo)
 $taskOutput = $taskProcess.StandardOutput.ReadToEndAsync()
 $taskError = $taskProcess.StandardError.ReadToEndAsync()
-$taskProcess.StandardInput.Write($taskBody)
+# Windows PowerShell 5.1 lacks StandardInputEncoding; send shell text as UTF-8 bytes.
+$taskBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($taskBody)
+$taskProcess.StandardInput.BaseStream.Write($taskBytes, 0, $taskBytes.Length)
+$taskProcess.StandardInput.BaseStream.Flush()
 $taskProcess.StandardInput.Close()
 $taskProcess.WaitForExit()
 Write-Output $taskOutput.GetAwaiter().GetResult()
