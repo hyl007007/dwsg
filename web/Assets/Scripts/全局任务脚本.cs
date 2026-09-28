@@ -635,7 +635,6 @@ public class 全局任务脚本 : MonoBehaviour
             {
                 if (全局变量.军情列表[i].身份 == 0)
                 {
-                    print("军情身份判定" + 全局变量.军情列表[i].身份);
                     long time = TIME.getTime();
                     if (全局变量.军情列表[i].已进入战场)
                     {
@@ -840,7 +839,6 @@ public class 全局任务脚本 : MonoBehaviour
             {
                 if (全局变量.军情列表[i].身份 != 0)
                 {
-                    print("军情身份判定" + 全局变量.军情列表[i].身份);
                     long time = TIME.getTime();
                     if (全局变量.军情列表[i].已进入战场)
                         continue;

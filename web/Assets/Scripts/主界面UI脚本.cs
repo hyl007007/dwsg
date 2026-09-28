@@ -33,6 +33,7 @@ public class 主界面UI脚本 : MonoBehaviour
 
 	public void 加载大地图场景()
 	{
+		界面窗口管理器.关闭当前场景窗口();
 		全局变量.大地图布局对象.transform.GetChild(0).GetChild(0).GetChild(0)
 			.GetChild(0)
 			.GetComponent<所有城池界面脚本>()
@@ -48,6 +49,7 @@ public class 主界面UI脚本 : MonoBehaviour
 
 	public void 加载封地场景()
 	{
+		界面窗口管理器.关闭当前场景窗口();
 		全局变量.主相机.SetActive(value: true);
 		全局变量.战斗地图相机.SetActive(value: false);
 		全局变量.大地图相机.SetActive(value: false);

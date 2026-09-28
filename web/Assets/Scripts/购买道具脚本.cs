@@ -154,7 +154,7 @@ public class 购买道具脚本 : MonoBehaviour
 
 	public void 刷新商城显示()
 	{
-		if (商城界面对象.activeSelf)
+		if (商城界面对象 != null)
 		{
 			商城界面对象.GetComponent<显示商城列表>().刷新显示();
 		}
