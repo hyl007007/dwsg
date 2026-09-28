@@ -2605,7 +2605,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: "500\x2f500"
 --- !u!114 &1790966117469627318
@@ -2969,7 +2969,7 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: "8888\x2f8888(\u8FD1\u536B\u5175)"
 --- !u!114 &1790966117469627364
@@ -3495,6 +3495,6 @@ MonoBehaviour:
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: "\u732E\u5E1D\u732E\u5E1D(99\u7EA7\u52C7\u58EB)"
