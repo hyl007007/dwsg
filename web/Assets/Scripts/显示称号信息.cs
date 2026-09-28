@@ -1,0 +1,137 @@
+using UnityEngine;
+using UnityEngine.UI;
+
+public class 显示称号信息 : MonoBehaviour
+{
+	public Text 当前称号;
+
+	public Text 称号达成;
+
+	public Text 页数显示;
+
+	public GameObject 称号列表对象;
+
+	public long 上次切换时间;
+
+	public int 显示第几页 = 1;
+
+	private float 总页数;
+
+	private int 第几个玩家;
+
+	public void 刷新显示()
+	{
+		第几个玩家 = 全局变量.本机身份;
+		int count = 全局变量.所有玩家数据表[第几个玩家].称号信息表.Count;
+		int num = (显示第几页 - 1) * 12;
+		for (int i = 0; i < 12; i++)
+		{
+			称号列表对象.transform.GetChild(i).gameObject.SetActive(value: false);
+			if (num + i >= count)
+			{
+				continue;
+			}
+			string 名字 = 全局变量.所有玩家数据表[第几个玩家].称号信息表[num + i].名字;
+			int num2 = 全局变量.称号头像资源表.Length;
+			for (int j = 0; j < num2; j++)
+			{
+				if (全局变量.称号头像资源表[j].name == 名字)
+				{
+					称号列表对象.transform.GetChild(i).GetChild(1).GetComponent<Image>()
+						.sprite = 全局变量.称号头像资源表[j];
+						break;
+					}
+				}
+				Text component = 称号列表对象.transform.GetChild(i).GetChild(2).GetComponent<Text>();
+				component.text = 名字;
+				component.color = 全局变量.所有玩家数据表[第几个玩家].称号信息表[num + i].获取称号颜色();
+				int 等级 = 全局变量.所有玩家数据表[第几个玩家].称号信息表[num + i].等级;
+				if (全局变量.所有玩家数据表[第几个玩家].称号信息表[num + i].状态 == 0)
+				{
+					称号列表对象.transform.GetChild(i).GetChild(4).gameObject.SetActive(value: true);
+				}
+				else
+				{
+					称号列表对象.transform.GetChild(i).GetChild(4).gameObject.SetActive(value: false);
+				}
+				if (全局变量.所有玩家数据表[第几个玩家].称号信息表[num + i].类型 == 1)
+				{
+					称号列表对象.transform.GetChild(i).GetChild(3).gameObject.SetActive(value: true);
+				}
+				else
+				{
+					称号列表对象.transform.GetChild(i).GetChild(3).gameObject.SetActive(value: false);
+				}
+				称号列表对象.transform.GetChild(i).gameObject.SetActive(value: true);
+			}
+			当前称号.text = "<无>";
+			当前称号.color = 颜色类.GetColor("#FDA400");
+			int num3 = 0;
+			for (int k = 0; k < count; k++)
+			{
+				if (全局变量.所有玩家数据表[第几个玩家].称号信息表[k].状态 != 0)
+				{
+					num3++;
+				}
+				if (全局变量.所有玩家数据表[第几个玩家].称号信息表[k].状态 == 2)
+				{
+					当前称号.text = "<" + 全局变量.所有玩家数据表[第几个玩家].称号信息表[k].名字 + ">";
+					当前称号.color = 全局变量.所有玩家数据表[第几个玩家].称号信息表[k].获取称号颜色();
+				}
+			}
+			称号达成.text = "称号达成:" + num3.ToString() + "/" + count.ToString();
+			总页数 = Mathf.Ceil((float)count / 12f);
+			页数显示.text = 显示第几页.ToString() + "/" + 总页数.ToString();
+		}
+
+		public void 点击激活称号(int 第几个称号)
+		{
+			if (上次切换时间 > 0)
+			{
+				long num = TIME.getTime() - 上次切换时间;
+				if (num < 20)
+				{
+					全局变量.提示类.显示信息("冷却中,剩余:" + (20 - num).ToString());
+					return;
+				}
+			}
+			int num2 = (显示第几页 - 1) * 12;
+			int count = 全局变量.所有玩家数据表[第几个玩家].称号信息表.Count;
+			for (int i = 0; i < count; i++)
+			{
+				if (全局变量.所有玩家数据表[第几个玩家].称号信息表[i].状态 != 0)
+				{
+					if (i == num2 + 第几个称号)
+					{
+						全局变量.提示类.显示信息("已激活:" + 全局变量.所有玩家数据表[第几个玩家].称号信息表[num2 + 第几个称号].名字);
+						全局变量.所有玩家数据表[第几个玩家].称号信息表[num2 + 第几个称号].状态 = 2;
+						全局变量.所有玩家数据表[第几个玩家].基础信息.称号名 = 全局变量.所有玩家数据表[第几个玩家].称号信息表[num2 + 第几个称号].名字;
+						上次切换时间 = TIME.getTime();
+					}
+					else
+					{
+						全局变量.所有玩家数据表[第几个玩家].称号信息表[i].状态 = 1;
+					}
+				}
+			}
+			刷新显示();
+		}
+
+		public void 左翻页()
+		{
+			if (显示第几页 != 1)
+			{
+				显示第几页--;
+				刷新显示();
+			}
+		}
+
+		public void 右翻页()
+		{
+			if ((float)显示第几页 < 总页数)
+			{
+				显示第几页++;
+				刷新显示();
+			}
+		}
+	}

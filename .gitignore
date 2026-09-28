@@ -1,0 +1,47 @@
+# Local audit artifacts and disposable test data
+/audit/
+
+# Local deployment credentials and installation state
+/admin/include/config.php
+/admin/install/install.lock
+/.env
+/.env.*
+
+# Unity generated state
+/web/[Ll]ibrary/
+/web/[Tt]emp/
+/web/[Oo]bj/
+/web/[Ll]ogs/
+/web/[Uu]ser[Ss]ettings/
+/web/[Bb]uild/
+/web/[Bb]uilds/
+/web/[Mm]emoryCaptures/
+/web/[Rr]ecordings/
+/web/.vs/
+/web/.idea/
+/web/*.csproj
+/web/*.sln
+/web/*.suo
+/web/*.user
+/web/*.userprefs
+/web/*.pidb
+/web/*.booproj
+/web/*.svd
+/web/*.pdb
+/web/*.mdb
+
+# Backups and editor-local files
+*.bak-*
+*.tmp
+*.swp
+*.swo
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Deployment signing credentials
+*.keystore
+*.jks
+*.pfx
+*.p12
