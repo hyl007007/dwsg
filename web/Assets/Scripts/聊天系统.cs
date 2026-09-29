@@ -608,6 +608,8 @@ public class 聊天系统 : MonoBehaviour
 	//世界界面和战斗界面各挂一份；对象被销毁（比如重进场景）就重新补
 	private void 挂界面()
 	{
+		if (世界界面 == null) 世界部件 = null;
+		if (战斗界面 == null) 战斗部件 = null;
 		if (世界界面 == null && 全局变量.主界面UI对象 != null)
 		{
 			建世界界面();
@@ -1072,8 +1074,13 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 刷新频道高亮(面板部件 部件)
 	{
+		if (部件 == null || 部件.面板 == null)
+		{
+			return;
+		}
 		for (int i = 0; i < 部件.频道按钮.Count; i++)
 		{
+			if (部件.频道按钮[i] == null) continue;
 			bool 选中 = ((int)当前频道 == i);
 			Image 图 = 部件.频道按钮[i].GetComponent<Image>();
 			if (图 != null)
@@ -1125,7 +1132,7 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 标记可见通知(面板部件 部件)
 	{
-		if (!GameNetwork.Enabled || 部件 == null || !部件.面板.activeInHierarchy || 部件.滚动 == null || 部件.滚动.viewport == null ||
+		if (!GameNetwork.Enabled || 部件 == null || 部件.面板 == null || !部件.面板.activeInHierarchy || 部件.滚动 == null || 部件.滚动.viewport == null ||
 			(当前频道 != 聊天频道.全部 && 当前频道 != 聊天频道.系统)) return;
 		List<string> 可见通知 = new List<string>();
 		Rect 视口 = 部件.滚动.viewport.rect;
