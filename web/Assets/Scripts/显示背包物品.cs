@@ -325,6 +325,14 @@ public class 显示背包物品 : MonoBehaviour
 
 	public double 获取选中物品数量()
 	{
+		if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+		{
+			int 选中;
+			if (!int.TryParse(已选中道具.text, out 选中)) return 0;
+			int 索引 = (显示第几页 - 1) * 18 + 选中;
+			return 要显示的物品列表 != null && 索引 >= 0 && 索引 < 要显示的物品列表.Count && 要显示的物品列表[索引].名字 == 已选择道具名字.text
+				? 要显示的物品列表[索引].数量 : 0;
+		}
 		if (已选择道具名字.text != "")
 		{
 			int num = int.Parse(已选中道具.text);
@@ -338,6 +346,8 @@ public class 显示背包物品 : MonoBehaviour
 	{
 		if (已选择道具名字.text != "")
 		{
+			if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+				调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
 			调整数量脚本对象.调整类型 = 3;
 			调整数量脚本对象.gameObject.SetActive(value: true);
 			调整数量脚本对象.显示说明文本();
@@ -348,6 +358,11 @@ public class 显示背包物品 : MonoBehaviour
 	{
 		if (!(已选择道具名字.text != ""))
 		{
+			return;
+		}
+		if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+		{
+			使用材料包(1);
 			return;
 		}
 		int 本机身份 = 全局变量.本机身份;
@@ -367,6 +382,29 @@ public class 显示背包物品 : MonoBehaviour
 		{
 			全局变量.提示类.显示信息("使用失败!");
 		}
+	}
+
+	public void 使用材料包(int 数量, System.Action<Dwsg.Shared.GameResult> 完成 = null)
+	{
+		if (Dwsg.Economy.MaterialPackClient.Pending)
+		{
+			if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用材料包，请稍候");
+			return;
+		}
+		int 选中;
+		if (!int.TryParse(已选中道具.text, out 选中)) 选中 = 0;
+		Dwsg.Economy.MaterialPackClient.Use(已选择道具名字.text, 数量, result =>
+		{
+			if (this == null) return;
+			if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Code == Dwsg.Shared.GameCodes.Ok ? "使用成功:\n" + result.Message : result.Message);
+			if (result.Code == Dwsg.Shared.GameCodes.Ok)
+			{
+				刷新显示();
+				if (选中 >= 0 && 选中 < 物品列表对象.transform.childCount && 物品列表对象.transform.GetChild(选中).GetChild(9).gameObject.activeSelf)
+					物品列表对象.transform.GetChild(选中).GetChild(9).GetComponent<Toggle>().isOn = true;
+			}
+			完成?.Invoke(result);
+		});
 	}
 
 	public void 丢弃道具()

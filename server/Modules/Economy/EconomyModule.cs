@@ -23,14 +23,22 @@ namespace Dwsg.Server.Economy
             var payload = command.Payload;
             if (command.Type == "item.use")
             {
-                if (payload == null || payload.Properties().Any(p => p.Name != "itemName") || payload["itemName"]?.Type != JTokenType.String)
+                if (payload == null || payload.Properties().Any(p => p.Name != "itemName" && p.Name != "quantity") || payload["itemName"]?.Type != JTokenType.String)
                     return GameResult.Reject(GameCodes.InvalidArgument, "道具使用参数无效");
-                if (payload.Value<string>("itemName") != "新手礼包")
+                double useQuantity = 1;
+                if (payload["quantity"] != null && (payload["quantity"].Type != JTokenType.Integer ||
+                    !ShopRules.TryNumber(payload["quantity"], out useQuantity) || useQuantity < 1 || useQuantity > int.MaxValue))
+                    return GameResult.Reject(GameCodes.InvalidArgument, "使用数量无效");
+                string itemName = payload.Value<string>("itemName");
+                if (itemName != "新手礼包" && MaterialPackRules.MaterialName(itemName) == null)
                     return GameResult.Reject(GameCodes.NotFound, "此道具的联机效果尚未接入");
+                if (itemName == "新手礼包" && useQuantity != 1)
+                    return GameResult.Reject(GameCodes.InvalidArgument, "新手礼包请单次使用");
                 JObject owner;
                 try { owner = candidate.RequirePlayer(context.Actor.PlayerId); }
                 catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Forbidden, "角色不存在于此世界"); }
-                var used = StarterPackRules.Use(owner, candidate.Data["道具配置"] as JArray);
+                var used = itemName == "新手礼包" ? StarterPackRules.Use(owner, candidate.Data["道具配置"] as JArray)
+                    : MaterialPackRules.Use(owner, candidate.Data["道具配置"] as JArray, itemName, (int)useQuantity);
                 if (used.Code == GameCodes.Ok) used.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "item.used",
                     ServerUtcMs = context.ServerUtcMs, Data = used.Data, AudiencePlayerIds = new[] { context.Actor.PlayerId } });
                 return used;

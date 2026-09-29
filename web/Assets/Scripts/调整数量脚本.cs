@@ -41,6 +41,8 @@ public class 调整数量脚本 : MonoBehaviour
 
 	private int 市场显示次数;
 
+	private int 材料包显示次数;
+
 	public void 滑条改变购买数量()
 	{
 		数量显示对象.text = 数量滑条对象.value.ToString();
@@ -49,6 +51,20 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 输入改变购买数量()
 	{
+		if (调整类型 == 3 && 显示背包物品脚本对象 != null && Dwsg.Shared.Economy.MaterialPackRules.MaterialName(显示背包物品脚本对象.已选择道具名字.text) != null)
+		{
+			float 数量;
+			if (!float.TryParse(输入数量对象.text, out 数量) || float.IsNaN(数量) || float.IsInfinity(数量) || 数量 <= 0)
+			{
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请输入有效的材料包数量");
+				return;
+			}
+			数量 = Mathf.Min(数量, 数量滑条对象.maxValue);
+			调整数量 = 数量;
+			数量显示对象.text = 数量.ToString();
+			数量滑条对象.value = 数量;
+			return;
+		}
 		if (调整类型 >= 5 && 调整类型 <= 8)
 		{
 			float 数量;
@@ -84,6 +100,7 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 显示说明文本()
 	{
+		材料包显示次数++;
 		if (调整类型 >= 5 && 调整类型 <= 8)
 		{
 			市场显示次数++;
@@ -146,6 +163,29 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 确认调整()
 	{
+		if (调整类型 == 3 && 显示背包物品脚本对象 != null && Dwsg.Shared.Economy.MaterialPackRules.MaterialName(显示背包物品脚本对象.已选择道具名字.text) != null)
+		{
+			if (double.IsNaN(调整数量) || double.IsInfinity(调整数量) || 调整数量 < 1 || 调整数量 > int.MaxValue)
+			{
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请选择有效的材料包数量");
+				return;
+			}
+			int 本次材料包显示 = 材料包显示次数;
+			显示背包物品脚本对象.使用材料包((int)调整数量, result =>
+			{
+				if (this == null || 调整类型 != 3 || 本次材料包显示 != 材料包显示次数) return;
+				if (result.Code == Dwsg.Shared.GameCodes.Ok) base.gameObject.SetActive(value: false);
+				else
+				{
+					说明文本.text = "【批量使用道具】\r\n" + result.Message;
+					数量滑条对象.maxValue = (float)显示背包物品脚本对象.获取选中物品数量();
+					数量滑条对象.value = Mathf.Clamp((float)调整数量, 0f, 数量滑条对象.maxValue);
+					调整数量 = 数量滑条对象.value;
+					数量显示对象.text = 数量滑条对象.value.ToString();
+				}
+			});
+			return;
+		}
 		if (调整类型 >= 5 && 调整类型 <= 8)
 		{
 			if (Dwsg.Economy.MarketClient.Pending)

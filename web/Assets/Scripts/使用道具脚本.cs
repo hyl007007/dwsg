@@ -71,6 +71,21 @@ public class 使用道具脚本 : MonoBehaviour
 				continue;
 			}
 			UnityEngine.Debug.Log("使用道具:" + 要显示的列表[i].名字);
+			if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(要显示的列表[i].名字) != null)
+			{
+				if (Dwsg.Economy.MaterialPackClient.Pending)
+				{
+					if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用材料包，请稍候");
+					return;
+				}
+				Dwsg.Economy.MaterialPackClient.Use(要显示的列表[i].名字, 1, result =>
+				{
+					if (this == null) return;
+					if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Code == Dwsg.Shared.GameCodes.Ok ? "使用成功:\n" + result.Message : result.Message);
+					刷新显示();
+				});
+				return;
+			}
 			int 本机身份 = 全局变量.本机身份;
 			string text = 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具(要显示的列表[i].名字, 第几个封地, 第几个将领);
 			if (text != "使用失败")
