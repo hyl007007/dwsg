@@ -17,11 +17,11 @@ namespace Dwsg.Server.Modules.Generals
 
 	public sealed partial class GeneralsModule : IGameModule, IGameTickModule
 	{
-		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss", "generals.healWounded" }).ToArray(); } }
+		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss", "generals.healWounded", "generals.cultivate", "generals.enhanceEquipment" }).ToArray(); } }
 
 		public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
 		{
-			if (command.Type == "generals.refreshTavern" || command.Type == "generals.recruit" || command.Type == "generals.dismiss" || command.Type == "generals.healWounded")
+			if (command.Type == "generals.refreshTavern" || command.Type == "generals.recruit" || command.Type == "generals.dismiss" || command.Type == "generals.healWounded" || command.Type == "generals.cultivate" || command.Type == "generals.enhanceEquipment")
 				return ExecuteRoster(candidate, context, command);
 			if (context?.Actor == null || context.Actor.IsSystem || string.IsNullOrEmpty(context.Actor.PlayerId))
 				return GameResult.Reject(GameCodes.Unauthenticated, "请先登录角色");
@@ -152,6 +152,11 @@ namespace Dwsg.Server.Modules.Generals
 
 		public static GameResult ApplyOutcome(WorldState candidate, string playerId, string armyId, IEnumerable<GeneralOutcome> outcomes, bool completeArmy = true)
 		{
+			return ApplyOutcomes(candidate, playerId, armyId, outcomes, completeArmy, false);
+		}
+
+		static GameResult ApplyOutcomes(WorldState candidate, string playerId, string armyId, IEnumerable<GeneralOutcome> outcomes, bool completeArmy, bool preserveCaptured)
+		{
 			try
 			{
 				GeneralOutcome[] entries = outcomes?.ToArray();
@@ -167,12 +172,14 @@ namespace Dwsg.Server.Modules.Generals
 				{
 					JObject fief;
 					JObject general = ResolveGeneral(working, playerId, outcome.GeneralId, out fief);
+					bool captured = preserveCaptured && LegacyGenerals.Number(general["详细信息"]["状态"]) == 3.0;
 					JObject assigned = LegacyGenerals.Object(general["将领配兵"]);
 					int original = LegacyGenerals.Quantity(assigned["数量"]);
 					if (outcome.General == null || outcome.Remaining < 0 || outcome.Wounded < 0 || (long)outcome.Remaining + outcome.Wounded > original
 						|| LegacyGenerals.Integer(outcome.General["ID"]) != LegacyGenerals.Integer(general["ID"])
 						|| LegacyGenerals.Integer(outcome.General["将领配兵"]["ID"]) != LegacyGenerals.Integer(assigned["ID"]))
 						throw new GeneralRuleException(GeneralFailure.InvalidData, "战斗结算兵力或将领不匹配");
+					if (captured && outcome.Remaining != 0) throw new GeneralRuleException(GeneralFailure.InvalidData, "被俘虏守将的剩余兵力必须为零");
 					JObject growth = LegacyGenerals.Object(outcome.General["将领属性"]["成长点数"]);
 					JObject final = LegacyGenerals.Object(outcome.General["将领属性"]["最终属性"]);
 					general["将领属性"]["成长点数"] = growth.DeepClone();
@@ -181,7 +188,7 @@ namespace Dwsg.Server.Modules.Generals
 						general["详细信息"][field] = LegacyGenerals.Number(outcome.General["详细信息"][field]);
 					assigned["数量"] = (double)outcome.Remaining;
 					general["详细信息"]["剩余兵力"] = (double)outcome.Remaining;
-					general["详细信息"]["状态"] = 0.0;
+					general["详细信息"]["状态"] = captured ? 3.0 : 0.0;
 					if (outcome.Wounded > 0)
 					{
 						JArray wounded = LegacyGenerals.Array(fief["伤兵信息表"]);

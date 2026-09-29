@@ -73,8 +73,9 @@ namespace Dwsg.Server.Economy
             long clamp = clock.Value<long>("nextClampUtcMs");
             var nation = (state.Data["国家列表"] as JArray)?.OfType<JObject>()
                 .FirstOrDefault(item => item.Value<string>("国号") == player["基础信息"].Value<string>("国家"));
-            double technology;
-            if (nation == null || !ShopRules.TryNumber(nation["资源科技"], out technology))
+            double technology = 0;
+            // Original extinction keeps the member's nation name; only its technology bonus ends.
+            if (nation != null && !ShopRules.TryNumber(nation["资源科技"], out technology))
                 return GameResult.Reject(GameCodes.Unavailable, "角色所属国家的资源科技缺失");
             while (utc - last >= 1000)
             {

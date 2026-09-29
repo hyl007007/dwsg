@@ -125,6 +125,11 @@ internal static class ProductionChecks
             "server restart grants no shutdown-time grain");
         Check(Timed(restarted, timed, "world.production.tick", 864105000).Code == GameCodes.Ok && timedFarmer["财产信息"].Value<double>("粮食") == afterCap + 1.5,
             "restarted server produces only new elapsed second");
+        timed.Data["国家列表"].OfType<JObject>().Single(n => n.Value<string>("国号") == "汉").Remove();
+        timedFarmer["财产信息"]["粮食"] = 1000.0;
+        Check(Timed(restarted, timed, "world.production.tick", 864106000).Code == GameCodes.Ok &&
+            timedFarmer["财产信息"].Value<double>("粮食") == 1001 && timedFarmer["基础信息"].Value<string>("国家") == "汉",
+            "extinct nation keeps member identity and basic farm production without a technology bonus");
 
         GameCommand durable;
         string receipt;

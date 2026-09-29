@@ -325,7 +325,7 @@ public class 显示背包物品 : MonoBehaviour
 
 	public double 获取选中物品数量()
 	{
-		if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+		if (Dwsg.Economy.MaterialPackClient.Supports(已选择道具名字.text))
 		{
 			int 选中;
 			if (!int.TryParse(已选中道具.text, out 选中)) return 0;
@@ -346,7 +346,7 @@ public class 显示背包物品 : MonoBehaviour
 	{
 		if (已选择道具名字.text != "")
 		{
-			if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+			if (Dwsg.Economy.MaterialPackClient.Supports(已选择道具名字.text))
 				调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
 			调整数量脚本对象.调整类型 = 3;
 			调整数量脚本对象.gameObject.SetActive(value: true);
@@ -360,7 +360,7 @@ public class 显示背包物品 : MonoBehaviour
 		{
 			return;
 		}
-		if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(已选择道具名字.text) != null)
+		if (Dwsg.Economy.MaterialPackClient.Supports(已选择道具名字.text))
 		{
 			使用材料包(1);
 			return;
@@ -388,7 +388,7 @@ public class 显示背包物品 : MonoBehaviour
 	{
 		if (Dwsg.Economy.MaterialPackClient.Pending)
 		{
-			if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用材料包，请稍候");
+			if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用宝箱，请稍候");
 			return;
 		}
 		int 选中;

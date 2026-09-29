@@ -1,4 +1,5 @@
 using Dwsg.Shared;
+using Dwsg.Shared.Notifications;
 using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Chat;
@@ -7,13 +8,14 @@ public sealed class ChatModule : IGameModule
 {
     public const int MaximumLength = 40, HistoryLimit = 300;
     public const long MinimumIntervalMs = 1000;
-    public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "chat.send" };
+    public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "chat.send", "notifications.read" };
 
     public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
     {
         var actor = context?.Actor;
         if (actor == null || actor.IsSystem || actor.WorldId != candidate.WorldId || command.WorldId != candidate.WorldId)
             return GameResult.Reject(GameCodes.Forbidden, "请使用本世界的已登录角色发言。");
+        if (command.Type == "notifications.read") return NotificationRules.MarkRead(candidate, actor, command.Payload, context.ServerUtcMs);
         if (command.Type != "chat.send") return GameResult.Reject(GameCodes.InvalidArgument, "聊天命令无效。");
         var payload = command.Payload;
         if (payload == null ||
@@ -73,11 +75,37 @@ public sealed class ChatModule : IGameModule
         string nation = actor == null ? null : Nation(state, state.RequirePlayer(actor.PlayerId));
         var cities = ReadCities(state, actor);
         return new JArray((state.Data["聊天消息"] as JArray ?? new JArray()).OfType<JObject>()
-            .Where(m => m.Value<string>("channel") == "world" || (nation != null && m.Value<string>("channel") == "nation" &&
+            .Where(m => m.Value<string>("channel") == "world" || m.Value<string>("channel") == "rumor" || (nation != null && m.Value<string>("channel") == "nation" &&
                 m.Value<string>("nation") == nation) || (m.Value<string>("channel") == "city" &&
                 Coordinate(m["cityX"], out int x) && Coordinate(m["cityY"], out int y) &&
                 cities.Any(c => c.Value<int>("x") == x && c.Value<int>("y") == y)))
             .Select(m => m.DeepClone()));
+    }
+
+    // This API is called by M06 inside its already-settled candidate, never by a client command.
+    public static GameResult RecordCityBattleReport(WorldState candidate, string battleId, string content, long utcMs)
+    {
+        var battle = candidate.Data["战斗运行"]?[battleId] as JObject;
+        if (battle == null || battle.Value<string>("BattleId") != battleId || battle.Value<string>("Kind") != "city" ||
+            !battle.Value<bool>("SettlementApplied") || (battle.Value<string>("Phase") != "won" && battle.Value<string>("Phase") != "lost" && battle.Value<string>("Phase") != "withdrawn"))
+            return GameResult.Reject(GameCodes.Conflict, "城池战报只接受真实已结算的战场。");
+        if (battle.Value<long>("StartedUtcMs") <= 0) return GameResult.Success();
+        if (string.IsNullOrWhiteSpace(content) || content.Length > 512 || utcMs <= 0)
+            return GameResult.Reject(GameCodes.InvalidArgument, "城池战报内容无效。");
+        var recorded = candidate.Data["公共城池战报"] as JObject;
+        if (recorded?[battleId] is JObject old) return GameResult.Success(new JObject { ["chatMessage"] = old.DeepClone() });
+        var message = new JObject { ["messageId"] = "city-report:" + battleId, ["channel"] = "rumor", ["content"] = content,
+            ["senderPlayerId"] = "server", ["senderName"] = "战报", ["nation"] = null, ["serverUtcMs"] = utcMs };
+        var history = candidate.Data["聊天消息"] as JArray ?? new JArray();
+        history.Add(message);
+        while (history.Count > HistoryLimit) history.RemoveAt(0);
+        candidate.Data["聊天消息"] = history;
+        if (recorded == null) { recorded = new JObject(); candidate.Data["公共城池战报"] = recorded; }
+        recorded[battleId] = message.DeepClone();
+        var result = GameResult.Success(new JObject { ["chatMessage"] = message.DeepClone() });
+        result.Events.Add(new GameEvent { EventId = message.Value<string>("messageId"), WorldId = candidate.WorldId,
+            Type = "chat.message", ServerUtcMs = utcMs, Data = (JObject)message.DeepClone() });
+        return result;
     }
 
     public static JArray ReadCities(WorldState state, AuthenticatedActor actor)

@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Remove="Checks/**/*.cs" />
     <ProjectReference Include="../../../shared/Dwsg.Shared.csproj" />
+    <ProjectReference Include="../Generals/Dwsg.Generals.csproj" />
     <Compile Include="../World/**/*.cs" Exclude="../World/Checks/**/*.cs" />
   </ItemGroup>
 </Project>

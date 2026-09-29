@@ -26,6 +26,8 @@ public static class 服务器战斗演出回归检查
             全局变量.所有玩家数据表 = world["玩家列表"].ToObject<List<玩家数据>>();
             全局变量.所有国家列表 = world["国家列表"].ToObject<List<国家信息库类>>();
             全局变量.所有城池列表 = world["城池列表"].ToObject<List<城池信息库类>>();
+            所有城池界面脚本.地图H = 全局大地图库.大地图表.GetLength(0);
+            所有城池界面脚本.地图W = 全局大地图库.大地图表.GetLength(1);
             全局变量.本机身份 = snapshot.Attackers[0].General["详细信息"].Value<int>("身份");
             全局兵种库.属性表.Clear(); 全局兵种库.初始化兵种库();
             全局将领库.属性表.Clear(); 全局将领库.初始化将领库();
@@ -33,28 +35,35 @@ public static class 服务器战斗演出回归检查
             string original = JsonConvert.SerializeObject(全局变量.所有玩家数据表);
             Debug.unityLogger.logEnabled = false;
             parent = new GameObject("ServerBattlePresentationCheck"); parent.SetActive(false);
-            GameObject root = UnityEngine.Object.Instantiate(全局变量.山贼战斗场景pre, parent.transform);
+            GameObject root = UnityEngine.Object.Instantiate(snapshot.Kind == "city" ? 全局变量.城池战斗场景pre : 全局变量.山贼战斗场景pre, parent.transform);
             战斗系统 system = root.GetComponentInChildren<战斗系统>(true);
-            system.服务器战场ID = snapshot.BattleId; system.战场类型 = 0;
+            system.服务器战场ID = snapshot.BattleId; system.战场类型 = snapshot.Kind == "city" ? 1 : 0;
             system.坐标x = snapshot.X; system.坐标y = snapshot.Y;
             typeof(战斗系统).GetMethod("Start", Private).Invoke(system, null);
             Check(system.攻方坑位对象.transform.childCount == 15 && system.守方坑位对象.transform.childCount == 15, "original thirty pit prefabs");
             var view = root.AddComponent<BanditBattleView>(); view.System = system;
             view.Apply(snapshot); typeof(BanditBattleView).GetMethod("LateUpdate", Private).Invoke(view, null);
             将领功能[] models = root.GetComponentsInChildren<将领功能>(true);
-            Check(models.Length == snapshot.Attackers.Concat(snapshot.Defenders).Count(unit => !unit.Retired), "all original general models are instantiated");
-            foreach (CombatUnit unit in snapshot.Attackers.Concat(snapshot.Defenders).Where(unit => !unit.Retired))
+            long utc = snapshot.StartedUtcMs + snapshot.Frame * 1000 / 60;
+            var available = new HashSet<string>(snapshot.DefenseFormations.Where(group => group.AvailableUtcMs <= utc).Select(group => group.ArmyId));
+            CombatUnit[] visible = snapshot.Attackers.Concat(snapshot.Defenders).Where(unit => !unit.Retired &&
+                (snapshot.Kind != "city" || unit.Side == 0 || available.Contains(unit.ArmyId))).ToArray();
+            Check(models.Length == visible.Length, "only arrived original general models are instantiated");
+            var modelIds = (Dictionary<string, 将领功能>)typeof(BanditBattleView).GetField("models", Private).GetValue(view);
+            foreach (CombatUnit unit in visible)
             {
                 将领功能 model = unit.Slot >= 0
                     ? (unit.Side == 0 ? system.攻方坑位对象 : system.守方坑位对象).transform.GetChild(unit.Slot).GetComponentInChildren<将领功能>(true)
-                    : models.Single(item => item.本将领信息.详细信息.坑位颜色 == unit.Side && item.本将领信息.ID == unit.General.Value<int>("ID"));
+                    : modelIds[unit.CombatId];
                 Check(model != null && model.战斗系统脚本对象 == system, "original hierarchy resolves server battlefield");
                 Check(model.本将领信息.详细信息.剩余兵力 == unit.Remaining && model.本将领信息.将领配兵.数量 == unit.Remaining, "server quantity drives original model");
                 Check(!(bool)typeof(将领功能).GetField("是否开始攻击", Private).GetValue(model), "local combat coroutine stays inactive");
                 model.开始战斗(); typeof(将领功能).GetMethod("FixedUpdate", Private).Invoke(model, null);
             }
             Check(system.伤害显示缓存表.Count == 30, "original damage text cache");
-            Check(system.攻方兵力 == snapshot.Attackers.Where(unit => !unit.Retired).Sum(unit => unit.Remaining) && system.守方兵力 == snapshot.Defenders.Sum(unit => unit.Remaining), "side counters follow snapshot");
+            Check(system.攻方兵力 == snapshot.Attackers.Where(unit => !unit.Retired).Sum(unit => unit.Remaining) && system.守方兵力 == BanditBattleRules.DefendingForce(snapshot, utc), "side counters follow snapshot");
+            if (snapshot.Kind == "city")
+                Check(system.城墙信息显示.text == snapshot.Wall.ToString() && system.城墙血条对象.localPosition.x == 3f * (float)(snapshot.Wall / snapshot.WallMaximum), "original city wall display follows committed snapshot");
             typeof(战斗系统).GetMethod("FixedUpdate", Private).Invoke(system, null);
             Check(!system.战斗结束 && JsonConvert.SerializeObject(全局变量.所有玩家数据表) == original, "presentation cannot settle or mutate original player DTOs");
             CheckOriginalSlots(parent.transform, snapshot.Attackers[0].General, world["兵种配置"] as JArray);

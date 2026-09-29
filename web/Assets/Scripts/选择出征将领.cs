@@ -103,7 +103,32 @@ public class 选择出征将领 : MonoBehaviour
 	{
 		if (Dwsg.Network.GameNetwork.Enabled)
 		{
-			全局变量.提示类.显示信息("城池出征尚未接入服务器，操作未提交");
+			if (index == 1) { 全局变量.提示类.显示信息("城池驻防尚未接入服务器，操作未提交"); return; }
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			var 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[全局变量.本机身份].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后出征"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			var 参数 = new Newtonsoft.Json.Linq.JObject { ["x"] = 城池坐标x, ["y"] = 城池坐标y, ["generalIds"] = 将领ID列表 };
+			if (精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
+			{
+				if (!int.TryParse(精准到达_时.text, out int 时) || !int.TryParse(精准到达_分.text, out int 分) || !int.TryParse(精准到达_秒.text, out int 秒)
+					|| 时 < 0 || 时 > 23 || 分 < 0 || 分 > 59 || 秒 < 0 || 秒 > 59)
+				{ 全局变量.提示类.显示信息("精确到达时间无效"); return; }
+				long 当前服务器秒 = Dwsg.Network.GameNetwork.CurrentSnapshot.ServerUtcMs / 1000;
+				DateTime 今天 = TIME.TimeStampToDateTime(当前服务器秒 + 10);
+				参数["arrivalUtcMs"] = TIME.DateTimeToTimeStamp(new DateTime(今天.Year, 今天.Month, 今天.Day, 时, 分, 秒)) * 1000;
+			}
+			正在提交山贼出征 = true;
+			Dwsg.Network.GameNetwork.SendCommand("combat.city.dispatch", 参数, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");
+			});
 			return;
 		}
 		if (index==1)
@@ -187,7 +212,7 @@ public class 选择出征将领 : MonoBehaviour
 				将领ID列表.Add(将领ID);
 			}
 			正在提交山贼出征 = true;
-			Dwsg.Network.GameNetwork.SendCommand("combat.bandit.reinforce", new Newtonsoft.Json.Linq.JObject {
+			Dwsg.Network.GameNetwork.SendCommand(Dwsg.Combat.CombatClient.CommandType(战斗系统对象.服务器战场ID, "reinforce"), new Newtonsoft.Json.Linq.JObject {
 				["battleId"] = 战斗系统对象.服务器战场ID, ["generalIds"] = 将领ID列表 }, 结果 => {
 				正在提交山贼出征 = false;
 				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }

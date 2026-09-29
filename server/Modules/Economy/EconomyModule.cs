@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using Dwsg.Shared;
 using Dwsg.Shared.Economy;
+using Dwsg.Shared.Generals;
 using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Economy
@@ -11,6 +13,12 @@ namespace Dwsg.Server.Economy
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "shop.purchase", "shop.sell", "shop.refresh", "item.use" };
         private readonly Random random = new Random();
+        private readonly Action<WorldState> initializeEntities;
+
+        public EconomyModule(Action<WorldState> initializeEntities = null)
+        {
+            this.initializeEntities = initializeEntities;
+        }
 
         public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
         {
@@ -30,14 +38,15 @@ namespace Dwsg.Server.Economy
                     !ShopRules.TryNumber(payload["quantity"], out useQuantity) || useQuantity < 1 || useQuantity > int.MaxValue))
                     return GameResult.Reject(GameCodes.InvalidArgument, "使用数量无效");
                 string itemName = payload.Value<string>("itemName");
-                if (itemName != "新手礼包" && MaterialPackRules.MaterialName(itemName) == null)
+                if (itemName != "新手礼包" && MaterialPackRules.MaterialName(itemName) == null && EquipmentBoxRules.Slot(itemName) < 0)
                     return GameResult.Reject(GameCodes.NotFound, "此道具的联机效果尚未接入");
                 if (itemName == "新手礼包" && useQuantity != 1)
                     return GameResult.Reject(GameCodes.InvalidArgument, "新手礼包请单次使用");
                 JObject owner;
                 try { owner = candidate.RequirePlayer(context.Actor.PlayerId); }
                 catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Forbidden, "角色不存在于此世界"); }
-                var used = itemName == "新手礼包" ? StarterPackRules.Use(owner, candidate.Data["道具配置"] as JArray)
+                var used = EquipmentBoxRules.Slot(itemName) >= 0 ? UseEquipmentBox(candidate, context.Actor.PlayerId, itemName, (int)useQuantity)
+                    : itemName == "新手礼包" ? StarterPackRules.Use(owner, candidate.Data["道具配置"] as JArray)
                     : MaterialPackRules.Use(owner, candidate.Data["道具配置"] as JArray, itemName, (int)useQuantity);
                 if (used.Code == GameCodes.Ok) used.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "item.used",
                     ServerUtcMs = context.ServerUtcMs, Data = used.Data, AudiencePlayerIds = new[] { context.Actor.PlayerId } });
@@ -66,6 +75,35 @@ namespace Dwsg.Server.Economy
             if (result.Code == GameCodes.Ok && command.Type == "shop.purchase")
                 result.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "shop.stockChanged", ServerUtcMs = context.ServerUtcMs,
                     Data = new JObject { ["itemName"] = name, ["remainingStock"] = product["限购数量"].DeepClone() } });
+            return result;
+        }
+
+        private GameResult UseEquipmentBox(WorldState candidate, string playerId, string itemName, int quantity)
+        {
+            if (initializeEntities == null) return GameResult.Reject(GameCodes.Unavailable, "装备身份登记尚未就绪");
+            var working = candidate.Clone();
+            var result = EquipmentBoxRules.Use(working.RequirePlayer(playerId), working.Data["道具配置"] as JArray,
+                working.Data["装备配置"] as JArray, itemName, quantity, RandomNumberGenerator.GetInt32);
+            if (result.Code != GameCodes.Ok) return result;
+            try { initializeEntities(working); }
+            catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Unavailable, "装备身份登记失败"); }
+            catch (GeneralRuleException) { return GameResult.Reject(GameCodes.Unavailable, "装备身份登记失败"); }
+            var equipment = new JArray();
+            foreach (JObject entry in result.Data["equipment"])
+            {
+                var matches = (working.EntityMappings["equipment"] as JObject)?.Properties().Where(p => p.Value is JObject &&
+                    p.Value.Value<string>("playerId") == playerId && JToken.DeepEquals(p.Value["slot"], entry["slot"]) &&
+                    JToken.DeepEquals(p.Value["legacyIndex"], entry["legacyIndex"])).ToArray();
+                if (matches == null || matches.Length != 1 || string.IsNullOrEmpty(matches[0].Name))
+                    return GameResult.Reject(GameCodes.Unavailable, "新装备身份未生成");
+                var generated = entry["equipment"];
+                equipment.Add(new JObject { ["equipmentId"] = matches[0].Name, ["slot"] = entry["slot"].DeepClone(),
+                    ["name"] = generated["装备信息"]["名称"].DeepClone(), ["level"] = generated["装备信息"]["等级"].DeepClone(),
+                    ["quality"] = generated["品质"].DeepClone(), ["displayQuality"] = entry["displayQuality"].DeepClone() });
+            }
+            result.Data["equipment"] = equipment;
+            candidate.Data = working.Data;
+            candidate.EntityMappings = working.EntityMappings;
             return result;
         }
 

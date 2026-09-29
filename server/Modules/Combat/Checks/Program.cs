@@ -9,6 +9,7 @@ using Dwsg.Shared.Generals;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
+if (args.Length == 3 && args[0] == "--city") { CityChecks.Run(args[1], args[2]); return; }
 if (args.Length != 2) throw new ArgumentException("Pass the actual Unity export and an ignored audit output directory.");
 string directory = Path.GetFullPath(args[1]);
 if (!directory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("audit", StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("Check output must stay in audit.");
@@ -88,7 +89,8 @@ Check(store.Load(world.WorldId).ResolvePlayerIndex(march.NpcPlayerId) == 1, "ban
 Check(march.Phase == "marching" && march.ArrivalUtcMs == now + 10000 && march.Frame == 0, "original ten second march");
 Check(march.Attackers.Count == 5 && store.Load(world.WorldId).EntityMappings["generalOccupancy"].Count() == 5, "all five generals persist as occupied");
 long revision = store.Load(world.WorldId).Revision;
-Check(JsonConvert.SerializeObject(runtime.Execute(actors[0], dispatch)) == JsonConvert.SerializeObject(started) && store.Load(world.WorldId).Revision == revision && published == 1, "same request replays receipt without events or second army");
+int dispatchPublications = published;
+Check(JsonConvert.SerializeObject(runtime.Execute(actors[0], dispatch)) == JsonConvert.SerializeObject(started) && store.Load(world.WorldId).Revision == revision && published == dispatchPublications, "same request replays receipt without events or second army");
 var changed = Command(dispatch.Type, (JObject)dispatch.Payload.DeepClone(), dispatch.RequestId); changed.Payload["x"] = 999;
 Check(runtime.Execute(actors[0], changed).Code == GameCodes.RequestConflict, "changed retry conflicts");
 RejectedUnchanged(actors[1], Command("combat.bandit.withdraw", new JObject { ["battleId"] = battleId }), "foreign retreat");

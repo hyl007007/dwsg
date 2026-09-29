@@ -71,11 +71,11 @@ public class 使用道具脚本 : MonoBehaviour
 				continue;
 			}
 			UnityEngine.Debug.Log("使用道具:" + 要显示的列表[i].名字);
-			if (Dwsg.Shared.Economy.MaterialPackRules.MaterialName(要显示的列表[i].名字) != null)
+			if (Dwsg.Economy.MaterialPackClient.Supports(要显示的列表[i].名字))
 			{
 				if (Dwsg.Economy.MaterialPackClient.Pending)
 				{
-					if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用材料包，请稍候");
+					if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用宝箱，请稍候");
 					return;
 				}
 				Dwsg.Economy.MaterialPackClient.Use(要显示的列表[i].名字, 1, result =>

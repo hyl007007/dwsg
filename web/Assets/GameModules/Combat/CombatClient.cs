@@ -26,17 +26,22 @@ namespace Dwsg.Combat
         }
         public static void Withdraw(string battleId)
         {
-            GameNetwork.SendCommand("combat.bandit.withdraw", new JObject { ["battleId"] = battleId }, result => {
+            GameNetwork.SendCommand(CommandType(battleId, "withdraw"), new JObject { ["battleId"] = battleId }, result => {
                 if (result.Code != GameCodes.Ok) 全局变量.提示类.显示信息(result.Message);
             });
         }
         public static void WithdrawGeneral(string battleId, string generalId, Action<GameResult> completed = null)
         {
             if (string.IsNullOrWhiteSpace(generalId)) { 全局变量.提示类.显示信息("请等待将领同步后撤退"); return; }
-            GameNetwork.SendCommand("combat.bandit.withdraw", new JObject { ["battleId"] = battleId, ["generalId"] = generalId }, result => {
+            GameNetwork.SendCommand(CommandType(battleId, "withdraw"), new JObject { ["battleId"] = battleId, ["generalId"] = generalId }, result => {
                 if (result.Code != GameCodes.Ok) 全局变量.提示类.显示信息(result.Message);
                 completed?.Invoke(result);
             });
+        }
+        public static string CommandType(string battleId, string action)
+        {
+            string kind = GameNetwork.CurrentSnapshot?.PrivatePlayer?["战斗运行"]?[battleId]?.Value<string>("Kind");
+            return "combat." + (kind == "city" ? "city" : "bandit") + "." + action;
         }
     }
 

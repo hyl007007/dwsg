@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Dwsg.Network;
 using Dwsg.Shared;
+using Dwsg.Shared.Notifications;
 using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Client.Chat
@@ -10,6 +13,7 @@ namespace Dwsg.Client.Chat
         private static readonly ChatInbox inbox = new ChatInbox();
         private static bool initialized;
         private static int selectedFiefIndex = -1;
+        private static bool readingNotifications;
         private static Action<JObject, bool> received;
         private static Action<string> rejected;
         private static Action reset;
@@ -55,16 +59,19 @@ namespace Dwsg.Client.Chat
 
         private static void ReceiveEvent(GameEvent message)
         {
-            if (GameNetwork.Enabled && message.Type == "chat.message") Receive(message.WorldId, message.Data);
+            if (GameNetwork.Enabled && (message.Type == "chat.message" || message.Type == "system.notification")) Receive(message.WorldId, message.Data);
         }
 
         private static void ReceiveSnapshot(WorldSnapshot snapshot)
         {
             if (!GameNetwork.Enabled || snapshot == null) return;
             selectedFiefIndex = 全局变量.第几个封地;
-            if (inbox.SetSession(snapshot, selectedFiefIndex)) reset?.Invoke();
+            if (inbox.SetSession(snapshot, selectedFiefIndex)) { readingNotifications = false; reset?.Invoke(); }
             if (snapshot.PublicWorld["chatMessages"] is JArray history)
                 foreach (var item in history) Receive(snapshot.WorldId, item as JObject);
+            if (snapshot.PrivatePlayer["notifications"] is JObject notices)
+                foreach (var item in notices.Properties().Select(p => p.Value as JObject).Where(n => n != null)
+                    .OrderBy(n => n.Value<long>("serverUtcMs")).ThenBy(n => n.Value<string>("notificationId"), StringComparer.Ordinal)) Receive(snapshot.WorldId, item);
         }
 
         private static void Receive(string worldId, JObject message)
@@ -77,6 +84,24 @@ namespace Dwsg.Client.Chat
         {
             if (GameNetwork.Enabled && GameNetwork.CurrentSnapshot != null && selectedFiefIndex != 全局变量.第几个封地)
                 ReceiveSnapshot(GameNetwork.CurrentSnapshot);
+        }
+
+        public static int UnreadNotifications => GameNetwork.Enabled ? NotificationRules.Unread(GameNetwork.CurrentSnapshot?.PrivatePlayer) : 0;
+
+        public static void MarkNotificationsRead(IEnumerable<string> notificationIds)
+        {
+            if (!GameNetwork.Enabled || !GameNetwork.Connected || !GameNetwork.HasRole || readingNotifications) return;
+            var notices = GameNetwork.CurrentSnapshot?.PrivatePlayer["notifications"] as JObject;
+            if (notices == null) return;
+            var ids = notificationIds.Where(id => id != null && notices[id] is JObject && notices[id].Value<long>("readUtcMs") == 0)
+                .Distinct(StringComparer.Ordinal).Take(100).ToArray();
+            if (ids.Length == 0) return;
+            readingNotifications = true;
+            GameNetwork.SendCommand("notifications.read", new JObject { ["notificationIds"] = new JArray(ids) }, result =>
+            {
+                readingNotifications = false;
+                if (result.Code != GameCodes.Ok) rejected?.Invoke(result.Message);
+            });
         }
     }
 }

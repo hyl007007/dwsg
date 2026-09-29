@@ -15,6 +15,7 @@ namespace Dwsg.Shared.Combat
         }
         public int Next(int minimum, int maximum)
         {
+            if (maximum == minimum) return minimum; // 原Random.Range(0,0)插入空守军列表。
             if (maximum <= minimum) throw new ArgumentOutOfRangeException(nameof(maximum));
             ulong range = (ulong)((long)maximum - minimum);
             ulong limit = ulong.MaxValue - ulong.MaxValue % range;
@@ -28,12 +29,20 @@ namespace Dwsg.Shared.Combat
             } while (value >= limit);
             return (int)(minimum + (long)(value % range));
         }
+        public float NextFloat(float minimum, float maximum)
+        {
+            if (maximum < minimum) throw new ArgumentOutOfRangeException(nameof(maximum));
+            if (maximum == minimum) return minimum;
+            return minimum + (maximum - minimum) * (Next(0, 16777217) / 16777216f);
+        }
     }
 
     public sealed class CombatUnit
     {
         public string GeneralId;
         public string UnitId, ArmyId;
+        public string GeneralOwnerId;
+        public bool Ephemeral;
         public JObject General;
         public JObject Troop;
         public int Side;
@@ -82,6 +91,10 @@ namespace Dwsg.Shared.Combat
     public sealed class BanditBattle
     {
         public string BattleId, ArmyId, PlayerId, NpcPlayerId, JoinBattleId;
+        public string Kind = "bandit";
+        public string CityNation, CityName;
+        public int CityScale;
+        public double Wall, WallMaximum, WarReward;
         public int X, Y;
         public long ArrivalUtcMs, NextTickUtcMs, StartedUtcMs, Frame;
         public string Phase = "marching";
@@ -93,6 +106,7 @@ namespace Dwsg.Shared.Combat
         public List<CombatUnit> Attackers = new List<CombatUnit>();
         public List<CombatUnit> Defenders = new List<CombatUnit>();
         public List<CombatFormation> AttackFormations = new List<CombatFormation>();
+        public List<CombatFormation> DefenseFormations = new List<CombatFormation>();
         public List<CombatHit> LastHits = new List<CombatHit>();
         public 战斗奖励 Reward;
         public bool IsTerminal => Phase == "won" || Phase == "lost" || Phase == "withdrawn";
@@ -122,7 +136,8 @@ namespace Dwsg.Shared.Combat
         }
 
         public static void Advance(BanditBattle battle, Func<CombatUnit, long, CombatProfile> profile,
-            Action<CombatUnit, long> recalculateOwner, Action<JObject, double> grantExperience)
+            Action<CombatUnit, long> recalculateOwner, Action<JObject, double> grantExperience,
+            Action<CombatUnit, CombatUnit, CombatRandom, long> capture = null)
         {
             if (battle.Phase != "fighting") throw new InvalidOperationException("战场尚未到达或已结束");
             var random = new CombatRandom(battle.RandomState);
@@ -135,7 +150,8 @@ namespace Dwsg.Shared.Combat
                 Vacate(battle.Attackers, battle.Frame);
                 Vacate(battle.Defenders, battle.Frame);
                 EnterAttackers(battle, utc);
-                Enter(battle.Defenders, ref battle.DefenseFormationX, ref battle.DefenseEntered, false);
+                if (battle.Kind == "city") EnterDefenders(battle, utc);
+                else Enter(battle.Defenders, ref battle.DefenseFormationX, ref battle.DefenseEntered, false);
                 foreach (CombatUnit actor in battle.Attackers.Concat(battle.Defenders))
                 {
                     if (actor.Retired || actor.Slot < 0 || actor.Remaining <= 0) continue;
@@ -145,6 +161,13 @@ namespace Dwsg.Shared.Combat
                         (float)attackerProfile.SpeedTitle / 100f, (float)attackerProfile.SpeedState / 100f, 1f / 60f));
                     if (actor.Progress < 3f) continue;
                     CombatUnit target = FindTarget(battle, actor, profile, utc);
+                    if (battle.Kind == "city" && battle.Wall > 0 && (actor.Troop.Value<int>("ID") == 403 || (target == null && actor.Side == 0)))
+                    {
+                        double damage = CityGarrisonRules.WallDamage(actor.Troop.Value<double>("攻击力"), actor.Remaining);
+                        battle.Wall = Math.Max(0, battle.Wall - damage);
+                        battle.LastHits.Add(new CombatHit { Frame = battle.Frame, AttackerId = actor.CombatId, DefenderId = "wall", Damage = damage });
+                        actor.Progress = 0f; continue;
+                    }
                     if (target == null) { actor.WaitForTarget = true; continue; }
                     if (actor.WaitForTarget)
                     {
@@ -152,14 +175,40 @@ namespace Dwsg.Shared.Combat
                         if (actor.WaitFrames > 15) { actor.WaitFrames = 0; actor.WaitForTarget = false; }
                         continue;
                     }
-                    Hit(battle, actor, target, profile, utc, random, recalculateOwner, grantExperience);
+                    Hit(battle, actor, target, profile, utc, random, recalculateOwner, grantExperience, capture);
                     actor.Progress = 0f;
                 }
-                if (battle.Defenders.Sum(unit => unit.Remaining) <= 0) battle.Phase = "won";
+                if (DefendingForce(battle, utc) <= 0 && (battle.Kind != "city" || battle.Wall <= 0)) battle.Phase = "won";
                 else if (battle.Attackers.Where(unit => !unit.Retired).Sum(unit => unit.Remaining) <= 0)
                     battle.Phase = battle.Attackers.All(unit => unit.Retired) ? "withdrawn" : "lost";
             }
             battle.RandomState = random.State;
+        }
+
+        public static double DefendingForce(BanditBattle battle, long utc)
+        {
+            if (battle.Kind != "city") return battle.Defenders.Sum(unit => unit.Remaining);
+            var available = new HashSet<string>(battle.DefenseFormations.Where(formation => formation.AvailableUtcMs <= utc).Select(formation => formation.ArmyId));
+            return battle.Defenders.Where(unit => available.Contains(unit.ArmyId)).Sum(unit => unit.Remaining);
+        }
+
+        private static void EnterDefenders(BanditBattle battle, long utc)
+        {
+            foreach (CombatFormation formation in battle.DefenseFormations)
+            {
+                if (utc < formation.AvailableUtcMs) continue;
+                CombatUnit[] members = battle.Defenders.Where(unit => unit.ArmyId == formation.ArmyId).ToArray();
+                if (members.Length == 0) continue;
+                float speed = members.Min(unit => unit.Troop.Value<float>("移动速度")) * 0.5f;
+                formation.PositionX = Math.Max(-24.25f, formation.PositionX - speed / 60f);
+                if (formation.PositionX == -24.25f && formation.ArrivedFrame < 0) formation.ArrivedFrame = battle.Frame;
+            }
+            CombatFormation next = battle.DefenseFormations.Where(formation => formation.ArrivedFrame >= 0
+                && formation.Entered < battle.Defenders.Count(unit => unit.ArmyId == formation.ArmyId))
+                .OrderBy(formation => formation.ArrivedFrame).FirstOrDefault();
+            if (next == null) return;
+            CombatUnit entering = battle.Defenders.Where(member => member.ArmyId == next.ArmyId).ElementAt(next.Entered);
+            if (Place(battle.Defenders, entering)) next.Entered++;
         }
 
         private static void Enter(List<CombatUnit> units, ref float position, ref int entered, bool attacking)
@@ -234,13 +283,13 @@ namespace Dwsg.Shared.Combat
             return true;
         }
 
-        public static double Attack(CombatUnit actor, CombatUnit target, CombatProfile profile)
+        public static double Attack(CombatUnit actor, CombatUnit target, CombatProfile profile, double wall = 0)
         {
             double career = target == null ? 0 : 战斗规则.职业攻击加成(actor.Career, actor.TroopClass, target.TroopClass) / 100.0;
             double counter = target == null ? 0 : 战斗规则.兵种攻击加成(actor.Career, actor.TroopClass, target.TroopClass) / 100.0;
             return 战斗规则.最终攻击力(actor.General["将领属性"]["最终属性"].Value<double>("攻击"), actor.Troop.Value<double>("攻击力"),
                 profile.AttackBonus(actor.Career) / 100.0, profile.NationAttack / 100.0, career, counter,
-                profile.AttackState / 100.0, profile.AttackTitle / 100.0, 0);
+                profile.AttackState / 100.0, profile.AttackTitle / 100.0, wall);
         }
 
         public static double Defense(CombatUnit actor, CombatUnit target, CombatProfile actorProfile, CombatProfile targetProfile)
@@ -276,8 +325,8 @@ namespace Dwsg.Shared.Combat
                     var attackerProfile = profile(actor, utc);
                     var defenderProfile = profile(target, utc);
                     scores.Add(new TargetScore { Unit = target,
-                        Damage = 战斗规则.最终伤害(Attack(actor, target, attackerProfile), Defense(actor, target, attackerProfile, defenderProfile), actor.Remaining, Life(target, defenderProfile)),
-                        Attack = Attack(target, previousTarget, defenderProfile), Loss = target.OriginalQuantity - target.Remaining });
+                        Damage = 战斗规则.最终伤害(Attack(actor, target, attackerProfile, WallBonus(battle, actor)), Defense(actor, target, attackerProfile, defenderProfile), actor.Remaining, Life(target, defenderProfile)),
+                        Attack = Attack(target, previousTarget, defenderProfile, WallBonus(battle, target)), Loss = target.OriginalQuantity - target.Remaining });
                     break;
                 }
             }
@@ -291,11 +340,12 @@ namespace Dwsg.Shared.Combat
         }
 
         private static void Hit(BanditBattle battle, CombatUnit actor, CombatUnit target, Func<CombatUnit, long, CombatProfile> profile,
-            long utc, CombatRandom random, Action<CombatUnit, long> recalculateOwner, Action<JObject, double> grantExperience)
+            long utc, CombatRandom random, Action<CombatUnit, long> recalculateOwner, Action<JObject, double> grantExperience,
+            Action<CombatUnit, CombatUnit, CombatRandom, long> capture)
         {
             var attackerProfile = profile(actor, utc);
             var defenderProfile = profile(target, utc);
-            double attack = Attack(actor, target, attackerProfile);
+            double attack = Attack(actor, target, attackerProfile, WallBonus(battle, actor));
             double defense = Defense(actor, target, attackerProfile, defenderProfile);
             // 保留原短路：不符合兵种条件时不消费概率随机数，穿透→格挡→闪避顺序不变。
             bool pierce = actor.TroopClass == 3 && 战斗规则.是否穿透(actor.TroopClass, attackerProfile.PierceTechnology, attackerProfile.Emperor, random.Next(1, 101));
@@ -309,11 +359,15 @@ namespace Dwsg.Shared.Combat
             target.General["详细信息"]["剩余兵力"] = target.Remaining - damage;
             target.General["将领配兵"]["数量"] = target.Remaining;
             if (target.Remaining <= 0 && target.VacateFrame == 0) target.VacateFrame = battle.Frame + 30;
-            if (target.Side == 0) target.Wounded += 战斗规则.伤兵数量(damage, 0);
+            if (target.Side == 0) target.Wounded += 战斗规则.伤兵数量(damage, battle.Kind == "city" ? 1 : 0);
             grantExperience(actor.General, 战斗规则.将领经验(damage, target.Troop.Value<double>("攻击力"), defenderProfile.ExperienceState));
+            if (battle.Kind == "city" && actor.Side == 0 && target.Remaining <= 0 && !target.Ephemeral && target.General.Value<int>("ID") != 0)
+                capture?.Invoke(actor, target, random, utc);
             battle.LastHits.Add(new CombatHit { Frame = battle.Frame, AttackerId = actor.CombatId, DefenderId = target.CombatId,
                 Damage = damage, Pierce = pierce, Block = block, Dodge = dodge });
         }
+
+        private static double WallBonus(BanditBattle battle, CombatUnit actor) => battle.Kind == "city" && actor.Side == 1 ? battle.Wall / 20000.0 / 100.0 : 0;
 
         public static 战斗奖励 CalculateRewards(BanditBattle battle, double resourceBonus)
         {

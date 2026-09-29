@@ -9,11 +9,16 @@ namespace Dwsg.Client.Chat
     {
         private readonly HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
         private readonly Queue<string> order = new Queue<string>();
+        private readonly HashSet<string> seenNotifications = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> permittedNotifications = new HashSet<string>(StringComparer.Ordinal);
         private string worldId, playerId, nation, cities, selectedCity;
 
         public bool SetSession(WorldSnapshot snapshot, int selectedFiefIndex = 0)
         {
             if (snapshot == null) return false;
+            permittedNotifications.Clear();
+            if (snapshot.PrivatePlayer["notifications"] is JObject notices)
+                foreach (var entry in notices.Properties()) permittedNotifications.Add(entry.Name);
             string nextNation = snapshot.PrivatePlayer["基础信息"]?.Value<string>("国家");
             var locations = new SortedSet<string>(StringComparer.Ordinal);
             var permitted = snapshot.PrivatePlayer["chatCities"] as JArray;
@@ -22,7 +27,7 @@ namespace Dwsg.Client.Chat
             if (nextSelected != null && !locations.Contains(nextSelected)) nextSelected = null;
             if (worldId == snapshot.WorldId && playerId == snapshot.PlayerId && nation == nextNation && cities == nextCities && selectedCity == nextSelected) return false;
             worldId = snapshot.WorldId; playerId = snapshot.PlayerId; nation = nextNation; cities = nextCities; selectedCity = nextSelected;
-            seen.Clear(); order.Clear();
+            seen.Clear(); order.Clear(); seenNotifications.Clear();
             return true;
         }
 
@@ -34,12 +39,20 @@ namespace Dwsg.Client.Chat
                 message["senderName"]?.Type != JTokenType.String || message["content"]?.Type != JTokenType.String ||
                 message["serverUtcMs"]?.Type != JTokenType.Integer) return false;
             string channel = message.Value<string>("channel");
-            if (channel != "world" && !(channel == "nation" && !string.IsNullOrEmpty(nation) && message.Value<string>("nation") == nation) &&
+            bool notice = channel == "system" && message.Value<string>("notificationId") == message.Value<string>("messageId") &&
+                message.Value<string>("senderPlayerId") == "server" && permittedNotifications.Contains(message.Value<string>("messageId"));
+            bool rumor = channel == "rumor" && message.Value<string>("senderPlayerId") == "server";
+            if (channel != "world" && !notice && !rumor && !(channel == "nation" && !string.IsNullOrEmpty(nation) && message.Value<string>("nation") == nation) &&
                 !(channel == "city" && selectedCity != null && CityKey(message, "cityX", "cityY") == selectedCity)) return false;
             string id = message.Value<string>("messageId"), content = message.Value<string>("content");
-            if (string.IsNullOrEmpty(id) || content.Length == 0 || content.Length > 40 || !seen.Add(id)) return false;
-            order.Enqueue(id);
-            while (order.Count > 300) seen.Remove(order.Dequeue());
+            if (string.IsNullOrEmpty(id) || content.Length == 0 || (!notice && content.Length > (rumor ? 512 : 40))) return false;
+            if (notice) { if (!seenNotifications.Add(id)) return false; }
+            else
+            {
+                if (!seen.Add(id)) return false;
+                order.Enqueue(id);
+                while (order.Count > 300) seen.Remove(order.Dequeue());
+            }
             self = message.Value<string>("senderPlayerId") == playerId;
             return true;
         }

@@ -55,7 +55,7 @@ var sessions = new GameSessions(authentication, new AuthorizedWorldProjection(),
 var runtime = new WorldRuntime(store, sessions.Authorize, initializeEntities: GeneralsModule.EnsureMappings,
     preparePlayer: ProductionModule.InitializePlayer);
 sessions.Runtime = runtime;
-runtime.Register(new EconomyModule());
+runtime.Register(new EconomyModule(GeneralsModule.EnsureMappings));
 runtime.Register(new ProductionModule());
 runtime.Register(new TerritoryModule(GeneralsModule.EnsureMappings));
 runtime.Register(new MarketModule());

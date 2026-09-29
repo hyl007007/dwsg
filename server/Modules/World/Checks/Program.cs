@@ -114,4 +114,5 @@ using (var store = new SqliteWorldStore(db))
     Check(receipt == JsonConvert.SerializeObject(runtime.Execute(actor, durable)) && Player(store.Load(world.WorldId))["封地信息表"].Count() == 3,
         "actual reopened database preserves fief receipt and maps");
 }
+checks += CityVictoryChecks.Run(world, bindings, db + ".victory");
 Console.WriteLine("TERRITORY_CHECKS_PASS " + checks);

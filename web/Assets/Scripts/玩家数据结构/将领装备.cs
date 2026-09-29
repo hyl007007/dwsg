@@ -119,106 +119,17 @@ namespace 玩家数据结构
 
 		public int 获取装备强化加成()
 		{
-			if (品质 == 1.0)
-			{
-				if (装备信息.类型 == "头盔")
-				{
-					return 2;
-				}
-				if (装备信息.类型 == "武器")
-				{
-					return 2;
-				}
-				if (装备信息.类型 == "铠甲")
-				{
-					return 1;
-				}
-				if (装备信息.类型 == "坐骑")
-				{
-					return 4;
-				}
-			}
-			else if (品质 == 2.0)
-			{
-				if (装备信息.类型 == "头盔")
-				{
-					return 5;
-				}
-				if (装备信息.类型 == "武器")
-				{
-					return 5;
-				}
-				if (装备信息.类型 == "铠甲")
-				{
-					return 2;
-				}
-				if (装备信息.类型 == "坐骑")
-				{
-					return 8;
-				}
-			}
-			else if (品质 == 3.0)
-			{
-				if (装备信息.类型 == "头盔")
-				{
-					return 7;
-				}
-				if (装备信息.类型 == "武器")
-				{
-					return 7;
-				}
-				if (装备信息.类型 == "铠甲")
-				{
-					return 3;
-				}
-				if (装备信息.类型 == "坐骑")
-				{
-					return 12;
-				}
-			}
-			else if (品质 == 4.0)
-			{
-				if (装备信息.类型 == "头盔")
-				{
-					return 10;
-				}
-				if (装备信息.类型 == "武器")
-				{
-					return 10;
-				}
-				if (装备信息.类型 == "铠甲")
-				{
-					return 5;
-				}
-				if (装备信息.类型 == "坐骑")
-				{
-					return 20;
-				}
-			}
-			return 1;
+			return Dwsg.Shared.Generals.EquipmentEnhancementRules.Bonus(装备信息.类型, 品质);
 		}
 
 		public int 获取装备强化保底次数()
 		{
-			if (强化等级 < 10.0)
-			{
-				return 20;
-			}
-			if (强化等级 < 20.0)
-			{
-				return 50;
-			}
-			if (强化等级 < 25.0)
-			{
-				return 80;
-			}
-			double 强化等级2 = 强化等级;
-			return 100;
+			return Dwsg.Shared.Generals.EquipmentEnhancementRules.Pity(强化等级);
 		}
 
 		public double 获取装备强化成功率()
 		{
-			return 5000.0;
+			return Dwsg.Shared.Generals.EquipmentEnhancementRules.SuccessRate;
 		}
 
 		public string 获取装备品质名称()
@@ -260,45 +171,7 @@ namespace 玩家数据结构
 
 		public string 获取装备强化材料名字()
 		{
-			if (装备信息.类型 == "坐骑")
-			{
-				if (品质 == 1.0)
-				{
-					return "浆果";
-				}
-				if (品质 == 2.0)
-				{
-					return "灵草";
-				}
-				if (品质 == 3.0)
-				{
-					return "玉露";
-				}
-				if (品质 == 4.0)
-				{
-					return "仙芝";
-				}
-			}
-			else
-			{
-				if (品质 == 1.0)
-				{
-					return "镔铁";
-				}
-				if (品质 == 2.0)
-				{
-					return "水晶";
-				}
-				if (品质 == 3.0)
-				{
-					return "玄铁";
-				}
-				if (品质 == 4.0)
-				{
-					return "冰玉";
-				}
-			}
-			return "未知";
+			return Dwsg.Shared.Generals.EquipmentEnhancementRules.Material(装备信息.类型, 品质);
 		}
 
 		public double 获取炼魂加成上限(double 类型)

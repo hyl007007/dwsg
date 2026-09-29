@@ -1,3 +1,4 @@
+using Dwsg.Generals;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
@@ -38,62 +39,13 @@ public class 强化脚本 : MonoBehaviour
 
 	public void 强化装备()
 	{
-		if (!(装备对象.装备信息.名称 != "空"))
-		{
-			return;
-		}
-		if (装备对象.强化等级 < 30.0)
-		{
-			if (材料数量 > 0.0)
-			{
-				int num = (int)(装备对象.强化等级 + 1.0);
-				if (材料数量 >= (double)num)
-				{
-					int 本机身份 = 全局变量.本机身份;
-					装备对象.获取装备强化材料名字();
-					if (全局变量.所有玩家数据表[本机身份].背包道具列表.批量使用道具(材料名字, num, 0, 0) != "使用失败")
-					{
-						if ((double)UnityEngine.Random.Range(1, 10000) < 装备对象.获取装备强化成功率())
-						{
-							全局变量.提示类.显示信息("强化成功!");
-							装备对象.强化1级装备();
-						}
-						else if (装备对象.已强化次数 >= (double)装备对象.获取装备强化保底次数())
-						{
-							装备对象.强化1级装备();
-							全局变量.提示类.显示信息("保底强化成功!");
-						}
-						else
-						{
-							装备对象.已强化次数 += 1.0;
-							全局变量.提示类.显示信息("强化失败!");
-						}
-					}
-					else
-					{
-						全局变量.提示类.显示信息("使用强化材料失败!");
-					}
-				}
-				else
-				{
-					全局变量.提示类.显示信息("材料不足!");
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("材料不足!");
-			}
-		}
-		else
-		{
-			全局变量.提示类.显示信息("已满级,不可强化!");
-		}
-		显示指定装备();
+		if (装备对象 == null || 装备对象.装备信息.名称 == "空") return;
+		GeneralsClientAdapter.EnhanceEquipment(装备对象, 1, 显示指定装备);
 	}
 
 	public void 批量强化()
 	{
-		for (int i = 0; i < 10; i++)
-			强化装备();
+		if (装备对象 == null || 装备对象.装备信息.名称 == "空") return;
+		GeneralsClientAdapter.EnhanceEquipment(装备对象, 10, 显示指定装备);
 	}
 }

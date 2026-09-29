@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Dwsg.Shared.Economy;
 using Dwsg.Shared.Generals;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -69,6 +70,35 @@ namespace Dwsg.Generals
 				case 3: return player.背包装备列表.坐骑装备列表;
 				default: throw new GeneralRuleException(GeneralFailure.InvalidArgument, "装备部位无效");
 			}
+		}
+
+		public static void ApplyCultivation(玩家数据 player, int generalId, JObject document, int consumed)
+		{
+			Apply(player, document);
+			JObject fief;
+			JObject changed = LegacyGenerals.General(document, generalId, out fief);
+			foreach (封地信息 ownedFief in player.封地信息表)
+				foreach (将领信息 general in ownedFief.将领信息表)
+					if (general.ID == generalId)
+					{
+						general.将领属性.初始属性.成长 = changed["将领属性"]["初始属性"].Value<double>("成长");
+						JsonConvert.PopulateObject(changed["将领培养"].ToString(Formatting.None), general.将领培养);
+					}
+			List<道具信息> items = player.背包道具列表.获取道具分类列表("将神魂");
+			for (int i = 0; i < consumed; i++)
+				ItemStackRules.ConsumeOne(items, "将神魂", item => item.名字, item => item.数量, (item, quantity) => item.数量 = quantity);
+		}
+
+		public static void ApplyEnhancement(玩家数据 player, int slot, int index, JObject document, string material, int consumed)
+		{
+			Apply(player, document);
+			JObject changed = LegacyGenerals.Object(LegacyGenerals.Equipment(document, slot)[index]);
+			将领装备 equipment = Equipment(player, slot)[index];
+			equipment.强化等级 = changed.Value<double>("强化等级");
+			equipment.强化值 = changed.Value<double>("强化值");
+			equipment.已强化次数 = changed.Value<double>("已强化次数");
+			List<道具信息> items = player.背包道具列表.获取道具分类列表(material);
+			for (int i = 0; i < consumed; i++) ItemStackRules.ConsumeOne(items, material, item => item.名字, item => item.数量, (item, quantity) => item.数量 = quantity);
 		}
 	}
 }

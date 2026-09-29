@@ -9,19 +9,26 @@ namespace Dwsg.Economy
 {
     public static class MaterialPackClient
     {
-        public static bool Pending { get; private set; }
+        private static bool materialPending;
+        public static bool Pending { get { return materialPending || EquipmentBoxClient.Pending; } }
+
+        public static bool Supports(string itemName)
+        {
+            return MaterialPackRules.MaterialName(itemName) != null || EquipmentBoxRules.Slot(itemName) >= 0;
+        }
 
         public static void Use(string itemName, int quantity, Action<GameResult> completed)
         {
-            if (Pending) { completed(GameResult.Reject(GameCodes.Conflict, "正在使用材料包，请稍候")); return; }
+            if (Pending) { completed(GameResult.Reject(GameCodes.Conflict, "正在使用宝箱，请稍候")); return; }
+            if (EquipmentBoxRules.Slot(itemName) >= 0) { EquipmentBoxClient.Use(itemName, quantity, completed); return; }
             if (MaterialPackRules.MaterialName(itemName) == null || quantity <= 0)
             { completed(GameResult.Reject(GameCodes.InvalidArgument, "请选择有效的材料包和数量")); return; }
             if (GameNetwork.Enabled)
             {
-                Pending = true;
+                materialPending = true;
                 GameNetwork.SendCommand("item.use", new JObject { ["itemName"] = itemName, ["quantity"] = quantity }, result =>
                 {
-                    Pending = false;
+                    materialPending = false;
                     completed(result);
                 });
                 return;

@@ -53,7 +53,7 @@ namespace Dwsg.Combat
                     activeArmies.Add(formation.ArmyId);
                     if (!armies.TryGetValue(formation.ArmyId, out 军情信息 march))
                     {
-                        march = new 军情信息 { 战场类型 = 0, 坐标x = battle.X, 坐标y = battle.Y, 身份 = 全局变量.本机身份 };
+                        march = new 军情信息 { 战场类型 = battle.Kind == "city" ? 1 : 0, 坐标x = battle.X, 坐标y = battle.Y, 身份 = 全局变量.本机身份 };
                         armies.Add(formation.ArmyId, march); 全局变量.军情列表.Add(march);
                     }
                     march.到达时间 = formation.AvailableUtcMs / 1000;
@@ -63,12 +63,12 @@ namespace Dwsg.Combat
                 if (battle.Phase == "marching") continue;
                 if (!views.TryGetValue(battle.BattleId, out BanditBattleView current))
                 {
-                    GameObject root = UnityEngine.Object.Instantiate(全局变量.山贼战斗场景pre, transform);
+                    GameObject root = UnityEngine.Object.Instantiate(battle.Kind == "city" ? 全局变量.城池战斗场景pre : 全局变量.山贼战斗场景pre, transform);
                     战斗系统 system = root.GetComponentInChildren<战斗系统>(true);
                     system.服务器战场ID = battle.BattleId;
-                    system.战场类型 = 0; system.坐标x = battle.X; system.坐标y = battle.Y;
+                    system.战场类型 = battle.Kind == "city" ? 1 : 0; system.坐标x = battle.X; system.坐标y = battle.Y;
                     system.创建时间 = battle.StartedUtcMs / 1000; system.攻身份 = 全局变量.本机身份;
-                    system.守身份 = battle.Defenders[0].General["详细信息"].Value<int>("身份");
+                    system.守身份 = battle.Defenders.FirstOrDefault()?.General["详细信息"].Value<int>("身份") ?? 2;
                     current = root.AddComponent<BanditBattleView>(); current.System = system;
                     views.Add(battle.BattleId, current);
                 }
