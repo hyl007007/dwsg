@@ -2,6 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Client.Chat;
+using Dwsg.Network;
+using Newtonsoft.Json.Linq;
 
 // ================================================================
 // 聊天系统：把全游戏的播报统一收进聊天里
@@ -265,6 +268,7 @@ public class 聊天系统 : MonoBehaviour
 			实例 = 载体.AddComponent<聊天系统>();
 			实例.读取存档();
 		}
+		ChatClient.Initialize(接收联机消息, 播报, 清空聊天);
 		实例.挂界面();
 	}
 
@@ -324,6 +328,10 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return false;
 		}
+		if (GameNetwork.Enabled)
+		{
+			return ChatClient.Send(落点 == 聊天频道.国家 ? "nation" : "world", 内容);
+		}
 		聊天消息 消息 = new 聊天消息();
 		消息.频道 = 落点;
 		消息.发送者 = 取本机名字();
@@ -342,6 +350,18 @@ public class 聊天系统 : MonoBehaviour
 		//自己说的话不算未读，免得聊天按钮上凭空冒红点
 		实例.已读序号 = 自增序号;
 		return true;
+	}
+
+	private static void 接收联机消息(JObject 数据, bool 自己)
+	{
+		聊天消息 消息 = new 聊天消息();
+		消息.频道 = 数据.Value<string>("channel") == "nation" ? 聊天频道.国家 : 聊天频道.世界;
+		消息.发送者 = 数据.Value<string>("senderName").Replace("<", "＜").Replace(">", "＞");
+		消息.内容 = 数据.Value<string>("content").Replace("<", "＜").Replace(">", "＞");
+		消息.时间 = 数据.Value<long>("serverUtcMs") / 1000;
+		消息.自己 = 自己;
+		加入消息(消息);
+		if (自己 && 实例 != null) 实例.已读序号 = 自增序号;
 	}
 
 	//本机玩家的名字；取不到就退成「我」，不因为拿不到名字就不让说话
@@ -375,9 +395,11 @@ public class 聊天系统 : MonoBehaviour
 			落点 = 聊天频道.世界;
 			return true;
 		case 聊天频道.国家:
-		case 聊天频道.城池:
 			落点 = 频道;
 			return true;
+		case 聊天频道.城池:
+			落点 = 频道;
+			return !GameNetwork.Enabled;
 		default:
 			落点 = 频道;
 			return false;
