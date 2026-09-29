@@ -81,6 +81,8 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
             }
         privatePlayer["entityMappings"] = entities;
         privatePlayer["chatCities"] = Dwsg.Server.Chat.ChatModule.ReadCities(state, actor);
+        if (actor != null)
+            privatePlayer["marketQuote"] = Dwsg.Shared.Economy.MarketRules.Quote(state.RequirePlayer(actor.PlayerId));
         if (actor != null && state.EntityMappings["taverns"]?[actor.PlayerId] != null)
             privatePlayer["tavern"] = state.EntityMappings["taverns"][actor.PlayerId].DeepClone();
         var publicMarches = new JArray();

@@ -58,6 +58,7 @@ sessions.Runtime = runtime;
 runtime.Register(new EconomyModule());
 runtime.Register(new ProductionModule());
 runtime.Register(new TerritoryModule(GeneralsModule.EnsureMappings));
+runtime.Register(new MarketModule());
 runtime.Register(new GeneralsModule());
 runtime.Register(new ChatModule());
 runtime.Register(new CombatModule());
