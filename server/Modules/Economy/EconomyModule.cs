@@ -9,7 +9,7 @@ namespace Dwsg.Server.Economy
 {
     public sealed class EconomyModule : IGameModule, IGameTickModule
     {
-        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "shop.purchase", "shop.sell", "shop.refresh" };
+        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "shop.purchase", "shop.sell", "shop.refresh", "item.use" };
         private readonly Random random = new Random();
 
         public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
@@ -17,10 +17,24 @@ namespace Dwsg.Server.Economy
             if (context?.Actor == null || context.Actor.WorldId != candidate.WorldId || command.WorldId != candidate.WorldId)
                 return GameResult.Reject(GameCodes.Forbidden, "无权操作此世界");
             if (command.Type == "shop.refresh") return Refresh(candidate, context);
-            if (command.Type != "shop.purchase" && command.Type != "shop.sell") return GameResult.Reject(GameCodes.NotFound, "命令不存在");
+            if (command.Type != "shop.purchase" && command.Type != "shop.sell" && command.Type != "item.use") return GameResult.Reject(GameCodes.NotFound, "命令不存在");
             if (context.Actor.IsSystem || string.IsNullOrEmpty(context.Actor.PlayerId))
                 return GameResult.Reject(GameCodes.Unauthenticated, "请先登录并创建角色");
             var payload = command.Payload;
+            if (command.Type == "item.use")
+            {
+                if (payload == null || payload.Properties().Any(p => p.Name != "itemName") || payload["itemName"]?.Type != JTokenType.String)
+                    return GameResult.Reject(GameCodes.InvalidArgument, "道具使用参数无效");
+                if (payload.Value<string>("itemName") != "新手礼包")
+                    return GameResult.Reject(GameCodes.NotFound, "此道具的联机效果尚未接入");
+                JObject owner;
+                try { owner = candidate.RequirePlayer(context.Actor.PlayerId); }
+                catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Forbidden, "角色不存在于此世界"); }
+                var used = StarterPackRules.Use(owner, candidate.Data["道具配置"] as JArray);
+                if (used.Code == GameCodes.Ok) used.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "item.used",
+                    ServerUtcMs = context.ServerUtcMs, Data = used.Data, AudiencePlayerIds = new[] { context.Actor.PlayerId } });
+                return used;
+            }
             if (payload == null || payload.Properties().Any(p => p.Name != "itemName" && p.Name != "currency" && p.Name != "quantity" && p.Name != "catalogVersion") ||
                 payload["itemName"]?.Type != JTokenType.String || payload["currency"]?.Type != JTokenType.String || payload["catalogVersion"]?.Type != JTokenType.Integer)
                 return GameResult.Reject(GameCodes.InvalidArgument, "购买参数无效");

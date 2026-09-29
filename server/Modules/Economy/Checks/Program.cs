@@ -76,6 +76,26 @@ Check(sellResult.Code == GameCodes.Ok && sellStacks["背包道具列表"]["宝�
 string beforeOversell = sellStacks.ToString(Formatting.None);
 Check(ShopRules.Sell(sellStacks, sellListing, "宝物", "黄金", 2).Code == GameCodes.Conflict && beforeOversell == sellStacks.ToString(Formatting.None),
     "oversell leaves inventory and wallet unchanged");
+foreach (string name in new[] { "招贤令", "招贤金榜", "皇榜" })
+{
+    var itemOwner = Player(0);
+    var items = (JArray)itemOwner["背包道具列表"]["宝物道具列表"];
+    items.Add(new JObject { ["名字"] = name, ["ID"] = 0, ["数量"] = 999.0 });
+    items.Add(new JObject { ["名字"] = name, ["ID"] = 0, ["数量"] = 1.0 });
+    Check(InventoryRules.ConsumeOne(itemOwner, (JArray)seed["道具配置"], name).Code == GameCodes.Ok &&
+        itemOwner["背包道具列表"]["宝物道具列表"].Count() == 1 &&
+        itemOwner["背包道具列表"]["宝物道具列表"][0].Value<double>("数量") == 999, "original refresh consumes minimum stack " + name);
+}
+var starter = (JObject)seed["新角色模板"].DeepClone();
+var starterWallet = (JObject)starter["财产信息"].DeepClone();
+Check(StarterPackRules.Use(starter, (JArray)seed["道具配置"]).Code == GameCodes.Ok &&
+    starter["财产信息"].Value<double>("铜钱") == starterWallet.Value<double>("铜钱") + 500000 &&
+    starter["财产信息"].Value<double>("粮食") == starterWallet.Value<double>("粮食") + 1000000 &&
+    starter["财产信息"].Value<double>("黄金") == starterWallet.Value<double>("黄金") + 100000 &&
+    !starter["背包道具列表"]["宝箱道具列表"].Any(item => item.Value<string>("名字") == "新手礼包"), "original starter rewards and single consumption");
+string noStarter = starter.ToString(Formatting.None);
+Check(StarterPackRules.Use(starter, (JArray)seed["道具配置"]).Code == GameCodes.Conflict && noStarter == starter.ToString(Formatting.None),
+    "missing starter gives no partial rewards");
 
 string worldId = Guid.NewGuid().ToString("N");
 var world = new WorldState { WorldId = worldId, Data = (JObject)seed.DeepClone(), EntityMappings = new JObject { ["players"] = new JObject() } };
@@ -85,6 +105,17 @@ var failedWorld = world.Clone();
 string oldWorld = failedWorld.Data.ToString(Formatting.None);
 var badRole = LegacyWorldModule.CreatePlayer(failedWorld, "<bad>", "汉", 0, out int badIndex);
 Check(badRole.Code == GameCodes.InvalidArgument && badIndex == -1 && oldWorld == failedWorld.Data.ToString(Formatting.None), "invalid role leaves original world unchanged");
+Check(LegacyWorldModule.CreatePlayer(failedWorld, "合法君主", "不存在的国号", 0, out _).Code == GameCodes.NotFound &&
+    oldWorld == failedWorld.Data.ToString(Formatting.None), "missing original nation rejects without mutation");
+var fullWorld = world.Clone();
+var han = fullWorld.Data["国家列表"].OfType<JObject>().First(item => item.Value<string>("国号") == "汉");
+var capital = fullWorld.Data["城池列表"].OfType<JObject>().First(item => item.Value<int>("坐标x") == han.Value<int>("国都x") && item.Value<int>("坐标y") == han.Value<int>("国都y"));
+int capitalCapacity = fullWorld.Data["城池容量配置"].OfType<JObject>().First(item => item.Value<int>("规模") == capital.Value<int>("规模")).Value<int>("容量");
+var originalFiefIndex = capital["城池封地列表"].First;
+capital["城池封地列表"] = new JArray(Enumerable.Range(0, capitalCapacity).Select(_ => originalFiefIndex.DeepClone()));
+string fullBefore = fullWorld.Data.ToString(Formatting.None);
+Check(LegacyWorldModule.CreatePlayer(fullWorld, "满城君主", "汉", 0, out _).Code == GameCodes.WorldFull && fullBefore == fullWorld.Data.ToString(Formatting.None),
+    "original capital capacity rejects without player or membership mutation");
 var bindings = new List<RoleBinding>();
 for (int i = 0; i < 2; i++)
 {
@@ -109,6 +140,8 @@ string savedResult;
 GameCommand durable;
 string savedSaleResult;
 GameCommand durableSale;
+string savedStarterResult;
+GameCommand durableStarter;
 using (var store = new SqliteWorldStore(db))
 {
     store.ImportWorld(world, bindings);
@@ -158,6 +191,19 @@ using (var store = new SqliteWorldStore(db))
         return product.Value<double>("黄金售价") >= 1011 && product.Value<double>("黄金售价") < 1326 &&
             product.Value<int>("限购数量") >= 1 && product.Value<int>("限购数量") < 10;
     }), "server uses original random price and stock ranges");
+    durableStarter = new GameCommand { WorldId = worldId, RequestId = Guid.NewGuid().ToString("N"), Type = "item.use", Payload = new JObject { ["itemName"] = "新手礼包" } };
+    var oldWallet = (JObject)store.Load(worldId).RequirePlayer(actors[0].PlayerId)["财产信息"].DeepClone();
+    var opened = runtime.Execute(actors[0], durableStarter);
+    savedStarterResult = JsonConvert.SerializeObject(opened);
+    var afterOpen = store.Load(worldId).RequirePlayer(actors[0].PlayerId);
+    Check(opened.Code == GameCodes.Ok && afterOpen["财产信息"].Value<double>("黄金") == oldWallet.Value<double>("黄金") + 100000 &&
+        afterOpen["财产信息"].Value<double>("铜钱") == oldWallet.Value<double>("铜钱") + 500000 &&
+        afterOpen["财产信息"].Value<double>("粮食") == oldWallet.Value<double>("粮食") + 1000000 &&
+        !afterOpen["背包道具列表"]["宝箱道具列表"].Any(item => item.Value<string>("名字") == "新手礼包"), "actual Runtime atomically persists starter consumption and exact rewards");
+    Check(savedStarterResult == JsonConvert.SerializeObject(runtime.Execute(actors[0], durableStarter)), "starter retry returns original result without repeating rewards");
+    var secondStarter = new GameCommand { WorldId = worldId, RequestId = Guid.NewGuid().ToString("N"), Type = "item.use", Payload = new JObject { ["itemName"] = "新手礼包" } };
+    string beforeSecond = store.Load(worldId).Data.ToString(Formatting.None);
+    Check(runtime.Execute(actors[0], secondStarter).Code == GameCodes.Conflict && beforeSecond == store.Load(worldId).Data.ToString(Formatting.None), "actual exhausted starter leaves durable state unchanged");
 }
 using (var store = new SqliteWorldStore(db))
 {
@@ -165,6 +211,7 @@ using (var store = new SqliteWorldStore(db))
     runtime.Register(new EconomyModule());
     Check(savedResult == JsonConvert.SerializeObject(runtime.Execute(actors[0], durable)), "restart retains original receipt and prevents second charge");
     Check(savedSaleResult == JsonConvert.SerializeObject(runtime.Execute(actors[0], durableSale)), "restart retains sale receipt and prevents second payment");
+    Check(savedStarterResult == JsonConvert.SerializeObject(runtime.Execute(actors[0], durableStarter)), "restart retains starter receipt and prevents duplicate rewards");
     var state = store.Load(worldId);
     double balance = state.RequirePlayer(actors[0].PlayerId)["财产信息"].Value<double>("黄金");
     var combat = CombatEconomy.ApplyCombatRewards(state, actors[0].PlayerId, "test-battle", 1000, 1000, 1000);

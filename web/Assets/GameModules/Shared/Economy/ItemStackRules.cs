@@ -58,5 +58,16 @@ namespace Dwsg.Shared.Economy
             }
             return remaining == 0;
         }
+
+        public static bool ConsumeOne<T>(IList<T> items, string name, Func<T, string> getName,
+            Func<T, double> getQuantity, Action<T, double> setQuantity)
+        {
+            if (items == null) return false;
+            int index = MinimumIndex(items, name, getName, getQuantity);
+            if (index == -1 || getQuantity(items[index]) <= 0) return false;
+            setQuantity(items[index], getQuantity(items[index]) - 1);
+            if (getQuantity(items[index]) <= 0) items.RemoveAt(index);
+            return true;
+        }
     }
 }
