@@ -14,10 +14,10 @@ namespace Dwsg.Generals
 			bool abnormal = GeneralAttributeRules.Recalculate(document, TIME.getTime());
 			for (int fief = 0; fief < player.封地信息表.Count; fief++)
 			{
-				foreach (将领信息 general in player.封地信息表[fief].将领信息表)
+				for (int index = 0; index < player.封地信息表[fief].将领信息表.Count; index++)
 				{
-					JObject ignored;
-					JObject changed = LegacyGenerals.General(document, general.ID, out ignored);
+					将领信息 general = player.封地信息表[fief].将领信息表[index];
+					JObject changed = (JObject)document["封地信息表"][fief]["将领信息表"][index];
 					general.将领属性.成长点数.爆点数 = changed["将领属性"]["成长点数"].Value<double>("爆点数");
 					JsonConvert.PopulateObject(changed["将领属性"]["最终属性"].ToString(Formatting.None), general.将领属性.最终属性);
 					general.详细信息.身份 = changed["详细信息"].Value<double>("身份");
