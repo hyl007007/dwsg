@@ -20,6 +20,7 @@ public class 书院脚本 : MonoBehaviour
 	private ScrollRect 科技滚动列表;
 	private float 科技列表原顶部;
 	private float 已布局费用高度 = -1;
+    private Text 研究按钮文字;
 
 	public void 显示书院建筑信息()
     {
@@ -313,6 +314,20 @@ public class 书院脚本 : MonoBehaviour
     private void 显示研究费用()
     {
         if (书院信息对象 == null) return;
+        if (研究按钮文字 == null)
+        {
+            var action = transform.Find("书院操作/升级");
+            var source = 书院信息对象.transform.childCount > 2 ? 书院信息对象.transform.GetChild(2).GetComponent<Text>() : null;
+            if (action != null && source != null)
+            {
+                var oldCaption = action.Find("Image"); if (oldCaption != null) oldCaption.gameObject.SetActive(false);
+                研究按钮文字 = CityMapPresentation.CopyText(source, action, "研究动作文字");
+                var caption = 研究按钮文字.rectTransform; caption.anchorMin = Vector2.zero; caption.anchorMax = Vector2.one;
+                caption.offsetMin = new Vector2(4, 2); caption.offsetMax = new Vector2(-4, -2);
+                研究按钮文字.text = "研究"; 研究按钮文字.alignment = TextAnchor.MiddleCenter;
+                原界面文字样式.按钮(研究按钮文字);
+            }
+        }
         if (研究费用文本 == null)
         {
             var go = new GameObject("研究费用", typeof(RectTransform)); go.transform.SetParent(transform, false);
@@ -326,11 +341,11 @@ public class 书院脚本 : MonoBehaviour
             研究费用文本.horizontalOverflow = HorizontalWrapMode.Wrap; 研究费用文本.verticalOverflow = VerticalWrapMode.Truncate;
         }
         int index = 选中科技();
-        if (index < 0) { 更新研究费用("选择科技，查看费用后点“升级”。"); return; }
+        if (index < 0) { 更新研究费用("选择科技，查看费用后点“研究”。"); return; }
         var p = FiefActions.Player(第几个玩家); if (p == null) { 更新研究费用("请重新打开书院。"); return; }
         double level = FiefActions.ResearchLevel(p.科技信息, index);
         更新研究费用(level >= FiefActions.ResearchCap(index) ? "科技已满级。" :
-            "需书院" + FiefActions.ResearchRequirement(index, level) + "级 · " + (index >= 15 ? "黄金" : "铜钱") + FiefActions.ResearchCost(index, level).ToString("0") + "\n" + (FiefActions.ResearchError(第几个玩家, 第几个封地, 第几个建筑, index) ?? "可研究，点“升级”完成。"));
+            "需书院" + FiefActions.ResearchRequirement(index, level) + "级 · " + (index >= 15 ? "黄金" : "铜钱") + FiefActions.ResearchCost(index, level).ToString("0") + "\n" + (FiefActions.ResearchError(第几个玩家, 第几个封地, 第几个建筑, index) ?? "可研究，点“研究”完成。"));
     }
     private void 更新研究费用(string text)
     {

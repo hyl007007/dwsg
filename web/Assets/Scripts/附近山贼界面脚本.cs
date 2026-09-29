@@ -174,26 +174,40 @@ public class 附近山贼界面脚本 : MonoBehaviour
     {
         if (查找面板 == null)
         {
+            var 原窗口 = 军事界面样式.原改名窗口(transform);
+            if (原窗口 == null)
+            {
+                全局变量.提示类.显示信息("查找窗口暂时无法打开。");
+                return;
+            }
             var 样式 = new 军事界面样式(transform);
             var 遮罩 = 军事界面样式.矩形("山贼等级查找", transform, Vector2.zero, Vector2.zero);
-            军事界面样式.拉伸(遮罩);
-            遮罩.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0.4f);
             查找面板 = 遮罩.gameObject;
-            var 框 = 军事界面样式.矩形("查找面板", 遮罩, new Vector2(380, 240), Vector2.zero);
-            var 图 = 框.gameObject.AddComponent<Image>();
-            图.color = new Color(0.08f, 0.22f, 0.19f);
-            var 标题 = 样式.文本(框, "标题", "查找山贼", new Vector2(330, 36), new Vector2(0, 90), 20);
-            标题.color = 样式.金色;
-            标题.alignment = TextAnchor.MiddleCenter;
-            样式.文本(框, "等级标签", "等级（1–10，留空全部）", new Vector2(252, 34), new Vector2(-42, 38), 16);
-            var 输入框 = 军事界面样式.矩形("等级输入", 框, new Vector2(66, 34), new Vector2(130, 38));
-            输入框.gameObject.AddComponent<Image>().color = new Color(0.03f, 0.1f, 0.08f);
-            等级输入 = 输入框.gameObject.AddComponent<InputField>();
-            等级输入.textComponent = 样式.文本(输入框, "输入文字", "", new Vector2(58, 30), Vector2.zero, 16);
-            等级输入.contentType = InputField.ContentType.IntegerNumber;
-            等级输入.characterLimit = 2;
-            查找反馈 = 样式.文本(框, "反馈", "", new Vector2(336, 50), new Vector2(0, -20), 16);
-            样式.按钮(框, "查找", new Vector2(100, 34), new Vector2(-65, -88), () => {
+            查找面板.SetActive(false);
+            var 弹窗 = 查找面板.AddComponent<原界面小弹窗>();
+            弹窗.初始化(原窗口, "查找山贼", () => 查找面板.SetActive(false), 260);
+            var 行 = 军事界面样式.矩形("等级区域", 弹窗.内容, new Vector2(342, 38), Vector2.zero);
+            行.gameObject.AddComponent<LayoutElement>().preferredHeight = 38;
+            var 横排 = 行.gameObject.AddComponent<HorizontalLayoutGroup>();
+            横排.childAlignment = TextAnchor.MiddleCenter;
+            横排.spacing = 8;
+            横排.childControlWidth = 横排.childControlHeight = true;
+            横排.childForceExpandWidth = 横排.childForceExpandHeight = false;
+            var 标签 = 弹窗.添加说明("等级标签", "等级（1–10，留空全部）", 16);
+            标签.transform.SetParent(行, false);
+            标签.alignment = TextAnchor.MiddleLeft;
+            var 标签尺寸 = 标签.gameObject.AddComponent<LayoutElement>();
+            标签尺寸.minWidth = 0;
+            标签尺寸.preferredWidth = 268;
+            标签尺寸.flexibleWidth = 1;
+            var 输入框 = 军事界面样式.矩形("等级输入", 行, new Vector2(66, 34), Vector2.zero);
+            var 输入尺寸 = 输入框.gameObject.AddComponent<LayoutElement>();
+            输入尺寸.minWidth = 输入尺寸.preferredWidth = 66;
+            输入尺寸.minHeight = 输入尺寸.preferredHeight = 34;
+            等级输入 = 样式.原样输入(输入框, "", true, 2);
+            查找反馈 = 弹窗.添加说明("反馈", "", 16);
+            查找反馈.gameObject.AddComponent<LayoutElement>().minHeight = 50;
+            var 查找按钮 = 弹窗.添加按钮("查找", "查找", () => {
                 int 等级 = 0;
                 string 文 = 等级输入.text.Trim();
                 if (文.Length > 0 && (!int.TryParse(文, out 等级) || 等级 < 1 || 等级 > 10))
@@ -206,7 +220,10 @@ public class 附近山贼界面脚本 : MonoBehaviour
                 查找面板.SetActive(false);
                 全局变量.提示类.显示信息(显示列表.Count > 0 ? "已显示查找结果，可用方向按钮翻页。" : "没有符合等级的山贼。");
             });
-            样式.按钮(框, "取消", new Vector2(100, 34), new Vector2(65, -88), () => 查找面板.SetActive(false));
+            var 取消按钮 = 弹窗.添加按钮("取消", "取消", () => 查找面板.SetActive(false));
+            界面窗口管理器.注册运行时按钮(查找按钮);
+            界面窗口管理器.注册运行时按钮(取消按钮);
+            界面窗口管理器.注册运行时按钮(弹窗.关闭);
         }
         等级输入.SetTextWithoutNotify(等级筛选 == 0 ? "" : 等级筛选.ToString());
         查找反馈.text = "按等级筛选当前世界的山贼。";

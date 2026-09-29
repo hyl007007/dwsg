@@ -88,14 +88,23 @@ namespace 缺失界面.窗口2
                 });
                 界面窗口管理器.注册运行时按钮(nationNameButton);
             }
+            var ui = new NationUiFactory(country);
             var officeTextObject = country.Find("官职说明/官职说明文本"); var officeText = officeTextObject == null ? null : officeTextObject.GetComponent<Text>();
             if (officeText != null)
             {
                 officeText.text = NationSalaryRules.Description(); officeText.supportRichText = false;
                 officeText.horizontalOverflow = HorizontalWrapMode.Wrap; officeText.verticalOverflow = VerticalWrapMode.Truncate;
-                officeText.resizeTextForBestFit = true; officeText.resizeTextMinSize = 10; officeText.resizeTextMaxSize = Mathf.Max(10, officeText.fontSize);
+                officeText.resizeTextForBestFit = false; officeText.fontSize = 18; officeText.fontStyle = FontStyle.Normal;
+                officeText.color = ui.BodyColor; officeText.lineSpacing = 1; officeText.alignment = TextAnchor.UpperLeft;
+                ScrollRect rulesScroll;
+                var rulesContent = ui.Scroll(officeTextObject.parent, out rulesScroll);
+                NationUiFactory.CopyRegion(officeText.rectTransform, (RectTransform)rulesScroll.transform);
+                officeText.transform.SetParent(rulesContent, false);
+                rulesScroll.verticalNormalizedPosition = 1;
             }
-            var ui = new NationUiFactory(country); var footer = country.Find("界面操作");
+            var officeTitle = country.Find("官职说明/官职信息");
+            if (officeTitle != null) 原界面文字样式.标题(officeTitle.GetComponent<Text>());
+            var footer = country.Find("界面操作");
             if (footer != null)
             {
                 AddFooter(ui, footer, "国家管理", NationPage.管理, .50f);

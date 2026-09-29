@@ -41,6 +41,11 @@ public class 显示建筑信息脚本 : MonoBehaviour
         if (封地产钱对象 != null) 封地产钱对象.text = b.类型 == 0 ? copper.ToString("0") + "/小时" : b.类型 == 3 ? food.ToString("0") + "/小时" : p.获取已占用人口().ToString("0") + "/" + p.获取人口上限().ToString("0");
         if (总产钱对象 != null) 总产钱对象.text = (b.类型 == 3 ? p.获取粮食产量() : p.获取铜钱产量()).ToString("0") + "/小时";
         string error = FiefActions.UpgradeError(f, 第几个建筑);
+        var native = transform.parent == null ? null : transform.parent.Find("建造建筑界面UI/建筑信息布局");
+        var costSlot = native == null ? null : native.Find("需要铜钱显示 (1)");
+        var valueSlot = native == null ? null : native.Find("建筑效果显示");
+        var nativeCost = costSlot == null ? null : costSlot.GetComponent<Text>();
+        var nativeValue = valueSlot == null ? null : valueSlot.GetComponent<Text>();
         foreach (var text in GetComponentsInChildren<Text>(true))
         {
             if (text.name == "建筑说明")
@@ -51,6 +56,21 @@ public class 显示建筑信息脚本 : MonoBehaviour
             else if (text.name == "封地产钱标题") text.text = b.类型 == 3 ? "【本封地粮食产量】" : b.类型 == 2 ? "【人口占用状态】" : "【本封地铜钱产量】";
             else if (text.name.StartsWith("封地总产钱标题") || text.name == "封地产钱标题 (1)") text.text = b.类型 == 3 ? "【粮食总产量】" : "【铜钱总产量】";
             else if (text.name == "建筑效果") text.text = b.类型 == 3 ? "粮食生产" : b.类型 == 2 ? "增加人口上限" : "行政与铜钱生产";
+            // 保留原 Text、框和槽位；标题/费用取原建造页金字，效果/产量取原建造页青绿数值。
+            if (text.name == "建筑说明" || text.name == "建筑效果" || text.name == "封地产钱标题" ||
+                text.name.StartsWith("封地总产钱标题") || text.name == "封地产钱标题 (1)") 复用原文字(text, nativeCost);
+            else if (text == 建筑效果对象 || text == 封地产钱对象 || text == 总产钱对象) 复用原文字(text, nativeValue);
         }
+    }
+
+    private static void 复用原文字(Text target, Text original)
+    {
+        if (original == null) return;
+        target.font = original.font; target.fontSize = original.fontSize; target.fontStyle = original.fontStyle;
+        target.color = original.color; target.material = original.material; target.lineSpacing = original.lineSpacing;
+        target.resizeTextForBestFit = false;
+        // 大厅说明保留原多行区域；本次改字色/字号的单行字段复用实际字形居中。
+        if (target.name != "建筑说明" || target.rectTransform.rect.height < target.preferredHeight)
+            Dwsg.Window3.CityMapPresentation.SingleLineField(target);
     }
 }

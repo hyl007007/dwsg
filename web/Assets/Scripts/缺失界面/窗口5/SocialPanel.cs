@@ -142,19 +142,7 @@ namespace Dwsg.Social
         { return p.IsNpc ? "NPC · " + p.Country + " · " + p.Level + "级" : p.Verified ? p.Country + " · " + p.Level + "级" : "手动联系人"; }
         private void Tabs(Transform parent, string[] names, string current, Action<string> choose, float y = 0)
         {
-            float width = (W - (names.Length - 1) * 8) / names.Length;
-            var container = ui.Node(parent, "页签", 0, y, W, 34);
-            var layout = container.gameObject.AddComponent<GridLayoutGroup>();
-            layout.cellSize = new Vector2(width, 34); layout.spacing = new Vector2(8, 0);
-            layout.startCorner = GridLayoutGroup.Corner.UpperLeft; layout.startAxis = GridLayoutGroup.Axis.Horizontal;
-            layout.childAlignment = TextAnchor.UpperLeft;
-            layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount; layout.constraintCount = names.Length;
-            for (int i = 0; i < names.Length; i++)
-            {
-                string value = names[i];
-                var button = ui.Button(container, value, 0, 0, width, 34, () => choose(value));
-                if (value == current) button.GetComponent<Image>().color = new Color(.70f, 1, .85f);
-            }
+            ui.Tabs(parent, names, current, choose, W, y);
         }
         private void RenderHome(SocialScreen screen)
         {
@@ -211,7 +199,8 @@ namespace Dwsg.Social
             foreach (var p in people)
             {
                 string id = p.Id;
-                var row = rows.Row(p.Name + (IsFriend(s, id) ? " · 好友" : ""), IsBlocked(s, id) ? "已屏蔽 · " + RoleDescription(p) : RoleDescription(p), 62, 395);
+                string relationship = IsBlocked(s, id) ? "已屏蔽 · " : IsFriend(s, id) ? "好友 · " : "";
+                var row = rows.Row(p.Name, relationship + RoleDescription(p), 62, 395);
                 ui.Button(row, "名片", 408, 13, 112, 34, () => ShowProfile(id));
                 ui.Button(row, IsBlocked(s, id) ? "取消屏蔽" : p.IsNpc ? "相关消息" : "私聊", 530, 13, 118, 34,
                     () => { if (IsBlocked(s, id)) Apply(screen, new SocialCommand { Kind = SocialCommandKind.Unblock, Target = id });
@@ -489,7 +478,7 @@ namespace Dwsg.Social
             foreach (var id in g.Members)
             {
                 string peer = id;
-                var row = list.Row(Name(s, id) + (id == g.Leader ? " · 团长" : " · 成员"), id == Me ? "我" : "联系人", 62, 390);
+                var row = list.Row(Name(s, id), (id == g.Leader ? "团长" : "成员") + " · " + (id == Me ? "我" : "联系人"), 62, 390);
                 ui.Button(row, "名片", 400, 14, 70, 34, () => ShowProfile(peer));
                 if (leader && id != Me)
                 {

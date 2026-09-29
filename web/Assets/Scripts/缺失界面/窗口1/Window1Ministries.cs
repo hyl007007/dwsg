@@ -14,7 +14,7 @@ namespace Dwsg.Window1
         private Window1Style style;
         private Text resources, feedback;
         private ScrollRect scroll;
-        private readonly List<Button> tabs = new List<Button>();
+        private readonly List<Toggle> tabs = new List<Toggle>();
         private readonly List<Row> rows = new List<Row>();
         private int department, usedRows;
         private bool ready;
@@ -33,14 +33,16 @@ namespace Dwsg.Window1
             if (sceneStyle == null || sceneStyle.Font == null || lord == null || transform.parent != lord || transform.childCount != 0)
             { Debug.LogWarning("窗口1：原六部空布局或皮肤不可用，未装配六部"); return false; }
             style = sceneStyle;
+            var tabStrip = Window1Style.Rect(transform, "六部页签布局");
+            Window1Style.Place(tabStrip, 12, 0, 619, 32);
+            Window1Style.ControlRow(tabStrip);
             for (int i = 0; i < Departments.Length; i++)
             {
                 int selected = i;
-                var button = style.Button(transform, "六部_" + Departments[i], Departments[i], () => {
+                var tab = style.Tab(tabStrip, "六部_" + Departments[i], Departments[i], () => {
                     department = selected; scroll.verticalNormalizedPosition = 1; feedback.text = ""; Refresh();
                 });
-                Window1Style.Place(button.GetComponent<RectTransform>(), 12 + i * 103, 0, 96, 32);
-                界面窗口管理器.注册运行时按钮(button); tabs.Add(button);
+                tabs.Add(tab);
             }
             resources = Label(transform, "六部资源", "", 14, Window1Style.Gold, 14, 36, 610, 26);
             feedback = Label(transform, "六部反馈", "", 14, Window1Style.Ink, 14, 298, 610, 26);
@@ -124,7 +126,7 @@ namespace Dwsg.Window1
         {
             if (!ready || !isActiveAndEnabled) return;
             var service = SixMinistriesModule.Service; usedRows = 0;
-            for (int i = 0; i < tabs.Count; i++) tabs[i].GetComponentInChildren<Text>(true).color = i == department ? Color.white : Window1Style.Gold;
+            for (int i = 0; i < tabs.Count; i++) tabs[i].SetIsOnWithoutNotify(i == department);
             if (service == null) { resources.text = "当前君主尚未就绪"; Add("六部政务", "载入世界后可办理政务。"); }
             else if (!service.World.ResourcesValid())
             { resources.text = "资源资料异常"; Add("政务暂不可办理", "请检查当前世界资源资料。此次不扣款或发奖。"); }

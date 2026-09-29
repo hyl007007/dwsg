@@ -21,12 +21,13 @@ namespace 缺失界面.窗口2
         private readonly Stack<Context> history = new Stack<Context>();
         private Context context;
         private NationUiFactory ui;
-        private RectTransform content;
+        private RectTransform content, body;
         private ScrollRect scroll;
         private Text title, heading, feedback, timerText;
         private NationSnapshot snapshot;
         private float nextTimer;
         private bool settleFirstLayout;
+        private string laidOutFeedback;
         private 所有城池界面脚本 existingCityMap;
         private Transform originalCountry;
         // The coordinating window may supply its city navigation adapter. The default reuses the scene's old city panel.
@@ -74,13 +75,15 @@ namespace 缺失界面.窗口2
             title.rectTransform.anchorMin = title.rectTransform.anchorMax = new Vector2(.5f, .5f);
             title.rectTransform.sizeDelta = new Vector2(510, 44);
             title.rectTransform.anchoredPosition = ((RectTransform)titleBar).anchoredPosition + ((RectTransform)countryRoot.Find("标题栏背景/8 (21)")).anchoredPosition;
-            var body = NationUiFactory.Rect("详情内容", transform); body.anchorMin = body.anchorMax = new Vector2(.5f, .5f);
+            body = NationUiFactory.Rect("详情内容", transform); body.anchorMin = body.anchorMax = new Vector2(.5f, .5f);
             body.sizeDelta = new Vector2(624, 344); body.anchoredPosition = new Vector2(0, 6);
+            NationUiFactory.Vertical(body);
             heading = ui.Text("国家上下文", body, "", 18, NationUiFactory.Gold);
-            NationUiFactory.Place(heading.rectTransform, new Vector2(0, .88f), Vector2.one, new Vector2(4, 0), new Vector2(-4, 0));
+            NationUiFactory.Height(heading, 30);
             content = ui.Scroll(body, out scroll);
-            feedback = ui.Text("操作反馈", body, "", 14, NationUiFactory.Muted);
-            NationUiFactory.Place(feedback.rectTransform, Vector2.zero, new Vector2(1, .14f), new Vector2(4, 0), new Vector2(-4, 0));
+            feedback = ui.Text("操作反馈", body, "", 18, NationUiFactory.Muted);
+            NationUiFactory.Height(feedback, 0);
+            feedback.gameObject.SetActive(false);
             var footer = NationUiFactory.Rect("详情操作", transform); footer.anchorMin = footer.anchorMax = new Vector2(.5f, .5f);
             footer.sizeDelta = new Vector2(632, 40); footer.anchoredPosition = new Vector2(0, -209);
             var layout = footer.gameObject.AddComponent<HorizontalLayoutGroup>(); layout.spacing = 24; layout.childControlHeight = true;
@@ -123,6 +126,7 @@ namespace 缺失界面.窗口2
         private void OnDisable() { timerText = null; settleFirstLayout = false; }
         private void LateUpdate()
         {
+            if (feedback != null && laidOutFeedback != feedback.text) ResizeChrome();
             // Canvas registration completes after OnEnable. Settle that first layout before it is painted.
             if (!settleFirstLayout) return;
             settleFirstLayout = false; FinishLayout();
@@ -130,7 +134,9 @@ namespace 缺失界面.窗口2
 
         private void Navigate(NationPage page, int playerId = -1, int x = 0, int y = 0, string code = null)
         {
-            context.Scroll = scroll.verticalNormalizedPosition;
+            // Short pages may report 0 at their visible top; restoring that value to
+            // newly lengthened content would scroll it to the bottom.
+            context.Scroll = content.rect.height > scroll.viewport.rect.height ? scroll.verticalNormalizedPosition : 1;
             history.Push(context); context = new Context { Page = page, Code = code ?? context.Code, PlayerId = playerId, X = x, Y = y, ActorId = Data.ActorId, Scroll = 1 }; Render();
         }
 
@@ -197,6 +203,7 @@ namespace 缺失界面.窗口2
 
         private void FinishLayout()
         {
+            ResizeChrome();
             // Resolve the stretched viewport width before measuring text on the first activation.
             Canvas.ForceUpdateCanvases();
             // Width must settle before measuring wrapped rows; later passes may reduce an earlier height.
@@ -207,6 +214,25 @@ namespace 缺失界面.窗口2
             Canvas.ForceUpdateCanvases();
         }
 
+        private void ResizeChrome()
+        {
+            // The list is anchored at the viewport top. Preserve its visible offset before
+            // activating feedback triggers a layout/ScrollRect pass against the new height.
+            float topOffset = content.anchoredPosition.y;
+            // Empty feedback must not reserve a fixed strip inside a scrollable list.
+            feedback.gameObject.SetActive(!string.IsNullOrEmpty(feedback.text));
+            Canvas.ForceUpdateCanvases();
+            NationUiFactory.Height(heading, Mathf.Ceil(heading.preferredHeight + 4));
+            NationUiFactory.Height(feedback, feedback.gameObject.activeSelf ? Mathf.Ceil(feedback.preferredHeight + 4) : 0);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(body);
+            Canvas.ForceUpdateCanvases();
+            float range = Mathf.Max(0, content.rect.height - scroll.viewport.rect.height);
+            scroll.StopMovement();
+            scroll.verticalNormalizedPosition = range > 0 ? 1 - Mathf.Clamp(topOffset, 0, range) / range : 1;
+            Canvas.ForceUpdateCanvases();
+            laidOutFeedback = feedback.text;
+        }
+
         private void Link(string text, string button, UnityEngine.Events.UnityAction action, bool enabled = true)
         {
             var row = ui.Row(content); ui.ListBackground(row); ui.RowText(row, text); ui.Button(button, row, button, action).interactable = enabled;
@@ -214,9 +240,14 @@ namespace 缺失界面.窗口2
 
         private void Value(string label, string value)
         {
-            var row = ui.Row(content, 30); var caption = ui.Text("项目", row, label, 18, NationUiFactory.Gold);
-            var layout = caption.gameObject.AddComponent<LayoutElement>(); layout.minWidth = layout.preferredWidth = 116;
+            var row = ui.Row(content, 30); ValueLabel(row, label);
             ui.RowText(row, value);
+        }
+
+        private void ValueLabel(Transform row, string label)
+        {
+            var caption = ui.Text("项目", row, label, 18, NationUiFactory.Gold);
+            var layout = caption.gameObject.AddComponent<LayoutElement>(); layout.minWidth = layout.preferredWidth = 116;
         }
 
         private void Player(NationPlayerSnapshot player, bool king)
@@ -283,7 +314,7 @@ namespace 缺失界面.窗口2
         private void Welfare()
         {
             Value("民生值", N(snapshot.Welfare)); Value("国家效率", N(snapshot.Efficiency) + "%");
-            Value("科技等级", N(snapshot.Technology)); Value("国库铜钱", N(snapshot.Copper)); Value("国库粮食", N(snapshot.Grain));
+            Value("科技等级", N(snapshot.Technology)); Value("国库铜钱", NationUiFactory.Amount(snapshot.Copper)); Value("国库粮食", NationUiFactory.Amount(snapshot.Grain));
         }
 
         private void Notice(NationNoticeKind kind)
@@ -310,7 +341,7 @@ namespace 缺失界面.窗口2
                 if (result.Success) Back(); feedback.text = result.Message;
             });
             ui.Button("清空正文", row, "清空输入", () => field.text = "");
-            ui.Paragraph(content, "最多" + limit + "字。清空后保存会撤下原内容；返回或刷新会放弃尚未保存的输入。", NationUiFactory.Muted);
+            ui.Paragraph(content, "最多" + limit + "字。清空后保存会撤下原内容。\n返回或刷新会放弃未保存的输入。", NationUiFactory.Muted);
             feedback.text = "正在编辑" + kind + "；尚未保存。";
         }
 
@@ -342,7 +373,7 @@ namespace 缺失界面.窗口2
         private void Election()
         {
             Value("轮选周期", snapshot.ElectionInterval + "秒"); Value("上次轮选", SafeDate(snapshot.LastElection));
-            var timerRow = ui.Row(content, 30); ui.RowText(timerRow, "下次轮选", NationUiFactory.Gold);
+            var timerRow = ui.Row(content, 30); ValueLabel(timerRow, "下次轮选");
             timerText = ui.Text("轮选计时", timerRow, "", 18); timerText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
             Value("现任国王", snapshot.King == null ? "无" : snapshot.King.Name);
             ui.Paragraph(content, "到期后重新计时；国家职务由国王任命。", NationUiFactory.Muted);

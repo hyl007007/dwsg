@@ -25,7 +25,7 @@ namespace Dwsg.Window1
         private sealed class Row
         {
             public GameObject Root;
-            public Text Title, Progress;
+            public Text Title;
             public Image Icon;
             public Color IconColor;
             public string Id;
@@ -65,13 +65,13 @@ namespace Dwsg.Window1
                 {
                     Root = original.gameObject,
                     Title = original.Find("成就名字").GetComponent<Text>(),
-                    Progress = original.Find("成就进度").GetComponent<Text>(),
                     Icon = original.Find("成就头像").GetComponent<Image>()
                 };
                 row.IconColor = row.Icon.color;
                 // 原 64×20.8 名称框保留，缩小字体给 Noto CJK 行高留出余量。
                 row.Title.fontSize = 13; row.Title.supportRichText = false; row.Title.raycastTarget = false;
-                row.Progress.supportRichText = false; row.Progress.raycastTarget = false;
+                // 保留原卡图与名称；完整进度和领取状态在点击后的详情显示，避免小字压在插画上。
+                original.Find("成就进度").gameObject.SetActive(false);
                 var button = original.gameObject.AddComponent<Button>();
                 button.targetGraphic = original.Find("成就背景").GetComponent<Image>();
                 button.targetGraphic.raycastTarget = true;
@@ -168,7 +168,6 @@ namespace Dwsg.Window1
                 if (index >= goals.Count) { row.Id = null; continue; }
                 var goal = goals[index]; row.Id = goal.Definition.Id;
                 row.Title.text = goal.Definition.Title;
-                row.Progress.text = goal.Current.ToString("0") + "/" + goal.Definition.Target.ToString("0") + " " + goal.Status;
                 row.Icon.color = goal.Claimed ? row.IconColor * new Color(.6f, .6f, .6f, 1) : row.IconColor;
             }
             LayoutRebuilder.MarkLayoutForRebuild((RectTransform)rows[0].Root.transform.parent);

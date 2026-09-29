@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 using Dwsg.Window1;
@@ -9,11 +12,15 @@ namespace 缺失界面.窗口2
     {
         internal readonly Font Font;
         internal readonly Vector2 ButtonSize;
+        private readonly int buttonFontSize;
         private readonly Button buttonTemplate;
         private readonly Sprite buttonSprite;
         private readonly Transform rowDecoration;
         private readonly Color bodyColor;
         private readonly Window1Style scrollStyle;
+        private readonly Transform inputSkin;
+        private static readonly Dictionary<Sprite, Sprite> inputSlices = new Dictionary<Sprite, Sprite>();
+        internal Color BodyColor { get { return bodyColor; } }
         internal static readonly Color Ink = new Color(.94f, .94f, .77f);
         internal static readonly Color Gold = new Color(1f, .88f, .36f);
         internal static readonly Color Muted = new Color(.70f, .85f, .79f);
@@ -25,12 +32,20 @@ namespace 缺失界面.窗口2
             var body = source.Find("概况布局/信息列表布局/国名/显示");
             bodyColor = body != null && body.GetComponent<Text>() != null ? body.GetComponent<Text>().color : Ink;
             foreach (GameObject root in source.gameObject.scene.GetRootGameObjects())
+            {
                 if (root.name == "国家列表布局") rowDecoration = root.transform.Find("列表布局/显示区域/列表/国家1/通用透黑背景");
+                var founding = root.GetComponent<建国脚本>();
+                if (founding == null || founding.国名输入对象 == null) continue;
+                var field = founding.国名输入对象.GetComponentInParent<InputField>(true);
+                if (field != null) inputSkin = field.transform.parent.Find("输入框布局");
+            }
             var button = source.Find("概况布局/征调兵马");
             if (button == null) button = source.Find("界面操作/返回");
             if (button != null && button.GetComponent<Image>() != null) buttonSprite = button.GetComponent<Image>().sprite;
             buttonTemplate = button == null ? null : button.GetComponent<Button>();
             ButtonSize = button == null ? new Vector2(97, 39) : ((RectTransform)button).rect.size;
+            var caption = button == null ? null : button.GetComponentInChildren<Text>(true);
+            buttonFontSize = caption == null ? 18 : caption.fontSize;
         }
 
         internal static RectTransform Rect(string name, Transform parent)
@@ -50,6 +65,42 @@ namespace 缺失界面.窗口2
             to.anchoredPosition = from.anchoredPosition; to.sizeDelta = from.sizeDelta;
             to.localScale = new Vector3(from.localScale.x, from.localScale.y, 1);
             to.localRotation = from.localRotation;
+        }
+
+        // Keep a native panel's region when its decoration has an extra nesting level.
+        internal static void CopyRegion(RectTransform from, RectTransform to)
+        {
+            var corners = new Vector3[4]; from.GetWorldCorners(corners);
+            var parent = (RectTransform)to.parent;
+            Vector2 min = parent.InverseTransformPoint(corners[0]);
+            Vector2 max = parent.InverseTransformPoint(corners[2]);
+            to.anchorMin = to.anchorMax = to.pivot = new Vector2(.5f, .5f);
+            to.sizeDelta = max - min; to.anchoredPosition = (min + max) * .5f - parent.rect.center;
+        }
+
+        internal static string Amount(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value)) return "数据异常";
+            double magnitude = Math.Abs(value);
+            double unit = magnitude >= 1e12 ? 1e12 : magnitude >= 1e8 ? 1e8 : magnitude >= 1e4 ? 1e4 : 1;
+            string suffix = unit == 1e12 ? "万亿" : unit == 1e8 ? "亿" : unit == 1e4 ? "万" : "";
+            return (value / unit).ToString("0.##", CultureInfo.InvariantCulture) + suffix;
+        }
+
+        internal static VerticalLayoutGroup Vertical(RectTransform parent, int padding = 4, int spacing = 4)
+        {
+            var layout = parent.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.padding = new RectOffset(padding, padding, padding, padding); layout.spacing = spacing;
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = true; layout.childForceExpandHeight = false;
+            return layout;
+        }
+
+        internal static void Height(Component component, float height, float flexible = 0)
+        {
+            var element = component.GetComponent<LayoutElement>();
+            if (element == null) element = component.gameObject.AddComponent<LayoutElement>();
+            element.minHeight = element.preferredHeight = height; element.flexibleHeight = flexible;
         }
 
         internal static RectTransform Decoration(Transform from, Transform parent, bool isTitle = false)
@@ -91,7 +142,7 @@ namespace 缺失界面.窗口2
                 button.transition = buttonTemplate.transition; button.colors = buttonTemplate.colors;
                 button.spriteState = buttonTemplate.spriteState;
             }
-            var text = Text("文字", rect, label, 16, Gold); text.alignment = TextAnchor.MiddleCenter;
+            var text = Text("文字", rect, label, buttonFontSize, Gold); text.alignment = TextAnchor.MiddleCenter;
             StyleCaption(text);
             Place(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(5, 3), new Vector2(-5, -3));
             var layout = rect.gameObject.AddComponent<LayoutElement>(); layout.minWidth = layout.preferredWidth = ButtonSize.x;
@@ -120,7 +171,9 @@ namespace 缺失界面.窗口2
 
         internal RectTransform Scroll(Transform parent, out ScrollRect scroll)
         {
-            var rect = Rect("可滚动详情", parent); Place(rect, new Vector2(0, .16f), new Vector2(1, .87f), new Vector2(2, 0), new Vector2(-2, 0));
+            var rect = Rect("可滚动详情", parent);
+            Place(rect, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            Height(rect, 0, 1);
             var background = rect.gameObject.AddComponent<Image>(); background.color = new Color(0, 0, 0, .06f);
             scroll = rect.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false; scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 28; scroll.inertia = true;
@@ -204,13 +257,48 @@ namespace 缺失界面.窗口2
             var rect = Rect("正文输入", parent); var inputLayout = rect.gameObject.AddComponent<LayoutElement>();
             // InputField 的布局优先级也是1；长正文会覆盖同级的142高度，必须由容器显式固定输入区域。
             inputLayout.layoutPriority = 2; inputLayout.minHeight = inputLayout.preferredHeight = 142; inputLayout.flexibleHeight = 0;
-            var image = rect.gameObject.AddComponent<Image>(); image.color = new Color(.035f, .13f, .105f);
+            var image = rect.gameObject.AddComponent<Image>();
+            image.color = ApplyInputSkin(rect) ? Color.clear : new Color(0, 0, 0, .25f);
             rect.gameObject.AddComponent<RectMask2D>();
             var field = rect.gameObject.AddComponent<InputField>(); field.targetGraphic = image;
             field.lineType = InputField.LineType.MultiLineNewline; field.characterLimit = limit;
             var text = Text("编辑内容", rect, "", 18); text.alignment = TextAnchor.UpperLeft;
             Place(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(10, 10), new Vector2(-10, -10));
             field.textComponent = text; field.text = value; field.onValueChanged.AddListener(change); return field;
+        }
+
+        internal bool ApplyInputSkin(RectTransform target)
+        {
+            if (inputSkin == null) return false;
+            var frame = Rect("原建国输入框背景", target);
+            Place(frame, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var layout = frame.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = false; layout.childForceExpandHeight = true;
+            foreach (Transform part in inputSkin)
+            {
+                var source = part.GetComponent<Image>(); if (source == null) continue;
+                var copy = Decoration(part, frame); if (copy == null) continue;
+                var image = copy.GetComponent<Image>(); image.type = Image.Type.Sliced;
+                image.sprite = InputSlice(source.sprite); image.raycastTarget = false;
+                var element = copy.gameObject.AddComponent<LayoutElement>();
+                bool center = part.name == "中";
+                element.minWidth = element.preferredWidth = center ? 0 : ((RectTransform)part).rect.width;
+                element.flexibleWidth = center ? 1 : 0;
+            }
+            return true;
+        }
+
+        // Preserve the native end caps and top/bottom bevels in a multiline input.
+        // No new texture is drawn: the original 8088/8089 sprite pixels supply the nine-slice.
+        private static Sprite InputSlice(Sprite source)
+        {
+            if (source == null || source.packed || source.border != Vector4.zero) return source;
+            Sprite slice; if (inputSlices.TryGetValue(source, out slice)) return slice;
+            float edge = Mathf.Max(0, (source.rect.height - 2) * .5f);
+            slice = Sprite.Create(source.texture, source.rect, new Vector2(.5f, .5f), source.pixelsPerUnit,
+                0, SpriteMeshType.FullRect, new Vector4(0, edge, 0, edge));
+            slice.name = source.name + "-输入框九宫格"; inputSlices.Add(source, slice); return slice;
         }
     }
 }

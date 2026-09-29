@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Window3;
 
 public class 所有城池界面脚本 : MonoBehaviour
 {
@@ -25,6 +26,8 @@ public class 所有城池界面脚本 : MonoBehaviour
 
 	public void 渲染势力地图()
 	{
+		if (势力列表对象 == null || 势力列表对象.transform.childCount == 0 || 全局变量.所有城池列表 == null) return;
+		var plotted = new List<城池信息库类>();
 		int num = 0;
 		float num2 = -465f;
 		float num3 = 260f;
@@ -39,7 +42,7 @@ public class 所有城池界面脚本 : MonoBehaviour
 		{
 			for (int k = 0; k < 地图W; k++)
 			{
-				if (全局大地图库.大地图表[j, k] >= 2)
+				if (全局大地图库.大地图表[j, k] >= 2 && num < 全局变量.所有城池列表.Count)
 				{
 					GameObject gameObject;
 					if (childCount <= num)
@@ -55,22 +58,18 @@ public class 所有城池界面脚本 : MonoBehaviour
 					gameObject.transform.GetComponent<RectTransform>().sizeDelta = new Vector2(8f, 8f);
 					gameObject.transform.localPosition = new Vector2(num2 + (float)k * num4, num3 - (float)j * num5);
 					势力列表对象.transform.GetChild(num).gameObject.SetActive(value: true);
-					if (全局变量.所有城池列表[num].获取城池身份() == 0)
+					var city = 全局变量.所有城池列表[num];
+					gameObject.SetActive(city != null);
+					if (city != null)
 					{
-						gameObject.transform.GetComponent<Image>().color = 颜色类.GetColor("#00FF00");
-					}
-					else if (全局变量.所有城池列表[num].获取城池身份() == 1)
-					{
-						gameObject.transform.GetComponent<Image>().color = 颜色类.GetColor("#FF0000");
-					}
-					else
-					{
-						gameObject.transform.GetComponent<Image>().color = 颜色类.GetColor("#908E90");
+						gameObject.GetComponent<Image>().color = CityMapPresentation.OwnershipColor(city.获取城池身份());
+						plotted.Add(city);
 					}
 					num++;
 				}
 			}
 		}
+		CityMapPresentation.PowerLegend(势力列表对象, plotted);
 	}
 
 	public void 定位当前封地位置()

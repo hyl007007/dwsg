@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using UnityEngine;
@@ -13,6 +14,8 @@ public class 存档脚本 : MonoBehaviour
     private const int 存档槽位数 = 6;
     private bool 正在写入;
     private bool 已设置读取说明;
+    private readonly Text[] 槽位名称 = new Text[存档槽位数];
+    private readonly Text[] 槽位时间 = new Text[存档槽位数];
 
     private void OnEnable()
     {
@@ -138,16 +141,66 @@ public class 存档脚本 : MonoBehaviour
         if (!可以操作() || 存档列表对象 == null) return;
         for (int i = 0; i < 存档槽位数; i++)
         {
-            var 标签 = 存档列表对象.transform.GetChild(i).GetChild(1).GetComponent<Text>();
+            配置槽位文字(i);
+            var 标签 = 槽位名称[i];
+            var 时间 = 槽位时间[i];
             var 存档 = 全局变量.所有存档列表.Find(记录 => 记录.ID == i + 1);
             标签.text = "存档" + (i + 1) + "：<空记录>";
+            时间.text = "";
             if (存档 != null)
             {
                 var 玩家 = 存档.玩家列表[全局变量.本机身份].基础信息;
-                标签.text = "存档" + (i + 1) + "：" + 玩家.名字 + "<" + 玩家.等级 + "级>   " +
-                    玩家.国家 + "   " + TIME.转时间格式(存档.存档时间);
+                标签.text = "存档" + (i + 1) + "：" + 玩家.名字 + "<" + 玩家.等级 + "级> " + 玩家.国家;
+                时间.text = TIME.TimeStampToDateTime(存档.存档时间).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
             }
+            var 时间尺寸 = 时间.GetComponent<LayoutElement>();
+            时间尺寸.minWidth = 时间尺寸.preferredWidth = 时间.preferredWidth;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(标签.transform.parent as RectTransform);
+            Dwsg.Social.SocialScreen.TruncateSingleLine(标签);
         }
+    }
+
+    private void 配置槽位文字(int 索引)
+    {
+        if (槽位名称[索引] != null) return;
+        var 行 = 存档列表对象.transform.GetChild(索引);
+        var 已有容器 = 行.Find("存档行文字");
+        if (已有容器 != null)
+        {
+            槽位名称[索引] = 已有容器.Find("角色名字").GetComponent<Text>();
+            槽位时间[索引] = 已有容器.Find("存档时间").GetComponent<Text>();
+            return;
+        }
+        var 原文字 = 行.GetChild(1).GetComponent<Text>();
+        // 保留原槽位背景、点击事件和 33 高的 Grid 单元，只在原文字矩形内划分名称与时间。
+        var 容器 = new GameObject("存档行文字", typeof(RectTransform)).GetComponent<RectTransform>();
+        容器.SetParent(行, false);
+        var 原框 = 原文字.rectTransform;
+        容器.anchorMin = 原框.anchorMin; 容器.anchorMax = 原框.anchorMax; 容器.pivot = 原框.pivot;
+        容器.anchoredPosition = 原框.anchoredPosition; 容器.sizeDelta = 原框.sizeDelta;
+        容器.localScale = 原框.localScale;
+        var 布局 = 容器.gameObject.AddComponent<HorizontalLayoutGroup>();
+        布局.spacing = 原文字.fontSize;
+        布局.childAlignment = TextAnchor.MiddleLeft;
+        布局.childControlWidth = 布局.childControlHeight = true;
+        布局.childForceExpandWidth = 布局.childForceExpandHeight = false;
+        var 时间 = Instantiate(原文字, 容器, false);
+        时间.name = "存档时间";
+        原文字.transform.SetParent(容器, false);
+        原文字.transform.SetAsFirstSibling();
+        foreach (var 文字 in new[] { 原文字, 时间 })
+        {
+            文字.resizeTextForBestFit = false; 文字.supportRichText = false; 文字.raycastTarget = false;
+            // 原文字框低于字体的度量行高；保留原垂直溢出，单行字形仍位于 33 高槽位内。
+            文字.horizontalOverflow = HorizontalWrapMode.Overflow; 文字.verticalOverflow = VerticalWrapMode.Overflow;
+            文字.alignment = TextAnchor.MiddleLeft;
+            文字.rectTransform.localScale = Vector3.one;
+            var 尺寸 = 文字.gameObject.AddComponent<LayoutElement>();
+            尺寸.minWidth = 尺寸.preferredWidth = 0;
+            尺寸.flexibleWidth = 文字 == 原文字 ? 1 : 0;
+            尺寸.minHeight = 尺寸.preferredHeight = 容器.rect.height;
+        }
+        槽位名称[索引] = 原文字; 槽位时间[索引] = 时间;
     }
 
     public void 读取指定存档(int 第几个存档)

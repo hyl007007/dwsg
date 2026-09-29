@@ -48,15 +48,14 @@ namespace 缺失界面.窗口2
         private void Build(Transform country, NationDetailWindow detail, Func<string> context, string name)
         {
             ui = new NationUiFactory(country); window = detail; viewedCode = context; tab = name;
+            NationUiFactory.Vertical((RectTransform)transform, 0);
             heading = ui.Text("页签标题", transform, "", 18, NationUiFactory.Gold);
-            NationUiFactory.Place(heading.rectTransform, new Vector2(0, 1), Vector2.one, new Vector2(0, -34), Vector2.zero);
+            NationUiFactory.Height(heading, 30);
             status = ui.Text("页签说明", transform, "", 16, NationUiFactory.Muted);
-            NationUiFactory.Place(status.rectTransform, new Vector2(0, 1), Vector2.one, new Vector2(0, -68), new Vector2(0, -34));
+            NationUiFactory.Height(status, 28);
             content = ui.Scroll(transform, out scroll);
-            NationUiFactory.Place((RectTransform)scroll.transform, Vector2.zero, Vector2.one,
-                new Vector2(0, 46), new Vector2(0, -76));
             footer = NationUiFactory.Rect("页签操作", transform);
-            NationUiFactory.Place(footer, Vector2.zero, new Vector2(1, 0), Vector2.zero, new Vector2(0, 42));
+            NationUiFactory.Height(footer, ui.ButtonSize.y);
             var layout = footer.gameObject.AddComponent<HorizontalLayoutGroup>(); layout.spacing = 12;
             layout.childAlignment = TextAnchor.MiddleRight; layout.childControlHeight = layout.childControlWidth = true;
             layout.childForceExpandHeight = layout.childForceExpandWidth = false;
@@ -67,7 +66,7 @@ namespace 缺失界面.窗口2
         private void LateUpdate()
         {
             if (!settleLayout) return;
-            settleLayout = false; NationUiFactory.MeasureContent(content);
+            settleLayout = false; FinishLayout();
         }
         private static void Clear(Transform parent)
         {
@@ -83,8 +82,16 @@ namespace 缺失界面.窗口2
             else if (tab == "军团") Guilds();
             else Allies(nation);
             ui.Button("刷新页签", footer, "刷新", Refresh);
-            Canvas.ForceUpdateCanvases(); NationUiFactory.MeasureContent(content); settleLayout = true;
+            FinishLayout(); settleLayout = true;
             scroll.StopMovement(); scroll.verticalNormalizedPosition = 1;
+        }
+        private void FinishLayout()
+        {
+            Canvas.ForceUpdateCanvases();
+            NationUiFactory.Height(heading, Mathf.Ceil(heading.preferredHeight + 4));
+            NationUiFactory.Height(status, Mathf.Ceil(status.preferredHeight + 4));
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)transform);
+            NationUiFactory.MeasureContent(content);
         }
         private void Link(string text, string caption, UnityEngine.Events.UnityAction action, bool enabled = true)
         {
@@ -97,7 +104,6 @@ namespace 缺失界面.窗口2
             if (nation == null)
             {
                 ui.Paragraph(content, "尚未加入国家，加入后可查看本国公告和轮选。");
-                ui.Button("国家排行", footer, "国家排行", () => window.Open(NationPage.国家排行, viewedCode()));
                 return;
             }
             Link("公告：" + Preview(nation.Notice, "尚未发布"), "查看公告", () => window.Open(NationPage.公告, viewedCode()));
@@ -145,12 +151,11 @@ namespace 缺失界面.窗口2
             if (count == 0)
                 ui.Paragraph(content, nation == null ? "尚未加入国家，也没有可查看的盟国资料。" : viewedCode() == data.OwnNationCode ?
                     "本世界尚未记录本机盟友，暂无盟国资料。可查看其他国家，或在社交页管理好友。" : "本世界尚未记录该国的盟国资料，可查看其他国家。");
-            ui.Button("国家排行", footer, "国家排行", () => window.Open(NationPage.国家排行, viewedCode()));
             ui.Button("社交关系", footer, "社交关系", () => OpenSocial("好友"));
         }
         private void OpenSocial(string page)
         {
-            if (!社交界面入口.打开(page)) status.text = "社交页尚未就绪，请稍后重试。";
+            if (!社交界面入口.打开(page)) { status.text = "社交页尚未就绪，请稍后重试。"; settleLayout = true; }
         }
         private static string Preview(string text, string empty)
         {

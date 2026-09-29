@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Window3;
 
 public class 定位相机到指定城池 : MonoBehaviour
 {
@@ -16,6 +17,8 @@ public class 定位相机到指定城池 : MonoBehaviour
 
     private Button 定位按钮;
     private Button.ButtonClickedEvent 定位事件;
+    private Text 定位反馈;
+    private InputField 查询输入框;
 
     private void OnEnable()
     {
@@ -31,6 +34,38 @@ public class 定位相机到指定城池 : MonoBehaviour
             定位按钮.onClick = 定位事件;
         }
         界面窗口管理器.注册运行时按钮(定位按钮);
+        确保反馈区域();
+        清除定位反馈("");
+    }
+
+    private void 确保反馈区域()
+    {
+        var query = transform.Find("查询") as RectTransform;
+        var powers = transform.Find("势力列表") as RectTransform;
+        if (query == null || powers == null || 定位按钮 == null) return;
+        var input = query.GetComponent<InputField>();
+        if (查询输入框 != input)
+        {
+            if (查询输入框 != null) 查询输入框.onValueChanged.RemoveListener(清除定位反馈);
+            查询输入框 = input;
+            if (查询输入框 != null) 查询输入框.onValueChanged.AddListener(清除定位反馈);
+        }
+        if (定位反馈 != null) return;
+        var prompt = 全局变量.提示类 ?? CityNavigation.Find<提示移动>();
+        var source = prompt == null || prompt.transform.childCount == 0 ? null : prompt.transform.GetChild(0).GetComponentInChildren<Text>(true);
+        if (source == null) source = input == null ? 定位名称 : input.textComponent;
+        if (source != null) 定位反馈 = CityMapPresentation.LocatorFeedback((RectTransform)transform, query,
+            (RectTransform)定位按钮.transform, powers, source);
+    }
+
+    private void 清除定位反馈(string 内容)
+    {
+        if (定位反馈 != null) { 定位反馈.text = ""; 定位反馈.gameObject.SetActive(false); }
+    }
+
+    private void OnDestroy()
+    {
+        if (查询输入框 != null) 查询输入框.onValueChanged.RemoveListener(清除定位反馈);
     }
 
     public void 根据坐标定位指定城池位置()
@@ -70,6 +105,7 @@ public class 定位相机到指定城池 : MonoBehaviour
             var 城池 = 全局变量.所有城池列表[i];
             if (城池 == null || 城池.名称 != 名称) continue;
             定位地图到指定位置(城池.坐标x, 城池.坐标y);
+            清除定位反馈("");
             gameObject.SetActive(false);
             return;
         }
@@ -78,17 +114,10 @@ public class 定位相机到指定城池 : MonoBehaviour
 
     private void 显示定位提示(string 内容)
     {
-        var 提示 = 全局变量.提示类;
-        if (提示 == null)
-        {
-            foreach (var 根对象 in gameObject.scene.GetRootGameObjects())
-            {
-                提示 = 根对象.GetComponentInChildren<提示移动>(true);
-                if (提示 != null) break;
-            }
-        }
-        if (提示 != null) 提示.显示信息(内容);
+        确保反馈区域();
+        if (定位反馈 != null) { 定位反馈.text = 内容; 定位反馈.gameObject.SetActive(true); }
         else Debug.LogWarning(内容);
+        聊天系统.播报(内容);
     }
 
     public void 定位地图到指定位置(int x, int y)

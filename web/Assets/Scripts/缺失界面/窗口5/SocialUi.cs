@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -21,6 +22,11 @@ namespace Dwsg.Social
         private readonly Transform titleGraphic;
         private readonly Image buttonImage, closeImage;
         private readonly Button buttonStyle, closeStyle;
+        private readonly Toggle tabTemplate;
+        private readonly InputField inputTemplate;
+        private readonly RectTransform inputFrame;
+        private readonly Text inputTextStyle;
+        private static readonly Dictionary<Sprite, Sprite> inputSlices = new Dictionary<Sprite, Sprite>();
         internal readonly Sprite Avatar;
         internal SocialUi(Scene scene)
         {
@@ -28,6 +34,21 @@ namespace Dwsg.Social
             foreach (var root in scene.GetRootGameObjects())
             {
                 if (root.name == "城池信息界面UI") city = root.transform;
+                if (root.name == "商城信息界面UI")
+                {
+                    var tab = root.transform.Find("道具切换布局/宝箱");
+                    if (tab != null) tabTemplate = tab.GetComponent<Toggle>();
+                }
+                if (root.name == "建国界面UI")
+                {
+                    var field = root.transform.Find("国家信息布局列表/国名布局");
+                    if (field != null)
+                    {
+                        inputTemplate = field.Find("InputField").GetComponent<InputField>();
+                        inputFrame = field.Find("输入框布局") as RectTransform;
+                        inputTextStyle = field.Find("文本显示").GetComponent<Text>();
+                    }
+                }
                 if (root.name == "主界面UI")
                 {
                     var portrait = root.transform.Find("主界面_信息显示布局/主界面_头像显示");
@@ -153,6 +174,20 @@ namespace Dwsg.Social
             target.pixelsPerUnitMultiplier = source.pixelsPerUnitMultiplier; target.raycastTarget = false;
         }
 
+        // 与原建国 8088/8089 拼片同源，只拉伸中部，保留上下斜边的原像素厚度。
+        private static Sprite InputSlice(Sprite source)
+        {
+            if (source == null || source.packed || source.border != Vector4.zero) return source;
+            Sprite slice;
+            if (inputSlices.TryGetValue(source, out slice)) return slice;
+            float edge = Mathf.Max(0, (source.rect.height - 2) * .5f);
+            slice = Sprite.Create(source.texture, source.rect, new Vector2(.5f, .5f), source.pixelsPerUnit,
+                0, SpriteMeshType.FullRect, new Vector4(0, edge, 0, edge));
+            slice.name = source.name + "-输入框九宫格";
+            inputSlices.Add(source, slice);
+            return slice;
+        }
+
         private static void Place(RectTransform rect, float x, float y, float w, float h)
         {
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
@@ -223,21 +258,115 @@ namespace Dwsg.Social
         }
         internal InputField Input(Transform parent, string placeholder, float x, float y, float w, float h, int limit, string initial = "", bool multiline = false)
         {
-            var image = Image(parent, "输入框", x, y, w, h, null, new Color(.015f, .055f, .045f), true);
-            Border(image.transform, w, h);
-            var input = image.gameObject.AddComponent<InputField>();
-            input.targetGraphic = image; input.lineType = multiline ? InputField.LineType.MultiLineNewline : InputField.LineType.SingleLine; input.characterLimit = limit;
-            input.textComponent = Text(image.transform, "", 8, 2, w - 16, h - 4, 17, Cyan);
-            input.placeholder = Text(image.transform, placeholder, 8, 2, w - 16, h - 4, 16, Muted);
-            input.textComponent.alignment = multiline ? TextAnchor.UpperLeft : TextAnchor.MiddleLeft;
-            input.textComponent.alignByGeometry = !multiline;
-            input.textComponent.horizontalOverflow = multiline ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
-            ((Text)input.placeholder).alignment = input.textComponent.alignment;
-            ((Text)input.placeholder).alignByGeometry = !multiline;
-            input.customCaretColor = true; input.caretColor = Cyan;
-            input.selectionColor = new Color(.145f, .4f, .353f, .6f);
-            input.text = initial ?? "";
+            if (inputTemplate == null || inputFrame == null || inputTextStyle == null)
+                throw new InvalidOperationException("社交输入框缺少原建国表单模板");
+            // 在 inactive 容器中解除原建国回调，再启用完整 InputField；透明编辑框覆盖原三段拼片。
+            var holder = Node(parent, "输入框布局", x, y, w, h);
+            holder.gameObject.SetActive(false);
+            var frame = Node(holder, "原输入框拼片", 0, 0, w, h);
+            Stretch(frame);
+            var layout = frame.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            foreach (var pieceName in new[] { "左", "中", "右" })
+            {
+                var source = inputFrame.Find(pieceName) as RectTransform;
+                var piece = CopyVisuals(source, frame);
+                var image = piece.GetComponent<Image>();
+                image.sprite = InputSlice(image.sprite);
+                image.type = UnityEngine.UI.Image.Type.Sliced;
+                var sizing = piece.gameObject.AddComponent<LayoutElement>();
+                sizing.minWidth = sizing.preferredWidth = pieceName == "中" ? 0 : source.rect.width;
+                sizing.flexibleWidth = pieceName == "中" ? 1 : 0;
+                sizing.minHeight = sizing.preferredHeight = h;
+            }
+            var input = UnityEngine.Object.Instantiate(inputTemplate, holder, false);
+            input.name = "输入框";
+            input.onValueChanged = new InputField.OnChangeEvent();
+#if UNITY_6000_0_OR_NEWER
+            input.onEndEdit = new InputField.EndEditEvent();
+            input.onSubmit = new InputField.SubmitEvent();
+#else
+            input.onEndEdit = new InputField.SubmitEvent();
+#endif
+            input.onValidateInput = null;
+            input.contentType = InputField.ContentType.Standard;
+            input.lineType = multiline ? InputField.LineType.MultiLineNewline : InputField.LineType.SingleLine;
+            input.characterLimit = limit;
+            Stretch(input.transform as RectTransform);
+            var hint = input.placeholder as Text;
+            var paddingMin = inputTemplate.placeholder.rectTransform.offsetMin;
+            var paddingMax = inputTemplate.placeholder.rectTransform.offsetMax;
+            foreach (var text in new[] { input.textComponent, hint })
+            {
+                text.font = inputTextStyle.font; text.fontStyle = inputTextStyle.fontStyle;
+                text.fontSize = text == hint ? 16 : 17;
+                text.color = inputTextStyle.color;
+                if (text == hint) { var color = text.color; color.a *= .65f; text.color = color; }
+                text.supportRichText = false; text.resizeTextForBestFit = false; text.raycastTarget = false;
+                text.alignment = multiline ? TextAnchor.UpperLeft : TextAnchor.MiddleLeft;
+                text.alignByGeometry = !multiline;
+                text.horizontalOverflow = multiline ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
+                text.verticalOverflow = multiline ? VerticalWrapMode.Truncate : VerticalWrapMode.Overflow;
+                Stretch(text.rectTransform);
+                // 单行框使用完整高度，避免模板的上下留白把字体行高截掉；仍由原编辑框遮罩裁切。
+                text.rectTransform.offsetMin = new Vector2(paddingMin.x, multiline ? paddingMin.y : 0);
+                text.rectTransform.offsetMax = new Vector2(paddingMax.x, multiline ? paddingMax.y : 0);
+            }
+            if (input.GetComponent<RectMask2D>() == null) input.gameObject.AddComponent<RectMask2D>();
+            input.targetGraphic.raycastTarget = true;
+            input.customCaretColor = true; input.caretColor = inputTextStyle.color;
+            hint.text = placeholder;
+            input.SetTextWithoutNotify(initial ?? "");
+            input.gameObject.SetActive(true); holder.gameObject.SetActive(true);
             return input;
+        }
+
+        internal void Tabs(Transform parent, string[] names, string current, Action<string> choose, float width, float y)
+        {
+            if (tabTemplate == null) throw new InvalidOperationException("社交页签缺少原商城 Toggle 模板");
+            var originalRect = (RectTransform)tabTemplate.transform;
+            var container = Node(parent, "页签", 0, y, width, originalRect.rect.height);
+            container.gameObject.SetActive(false);
+            var layout = container.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 4;
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            var group = container.gameObject.AddComponent<ToggleGroup>();
+            group.allowSwitchOff = false;
+            foreach (string name in names)
+            {
+                var toggle = UnityEngine.Object.Instantiate(tabTemplate, container, false);
+                toggle.name = name;
+                toggle.onValueChanged = new Toggle.ToggleEvent();
+                toggle.group = null;
+                toggle.SetIsOnWithoutNotify(name == current);
+                toggle.group = group;
+                var oldLabel = toggle.transform.Find("Image");
+                if (oldLabel != null) oldLabel.gameObject.SetActive(false);
+                var label = Text(toggle.transform, name, 0, 0, originalRect.rect.width, originalRect.rect.height,
+                    17, ButtonGold, TextAnchor.MiddleCenter);
+                原界面文字样式.按钮(label); Stretch(label.rectTransform);
+                var sizing = toggle.gameObject.AddComponent<LayoutElement>();
+                sizing.minWidth = sizing.preferredWidth = Mathf.Max(originalRect.rect.width, label.preferredWidth + 24);
+                sizing.minHeight = sizing.preferredHeight = originalRect.rect.height;
+                var background = toggle.targetGraphic.rectTransform;
+                float inset = Mathf.Max(0, (originalRect.rect.width - background.rect.width) * .5f);
+                Stretch(background, inset, 0, inset, 0);
+                Stretch(toggle.graphic.rectTransform);
+                foreach (var graphic in toggle.GetComponentsInChildren<Graphic>(true)) graphic.raycastTarget = false;
+                toggle.targetGraphic.raycastTarget = true;
+                toggle.onValueChanged.AddListener(selected => { if (selected) choose(name); });
+                toggle.gameObject.SetActive(true);
+            }
+            container.gameObject.SetActive(true);
+        }
+
+        private static void Stretch(RectTransform rect, float left = 0, float bottom = 0, float right = 0, float top = 0)
+        {
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.pivot = new Vector2(.5f, .5f);
+            rect.offsetMin = new Vector2(left, bottom); rect.offsetMax = new Vector2(-right, -top);
+            rect.localScale = Vector3.one;
         }
         internal Toggle Toggle(Transform parent, string label, float x, float y, float width, bool selected, Action<bool> changed)
         {
@@ -282,14 +411,24 @@ namespace Dwsg.Social
         internal RectTransform Row(string title, string detail, float h = 64, float textWidth = 380)
         {
             var row = ui.Node(Content, "条目", 0, 0, width, h);
-            var titleText = ui.Text(row, title, 10, 3, textWidth, 28, 18, SocialUi.Ink);
-            float titleHeight = Mathf.Max(28, titleText.preferredHeight);
-            titleText.rectTransform.sizeDelta = new Vector2(textWidth, titleHeight);
-            var detailText = ui.Text(row, detail, 10, titleHeight + 5, textWidth, h - titleHeight - 8, 15, SocialUi.Muted, TextAnchor.UpperLeft);
-            h = Mathf.Max(h, titleHeight + 13 + detailText.preferredHeight);
+            var column = ui.Node(row, "条目文字", 10, 3, textWidth, h - 6);
+            var textLayout = column.gameObject.AddComponent<VerticalLayoutGroup>();
+            textLayout.spacing = 2; textLayout.childAlignment = TextAnchor.UpperLeft;
+            textLayout.childControlWidth = textLayout.childControlHeight = true;
+            textLayout.childForceExpandWidth = true; textLayout.childForceExpandHeight = false;
+            var titleText = ui.Text(column, title, 0, 0, textWidth, 28, 18, SocialUi.Ink);
+            titleText.name = "称呼";
+            SocialScreen.TruncateSingleLine(titleText);
+            var titleSize = titleText.gameObject.AddComponent<LayoutElement>();
+            titleSize.minHeight = titleSize.preferredHeight = 28;
+            var detailText = ui.Text(column, detail, 0, 0, textWidth, h - 36, 15, SocialUi.Muted, TextAnchor.UpperLeft);
+            detailText.name = "详细信息";
+            var detailSize = detailText.gameObject.AddComponent<LayoutElement>();
+            detailSize.minHeight = detailSize.preferredHeight = detailText.preferredHeight;
+            h = Mathf.Max(h, 41 + detailSize.preferredHeight);
+            column.sizeDelta = new Vector2(textWidth, h - 6);
             var layout = row.gameObject.AddComponent<LayoutElement>();
             layout.minHeight = layout.preferredHeight = h; layout.flexibleHeight = 0;
-            detailText.rectTransform.sizeDelta = new Vector2(textWidth, h - titleHeight - 9);
             ui.Image(row, "分隔金线", 8, h - 1, width - 16, 1, null, SocialUi.Gold);
             return row;
         }

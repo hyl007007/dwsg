@@ -144,7 +144,7 @@ namespace Dwsg.Window1
         }
     }
 
-    // 仅读取原控件的视觉属性，不复制回调或任何旧玩法脚本。
+    // 复用原 UI 控件和视觉属性；复制时清空回调，不带入旧玩法脚本。
     public sealed class Window1Style
     {
         public static readonly Color Ink = new Color(.84f, .95f, .87f);
@@ -154,6 +154,9 @@ namespace Dwsg.Window1
         public Font Font;
         private Sprite buttonSprite, iconSprite;
         private Button closeSource;
+        private Button previousSource, nextSource;
+        private Toggle tabSource, checkSource;
+        private RectTransform pageSource;
         private Scrollbar scrollbarSource;
         private Transform title, background, information, frame;
         public static Window1Style FromScene(Scene scene)
@@ -173,6 +176,14 @@ namespace Dwsg.Window1
             var button = source.Select(t => t.GetComponent<Button>()).FirstOrDefault(b => b != null && b.name == "返回" && b.GetComponent<Image>() != null);
             result.buttonSprite = button == null ? null : button.GetComponent<Image>().sprite;
             result.closeSource = source.Select(t => t.GetComponent<Button>()).FirstOrDefault(b => b != null && b.name == "关闭" && b.GetComponent<Image>() != null);
+            var shop = all.FirstOrDefault(t => t.parent == null && t.name == "商城信息界面UI");
+            var lord = all.FirstOrDefault(t => t.parent == null && t.name == "君主信息界面UI");
+            var soul = all.FirstOrDefault(t => t.parent == null && t.name == "炼魂界面UI (1)");
+            result.tabSource = ComponentAt<Toggle>(shop, "道具切换布局/热卖");
+            result.previousSource = ComponentAt<Button>(lord, "成就信息布局/左翻页");
+            result.nextSource = ComponentAt<Button>(lord, "成就信息布局/右翻页");
+            result.pageSource = ComponentAt<RectTransform>(lord, "成就信息布局/页数显示布局");
+            result.checkSource = ComponentAt<Toggle>(soul, "炼魂材料信息布局/普通炼魂");
             var task = all.FirstOrDefault(t => t.name == "主界面_任务图标");
             result.iconSprite = task == null || task.GetComponent<Image>() == null ? null : task.GetComponent<Image>().sprite;
             var scrollbars = all.Select(t => t.GetComponent<Scrollbar>()).Where(b => b != null &&
@@ -180,6 +191,88 @@ namespace Dwsg.Window1
                 b.handleRect.GetComponentsInChildren<Image>(true).Length > 0).ToArray();
             result.scrollbarSource = scrollbars.FirstOrDefault(b => b.transform.root.name == "君主信息界面UI") ?? scrollbars.FirstOrDefault();
             return result;
+        }
+        private static T ComponentAt<T>(Transform root, string path) where T : Component
+        { var child = root == null ? null : root.Find(path); return child == null ? null : child.GetComponent<T>(); }
+
+        // 模板只允许 UI 组件。在停用的父级中复制并清空事件，避免原 ToggleGroup 或玩法回调被带入新窗口。
+        private static T CopyControl<T>(T source, Transform parent, string name) where T : Component
+        {
+            if (source == null) throw new InvalidOperationException("窗口1原控件模板缺失：" + name);
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
+                if (component == null || !(component is Transform || component is CanvasRenderer ||
+                    component is UnityEngine.EventSystems.EventTrigger || component is UnityEngine.UI.BaseMeshEffect || component is 界面点击来源 ||
+                    component.GetType().Namespace == "UnityEngine.UI"))
+                    throw new InvalidOperationException("窗口1控件模板含非 UI 组件：" + source.name);
+            var staging = Rect(parent, "原控件复制暂存"); staging.gameObject.SetActive(false);
+            var copy = UnityEngine.Object.Instantiate(source.gameObject, staging, false);
+            copy.SetActive(false); copy.name = name;
+            foreach (var button in copy.GetComponentsInChildren<Button>(true)) button.onClick = new Button.ButtonClickedEvent();
+            foreach (var toggle in copy.GetComponentsInChildren<Toggle>(true))
+            { toggle.onValueChanged = new Toggle.ToggleEvent(); toggle.group = null; }
+            foreach (var trigger in copy.GetComponentsInChildren<UnityEngine.EventSystems.EventTrigger>(true)) trigger.triggers.Clear();
+            foreach (var origin in copy.GetComponentsInChildren<界面点击来源>(true))
+            { origin.管理器 = null; origin.所属窗口 = null; }
+            copy.transform.SetParent(parent, false);
+            UnityEngine.Object.Destroy(staging.gameObject);
+            copy.SetActive(true);
+            return copy.GetComponent<T>();
+        }
+        private static void NaturalSize(RectTransform target, RectTransform source, float width = 0)
+        {
+            var size = target.GetComponent<LayoutElement>() ?? target.gameObject.AddComponent<LayoutElement>();
+            size.minWidth = size.preferredWidth = Mathf.Max(source.rect.width, width);
+            size.minHeight = size.preferredHeight = source.rect.height;
+            size.flexibleWidth = size.flexibleHeight = 0;
+        }
+        public static HorizontalLayoutGroup ControlRow(RectTransform root, TextAnchor alignment = TextAnchor.MiddleLeft)
+        {
+            var layout = root.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.childAlignment = alignment; layout.spacing = 8;
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            return layout;
+        }
+        public Toggle Tab(Transform parent, string name, string value, UnityAction action)
+        {
+            var toggle = CopyControl(tabSource, parent, name);
+            var oldLabel = toggle.transform.Find("Image");
+            if (oldLabel != null) oldLabel.gameObject.SetActive(false);
+            var label = CopyControl(checkSource.GetComponentInChildren<Text>(true), toggle.transform, "文字");
+            label.text = value; label.alignment = TextAnchor.MiddleCenter;
+            原界面文字样式.按钮(label);
+            Anchors(label.rectTransform, new Vector2(.04f, .06f), new Vector2(.96f, .94f));
+            // 四字页签由文字宽度和原内边距决定宽度；不缩小字号，也不将 70px 原页签拉成整栏操作按钮。
+            NaturalSize(toggle.GetComponent<RectTransform>(), tabSource.GetComponent<RectTransform>(), label.preferredWidth + 12);
+            toggle.SetIsOnWithoutNotify(false);
+            toggle.onValueChanged.AddListener(on =>
+            {
+                if (!on) { toggle.SetIsOnWithoutNotify(true); return; }
+                if (action != null) action();
+            });
+            return toggle;
+        }
+        public Toggle Check(Transform parent, string name, string value)
+        {
+            var toggle = CopyControl(checkSource, parent, name);
+            toggle.GetComponentInChildren<Text>(true).text = value;
+            NaturalSize(toggle.GetComponent<RectTransform>(), checkSource.GetComponent<RectTransform>());
+            toggle.SetIsOnWithoutNotify(false);
+            return toggle;
+        }
+        public RectTransform Pagination(Transform parent, UnityAction backward, UnityAction forward,
+            out Button previous, out Button next, out Text label)
+        {
+            var root = Rect(parent, "原式翻页布局"); ControlRow(root, TextAnchor.MiddleCenter);
+            previous = CopyControl(previousSource, root, "上一页");
+            NaturalSize(previous.GetComponent<RectTransform>(), previousSource.GetComponent<RectTransform>());
+            previous.onClick.AddListener(backward);
+            var page = CopyControl(pageSource, root, "页码布局"); NaturalSize(page, pageSource);
+            label = page.GetComponentInChildren<Text>(true); label.name = "页码";
+            next = CopyControl(nextSource, root, "下一页");
+            NaturalSize(next.GetComponent<RectTransform>(), nextSource.GetComponent<RectTransform>());
+            next.onClick.AddListener(forward);
+            return root;
         }
         public static RectTransform Rect(Transform parent, string name)
         { var go = new GameObject(name, typeof(RectTransform)); go.transform.SetParent(parent, false); return (RectTransform)go.transform; }
@@ -310,14 +403,15 @@ namespace Dwsg.Window1
         private Coroutine refreshLoop;
         private Text title, subtitle, pageLabel, detailTitle, detailMeta, detailBody, rewards, feedback, empty;
         private ScrollRect listScroll, detailScroll, rewardScroll;
-        private Image progressFill, attachmentIcon, divider, pageBackground;
+        private Image progressFill, attachmentIcon, divider;
+        private RectTransform pagination;
         private Button previous, next, claim, delete;
         private Toggle unreadToggle;
         private Window1Achievements achievements;
         private 主界面UI脚本 mainNavigation;
         private Button generalEntry;
         private static readonly JournalPage[] TabPages = { JournalPage.Growth, JournalPage.Daily, JournalPage.Notices, JournalPage.Mail };
-        private readonly List<Button> tabs = new List<Button>();
+        private readonly List<Toggle> tabs = new List<Toggle>();
         private readonly List<Row> rows = new List<Row>();
         private List<GoalView> goalViews = new List<GoalView>();
         private List<LocalMail> mailViews = new List<LocalMail>();
@@ -377,14 +471,17 @@ namespace Dwsg.Window1
             原界面文字样式.标题(title);
             var close = Style.CloseButton(panel, () => gameObject.SetActive(false)); Window1Style.Place(close.GetComponent<RectTransform>(), 758, 3, 38, 38);
             var tabLayout = Window1Style.Rect(panel, "页签布局"); Window1Style.Place(tabLayout, 20, 51, 760, 35);
-            Grid(tabLayout, new Vector2(184, 35), new Vector2(8, 0), 4);
+            Window1Style.ControlRow(tabLayout);
             string[] labels = { "成长任务", "日常任务", "告示栏", "邮件" };
             for (int i = 0; i < labels.Length; i++)
             {
                 var which = TabPages[i];
-                tabs.Add(Style.Button(tabLayout, "页签_" + labels[i], labels[i], () => Open(which)));
+                tabs.Add(Style.Tab(tabLayout, "页签_" + labels[i], labels[i], () => Open(which)));
             }
-            subtitle = Label(panel, "列表说明", "", 13, Window1Style.Muted, 26, 99, 745, 22);
+            var listHeader = Window1Style.Rect(panel, "列表说明布局"); Window1Style.Place(listHeader, 26, 99, 745, 26);
+            Window1Style.ControlRow(listHeader);
+            subtitle = Window1Style.Text(listHeader, "列表说明", "", Style.Font, 13, Window1Style.Muted, TextAnchor.MiddleLeft);
+            var subtitleSize = subtitle.gameObject.AddComponent<LayoutElement>(); subtitleSize.minWidth = 0; subtitleSize.flexibleWidth = 1;
             listScroll = Scroll(panel, "条目列表", 26, 128, 321, 279);
             Grid(listScroll.content, new Vector2(319, 43), new Vector2(0, 3), 1, true);
             for (int i = 0; i < PageSize; i++)
@@ -412,11 +509,9 @@ namespace Dwsg.Window1
             attachmentIcon = Window1Style.Image(panel, "附件头像", Color.white); Window1Style.Place(attachmentIcon.rectTransform, 372, 348, 34, 34); attachmentIcon.preserveAspect = true;
             rewardScroll = Scroll(panel, "奖励附件", 412, 359, 359, 48, true);
             rewards = Label(rewardScroll.content, "奖励预览", "", 14, Window1Style.Gold, 0, 0, 335, 48);
-            unreadToggle = MakeToggle(panel);
-            previous = ActionButton(panel, "上一页", "上一页", () => ChangePage(-1), 26, 428, 95, 34);
-            pageBackground = Window1Style.Image(panel, "页码底", Window1Style.Surface); Window1Style.Place(pageBackground.rectTransform, 124, 428, 117, 34);
-            pageLabel = Label(panel, "页码", "", 14, Window1Style.Gold, 124, 428, 117, 34, TextAnchor.MiddleCenter);
-            next = ActionButton(panel, "下一页", "下一页", () => ChangePage(1), 244, 428, 95, 34);
+            unreadToggle = MakeToggle(listHeader);
+            pagination = Style.Pagination(panel, () => ChangePage(-1), () => ChangePage(1), out previous, out next, out pageLabel);
+            Window1Style.Place(pagination, 26, 428, 321, 34);
             claim = ActionButton(panel, "领取", "领取奖励", Claim, 374, 428, 182, 34);
             delete = ActionButton(panel, "删除", "删除邮件", Delete, 568, 428, 203, 34);
             feedback = Label(panel, "操作结果", "", 12, FeedbackInk, 24, 407, 752, 20, TextAnchor.MiddleCenter);
@@ -424,12 +519,7 @@ namespace Dwsg.Window1
         }
         private Toggle MakeToggle(Transform panel)
         {
-            var rt = Window1Style.Rect(panel, "只看未读"); Window1Style.Place(rt, 636, 99, 135, 23);
-            var toggle = rt.gameObject.AddComponent<Toggle>();
-            var bg = Window1Style.Image(rt, "框", new Color(.28f, .45f, .37f)); Window1Style.Place(bg.rectTransform, 0, 2, 18, 18); bg.raycastTarget = true;
-            var check = Window1Style.Image(bg.transform, "勾选", Window1Style.Gold); Window1Style.Anchors(check.rectTransform, Vector2.zero, Vector2.one); check.rectTransform.offsetMin = new Vector2(4, 4); check.rectTransform.offsetMax = new Vector2(-4, -4);
-            toggle.targetGraphic = bg; toggle.graphic = check;
-            Label(rt, "文字", "只看未读", 13, Window1Style.Ink, 25, 0, 110, 23, TextAnchor.MiddleLeft);
+            var toggle = Style.Check(panel, "只看未读", "只看未读");
             toggle.onValueChanged.AddListener(on =>
             {
                 if (currentPage != JournalPage.Mail || achievementDetail) return;
@@ -501,8 +591,7 @@ namespace Dwsg.Window1
             bool showList = !achievementDetail;
             foreach (var tab in tabs) tab.gameObject.SetActive(showList);
             subtitle.gameObject.SetActive(showList); listScroll.gameObject.SetActive(showList); divider.gameObject.SetActive(showList);
-            previous.gameObject.SetActive(showList); next.gameObject.SetActive(showList);
-            pageBackground.gameObject.SetActive(showList); pageLabel.gameObject.SetActive(showList);
+            pagination.gameObject.SetActive(showList);
             unreadToggle.gameObject.SetActive(false);
             Window1Style.Place(detailTitle.rectTransform, achievementDetail ? 40 : 372, achievementDetail ? 110 : 129, achievementDetail ? 720 : 399, achievementDetail ? 32 : 30);
             Window1Style.Place(detailMeta.rectTransform, achievementDetail ? 40 : 372, achievementDetail ? 147 : 164, achievementDetail ? 720 : 399, achievementDetail ? 26 : 24);
@@ -556,9 +645,8 @@ namespace Dwsg.Window1
             }
             string[] names = { "成长任务", "日常任务", "君主成就", "封地告示栏", "驿站邮件" };
             title.text = names[(int)currentPage];
-            for (int i = 0; i < tabs.Count; i++) tabs[i].GetComponent<Image>().color = TabPages[i] == currentPage ? new Color(.77f, 1, .8f) : Color.white;
+            for (int i = 0; i < tabs.Count; i++) tabs[i].SetIsOnWithoutNotify(TabPages[i] == currentPage);
             unreadToggle.gameObject.SetActive(currentPage == JournalPage.Mail);
-            subtitle.rectTransform.sizeDelta = new Vector2(currentPage == JournalPage.Mail ? 590 : 745, 22);
             subtitle.text = currentPage == JournalPage.Mail ? "收件箱" : currentPage == JournalPage.Notices ? "封地政务与任务须知" :
                 currentPage == JournalPage.Daily ? s.DailyDate + " · 仅计今日载入后的净增加 · 达成记录保留 · 每项奖励每日可领一次" : "完成条件领取奖励 · 达成记录保留 · 每项奖励可领取一次";
             pageIndex = JournalService.ClampPage(pageIndex, Count, PageSize);

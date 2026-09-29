@@ -48,6 +48,62 @@ namespace 缺失界面.窗口4
             矩形.offsetMax = new Vector2(-留边, -留边);
         }
 
+        public static Transform 原改名窗口(Transform 参考)
+        {
+            if (参考 == null || !参考.gameObject.scene.IsValid()) return null;
+            foreach (var 根 in 参考.gameObject.scene.GetRootGameObjects())
+                if (根.name == "将领改名界面") return 根.transform;
+            return null;
+        }
+
+        public InputField 原样输入(RectTransform 框, string 初始值, bool 整数, int 字数)
+        {
+            var 接收点击 = 框.gameObject.AddComponent<Image>();
+            接收点击.color = Color.clear;
+            接收点击.raycastTarget = true;
+            var 原窗口 = 原改名窗口(参考);
+            var 原皮肤 = 原窗口 != null ? 原窗口.Find("输入框布局") : null;
+            Image 中图 = null;
+            if (原皮肤 != null)
+            {
+                foreach (string 名 in new[] { "左", "中", "右" })
+                {
+                    var 原图 = 原皮肤.Find(名);
+                    var 图框 = 复制视觉(原图, 框);
+                    if (图框 == null) continue;
+                    图框.pivot = new Vector2(.5f, .5f);
+                    if (名 == "中")
+                    {
+                        图框.anchorMin = new Vector2(0, .5f);
+                        图框.anchorMax = new Vector2(1, .5f);
+                        图框.sizeDelta = new Vector2(-62, 26);
+                        图框.anchoredPosition = Vector2.zero;
+                        中图 = 图框.GetComponent<Image>();
+                    }
+                    else
+                    {
+                        图框.anchorMin = 图框.anchorMax = new Vector2(名 == "左" ? 0 : 1, .5f);
+                        图框.sizeDelta = new Vector2(31, 26);
+                        图框.anchoredPosition = new Vector2(名 == "左" ? 15.5f : -15.5f, 0);
+                    }
+                }
+            }
+            var 输入 = 框.gameObject.AddComponent<InputField>();
+            输入.targetGraphic = 中图 != null ? 中图 : 接收点击;
+            var 字 = 文本(框, "输入文字", "", Vector2.zero, Vector2.zero, 16);
+            拉伸(字.rectTransform);
+            字.rectTransform.offsetMin = new Vector2(8, 0);
+            字.rectTransform.offsetMax = new Vector2(-8, 0);
+            var 原字 = 原窗口 != null ? 原窗口.Find("原名字").GetComponent<Text>() : null;
+            if (原字 != null) { 字.font = 原字.font; 字.color = 原字.color; }
+            输入.textComponent = 字;
+            输入.contentType = 整数 ? InputField.ContentType.IntegerNumber : InputField.ContentType.Standard;
+            输入.characterLimit = 字数;
+            原界面文字样式.单行输入(字, null, TextAnchor.MiddleLeft, 16);
+            输入.SetTextWithoutNotify(初始值 ?? "");
+            return 输入;
+        }
+
         public RectTransform 复制视觉(Transform 来源, Transform 父级, bool 包含按钮图像 = false)
         {
             if (来源 == null || (!包含按钮图像 && 来源.GetComponent<Button>() != null) || 来源.GetComponent<Text>() != null) return null;
@@ -297,7 +353,12 @@ namespace 缺失界面.窗口4
             清空();
             if (构造内容 != null) 构造内容(this);
             LayoutRebuilder.ForceRebuildLayoutImmediate(内容);
-            foreach (var 字 in GetComponentsInChildren<Text>(true)) 军事界面样式.限定文本(字);
+            foreach (var 字 in GetComponentsInChildren<Text>(true))
+            {
+                // 滚动区中的正文由布局组件撑高，不能把规则永久改成省略号。
+                if (字.transform.IsChildOf(内容) && (字.name == "说明文本" || 字.name == "详情")) continue;
+                军事界面样式.限定文本(字);
+            }
             滚动.verticalNormalizedPosition = 1;
         }
         public void 清空()
@@ -323,28 +384,70 @@ namespace 缺失界面.窗口4
         public Text 说明(string 文案, float 高度 = 60, int 字号 = 15)
         {
             var 行 = 创建行("说明", 高度);
+            var 行尺寸 = 行.GetComponent<LayoutElement>();
+            行尺寸.minHeight = 高度;
+            行尺寸.preferredHeight = -1;
+            var 排版 = 行.gameObject.AddComponent<VerticalLayoutGroup>();
+            排版.padding = new RectOffset(3, 3, 0, 0);
+            排版.childAlignment = TextAnchor.MiddleLeft;
+            排版.childControlWidth = 排版.childControlHeight = true;
+            排版.childForceExpandWidth = true;
+            排版.childForceExpandHeight = false;
             var 字 = 样式.文本(行, "说明文本", 文案, new Vector2(590, 高度), Vector2.zero, 字号);
+            字.verticalOverflow = VerticalWrapMode.Overflow;
             return 字;
         }
         public Button 操作行(string 名称, string 说明, string 动作, Action 点击, bool 可用 = true, Sprite 图标 = null)
         {
             var 行 = 创建行(名称, 80);
-            float 左 = 图标 != null ? -208 : -260;
             float 宽 = 图标 != null ? 356 : 432;
+            var 行尺寸 = 行.GetComponent<LayoutElement>();
+            行尺寸.minHeight = 80;
+            行尺寸.preferredHeight = -1;
+            var 排版 = 行.gameObject.AddComponent<HorizontalLayoutGroup>();
+            排版.padding = new RectOffset(图标 != null ? 8 : 38, 10, 0, 0);
+            排版.childAlignment = TextAnchor.MiddleLeft;
+            排版.childControlWidth = 排版.childControlHeight = true;
+            排版.childForceExpandWidth = 排版.childForceExpandHeight = false;
             if (图标 != null)
             {
-                var 图框 = 军事界面样式.矩形("图标", 行, new Vector2(48, 48), new Vector2(-266, 0));
+                var 图框 = 军事界面样式.矩形("图标", 行, new Vector2(48, 48), Vector2.zero);
+                var 图尺寸 = 图框.gameObject.AddComponent<LayoutElement>();
+                图尺寸.minWidth = 图尺寸.preferredWidth = 48;
+                图尺寸.minHeight = 图尺寸.preferredHeight = 48;
                 var 图 = 图框.gameObject.AddComponent<Image>();
                 图.sprite = 图标;
                 图.preserveAspect = true;
                 图.raycastTarget = false;
+                间隔(行, 34);
             }
-            var 标 = 样式.文本(行, "名称", 名称, new Vector2(宽, 24), new Vector2(左 + 宽 / 2, 24), 16);
+            var 文案框 = 军事界面样式.矩形("文案", 行, new Vector2(宽, 76), Vector2.zero);
+            var 文案尺寸 = 文案框.gameObject.AddComponent<LayoutElement>();
+            文案尺寸.minWidth = 文案尺寸.preferredWidth = 宽;
+            var 纵排 = 文案框.gameObject.AddComponent<VerticalLayoutGroup>();
+            纵排.childAlignment = TextAnchor.MiddleLeft;
+            纵排.childControlWidth = 纵排.childControlHeight = true;
+            纵排.childForceExpandWidth = true;
+            纵排.childForceExpandHeight = false;
+            var 标 = 样式.文本(文案框, "名称", 名称, new Vector2(宽, 24), Vector2.zero, 16);
+            标.gameObject.AddComponent<LayoutElement>().preferredHeight = 24;
             标.color = 样式.金色;
-            样式.文本(行, "详情", 说明, new Vector2(宽, 52), new Vector2(左 + 宽 / 2, -13), 13);
-            var 按 = 样式.按钮(行, 动作, new Vector2(100, 34), new Vector2(238, 0), 点击);
+            var 详情 = 样式.文本(文案框, "详情", 说明, new Vector2(宽, 52), Vector2.zero, 13);
+            详情.verticalOverflow = VerticalWrapMode.Overflow;
+            详情.gameObject.AddComponent<LayoutElement>().minHeight = 52;
+            间隔(行, 图标 != null ? 40 : 16);
+            var 按 = 样式.按钮(行, 动作, new Vector2(100, 34), Vector2.zero, 点击);
+            var 按尺寸 = 按.gameObject.AddComponent<LayoutElement>();
+            按尺寸.minWidth = 按尺寸.preferredWidth = 100;
+            按尺寸.minHeight = 按尺寸.preferredHeight = 34;
             按.interactable = 可用;
             return 按;
+        }
+        private static void 间隔(Transform 父级, float 宽度)
+        {
+            var 空 = 军事界面样式.矩形("间隔", 父级, new Vector2(宽度, 0), Vector2.zero);
+            var 尺寸 = 空.gameObject.AddComponent<LayoutElement>();
+            尺寸.minWidth = 尺寸.preferredWidth = 宽度;
         }
         public Button 数据行(string 名称, string 数值, string 动作, Action 点击, bool 可用 = true)
         {
@@ -361,13 +464,7 @@ namespace 缺失界面.窗口4
             var 行 = 创建行("输入区域", 40);
             样式.文本(行, "输入标签", 提示, new Vector2(206, 38), new Vector2(-182, 0), 15);
             var 框 = 军事界面样式.矩形("输入框", 行, new Vector2(354, 38), new Vector2(108, 0));
-            框.gameObject.AddComponent<Image>().color = new Color(0.08f, 0.22f, 0.19f);
-            var 输入 = 框.gameObject.AddComponent<InputField>();
-            var 字 = 样式.文本(框, "输入文字", "", new Vector2(330, 34), Vector2.zero, 16);
-            输入.textComponent = 字;
-            输入.contentType = 整数 ? InputField.ContentType.IntegerNumber : InputField.ContentType.Standard;
-            输入.characterLimit = 整数 ? 9 : 40;
-            输入.text = 初始值;
+            var 输入 = 样式.原样输入(框, 初始值, 整数, 整数 ? 9 : 40);
             if (改变 != null) 输入.onEndEdit.AddListener(v => 改变(v));
             return 输入;
         }

@@ -12,6 +12,8 @@ public class 兵营脚本 : MonoBehaviour
     public 调整数量脚本 调整招募数量脚本对象;
     public int 第几个玩家, 第几个封地, 第几个建筑;
     public int 兵营类型 = 4;
+    private HorizontalLayoutGroup 升级费用布局;
+    private Text 升级费用文字;
     public void 刷新显示()
     {
         var b = FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑);
@@ -33,16 +35,16 @@ public class 兵营脚本 : MonoBehaviour
         int avatar = b.获取建筑头像索引();
         if (头像对象 != null && avatar < portraits.Length) 头像对象.sprite = portraits[avatar];
         名字等级对象.text = b.获取建筑等级文本();
-        var upgradeLabel = transform.Find("兵营信息布局/建筑名称");
-        if (upgradeLabel != null)
+        if (升级费用文字 == null)
         {
-            var text = upgradeLabel.GetComponent<Text>();
-            if (text != null)
-            {
-                text.fontSize = 14;
-                string error = FiefActions.UpgradeError(f, 第几个建筑);
-                text.text = error == null ? "铜" + FiefActions.BuildingCost(b.等级, 2).ToString("0") + "/粮" + FiefActions.BuildingCost(b.等级, 4).ToString("0") : b.等级 >= 10 ? "兵营已满级" : "请先升级大厅";
-            }
+            var upgradeLabel = transform.Find("兵营信息布局/建筑名称");
+            if (upgradeLabel != null) 升级费用文字 = upgradeLabel.GetComponent<Text>();
+        }
+        if (升级费用文字 != null)
+        {
+            string error = FiefActions.UpgradeError(f, 第几个建筑);
+            升级费用文字.text = error == null ? "铜" + FiefActions.BuildingCost(b.等级, 2).ToString("0") + "/粮" + FiefActions.BuildingCost(b.等级, 4).ToString("0") : b.等级 >= 10 ? "兵营已满级" : "请先升级大厅";
+            布局升级费用(升级费用文字);
         }
         for (int i = 0; i < 4 && i < 兵种列表对象.transform.childCount; i++)
         {
@@ -67,6 +69,48 @@ public class 兵营脚本 : MonoBehaviour
             row.GetChild(14).GetComponent<Text>().text = u.占用人口.ToString();
         }
         调整数值列();
+    }
+
+    private void 布局升级费用(Text text)
+    {
+        var native = transform.parent == null ? null : transform.parent.Find("建造建筑界面UI/建筑信息布局/需要铜钱显示 (1)");
+        var source = native == null ? null : native.GetComponent<Text>();
+        if (source != null)
+        {
+            text.font = source.font; text.fontSize = source.fontSize; text.color = source.color;
+            text.fontStyle = source.fontStyle; text.material = source.material;
+        }
+        text.resizeTextForBestFit = false;
+        CityMapPresentation.SingleLineField(text);
+        if (升级费用布局 != null) return;
+        var parent = text.transform.parent as RectTransform;
+        var upgrade = parent == null ? null : parent.Find("升级建筑") as RectTransform;
+        if (parent == null || upgrade == null) return;
+        Rect original = CityMapPresentation.Bounds(text.rectTransform, parent);
+        // 原费用槽20.5高，含斜杠的18号字实际高22；在原头部留白中补足单行高度。
+        float priceHeight = text.cachedTextGeneratorForLayout.GetPreferredHeight("铜0123456789/粮",
+            text.GetGenerationSettings(Vector2.zero)) / text.pixelsPerUnit;
+        float height = Mathf.Max(original.height, Mathf.Ceil(text.preferredHeight), Mathf.Ceil(priceHeight));
+        original = new Rect(original.xMin, original.center.y - height * .5f, original.width, height);
+        Rect button = CityMapPresentation.Bounds(upgrade, parent);
+        var demolish = parent.Find("拆除建筑") as RectTransform;
+        if (demolish != null) button.xMin = Mathf.Min(button.xMin, CityMapPresentation.Bounds(demolish, parent).xMin);
+        // 原费用 Text 留在原路径。布局只管理这个槽，头像、名称和两个原按钮忽略此布局。
+        foreach (Transform child in parent)
+        {
+            if (child == text.transform) continue;
+            var element = child.GetComponent<LayoutElement>() ?? child.gameObject.AddComponent<LayoutElement>();
+            element.ignoreLayout = true;
+        }
+        var slot = text.GetComponent<LayoutElement>() ?? text.gameObject.AddComponent<LayoutElement>();
+        slot.minHeight = slot.preferredHeight = original.height;
+        升级费用布局 = parent.gameObject.AddComponent<HorizontalLayoutGroup>();
+        升级费用布局.childAlignment = TextAnchor.MiddleLeft;
+        升级费用布局.padding = new RectOffset(Mathf.CeilToInt(original.xMin - parent.rect.xMin),
+            Mathf.CeilToInt(parent.rect.xMax - button.xMin + text.fontSize * .5f),
+            Mathf.CeilToInt(parent.rect.yMax - original.yMax), Mathf.CeilToInt(original.yMin - parent.rect.yMin));
+        升级费用布局.childControlWidth = 升级费用布局.childControlHeight = true;
+        升级费用布局.childForceExpandWidth = true; 升级费用布局.childForceExpandHeight = false;
     }
 
     private void 调整数值列()
