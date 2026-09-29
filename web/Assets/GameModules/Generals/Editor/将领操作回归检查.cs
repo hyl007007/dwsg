@@ -97,7 +97,7 @@ public static class 将领操作回归检查
 				闲兵信息 existing = idle.Find(p => p.ID == 104); double previous = existing.数量;
 				伤兵信息 healed = new 伤兵信息 { ID = 104, 数量 = 1 }; 伤兵信息 other = new 伤兵信息 { ID = 201, 数量 = 3 };
 				wounded.Add(healed); wounded.Add(other); player.财产信息.铜钱 = 121; player.财产信息.粮食 = 350;
-				调整数量脚本 treatment = Find<调整数量脚本>(scene); treatment.调整类型 = 4; treatment.第几个玩家 = 99; treatment.第几个封地 = 0; treatment.兵种ID = 104;
+				调整数量脚本 treatment = Find<封地信息界面UI脚本>(scene).调整数量脚本对象; treatment.调整类型 = 4; treatment.第几个玩家 = 99; treatment.第几个封地 = 0; treatment.兵种ID = 104;
 				typeof(调整数量脚本).GetField("调整数量", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(treatment, 1.0); treatment.gameObject.SetActive(true); treatment.确认调整();
 				Assert(player.财产信息.铜钱 == 0 && player.财产信息.粮食 == 0 && existing.数量 == previous + 1, "原半价治疗扣费或闲兵不正确");
 				Assert(ReferenceEquals(idle, fief.闲兵信息表) && ReferenceEquals(wounded, fief.伤兵信息表) && ReferenceEquals(existing, idle.Find(p => p.ID == 104)), "原兵力列表或条目被替换");
@@ -106,7 +106,7 @@ public static class 将领操作回归检查
 			check("原治疗确认余额不足无扣费退兵且面板保留", () => {
 				ready(0); 玩家数据 player = 全局变量.所有玩家数据表[0]; player.财产信息.铜钱 = 120; player.财产信息.粮食 = 350;
 				player.封地信息表[0].伤兵信息表.Add(new 伤兵信息 { ID = 104, 数量 = 1 });
-				调整数量脚本 treatment = Find<调整数量脚本>(scene); treatment.调整类型 = 4; treatment.第几个封地 = 0; treatment.兵种ID = 104;
+				调整数量脚本 treatment = Find<封地信息界面UI脚本>(scene).调整数量脚本对象; treatment.调整类型 = 4; treatment.第几个封地 = 0; treatment.兵种ID = 104;
 				typeof(调整数量脚本).GetField("调整数量", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(treatment, 1.0); treatment.gameObject.SetActive(true); string before = Snapshot(); treatment.确认调整();
 				Assert(before == Snapshot() && treatment.gameObject.activeSelf, "失败治疗改变原数据或关闭面板");
 			});
