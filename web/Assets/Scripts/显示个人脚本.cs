@@ -1,38 +1,38 @@
 using UnityEngine;
 using UnityEngine.UI;
+using 缺失界面.窗口2;
 
 public class 显示个人脚本 : MonoBehaviour
 {
-	public Text 战功显示;
+    public Text 战功显示;
+    public Text 贡献显示;
+    public Text 官职显示;
+    public Text 轮选剩余时间;
+    private float 下次刷新;
 
-	public Text 贡献显示;
+    private void OnEnable() { 下次刷新 = 0; 刷新显示(); }
 
-	public Text 官职显示;
+    public void 刷新显示()
+    {
+        if (Time.unscaledTime < 下次刷新) return;
+        var 数据 = NationDataSource.Current;
+        var 国家 = 数据.ReadNation(数据.OwnNationCode);
+        var 玩家 = 数据.ReadPlayer(数据.ActorId);
+        if (国家 != null && 玩家 != null)
+        {
+            战功显示.text = NationDataSource.Number(玩家.Merit);
+            贡献显示.text = NationDataSource.Number(玩家.Contribution);
+            官职显示.text = 玩家.Office;
+            轮选剩余时间.text = TIME.ToTimeFormat(国家.ElectionRemaining);
+        }
+        else
+        {
+            战功显示.text = 玩家 == null ? "0" : NationDataSource.Number(玩家.Merit);
+            贡献显示.text = 玩家 == null ? "0" : NationDataSource.Number(玩家.Contribution);
+            官职显示.text = "无国家"; 轮选剩余时间.text = "无轮选";
+        }
+        下次刷新 = Time.unscaledTime + 1;
+    }
 
-	public Text 轮选剩余时间;
-
-	private long 刷新计时 = TIME.getTime();
-
-	public void 刷新显示()
-	{
-		if (TIME.getTime() - 刷新计时 >= 1)
-		{
-			int 本机身份 = 全局变量.本机身份;
-			国家信息库类 国家信息库类 = 全局方法类.获取指定名字的国家(全局变量.所有玩家数据表[本机身份].基础信息.国家);
-			if (国家信息库类 != null)
-			{
-				战功显示.text = (全局变量.所有玩家数据表[本机身份].基础信息.战功.ToString() ?? "");
-				贡献显示.text = (全局变量.所有玩家数据表[本机身份].基础信息.贡献.ToString() ?? "");
-				官职显示.text = (全局变量.所有玩家数据表[本机身份].基础信息.官职.ToString() ?? "");
-				//long time = 国家信息库类.上次轮选时间 + 国家信息库类.轮选时间间隔 - TIME.getTime();
-				轮选剩余时间.text =TIME.ToTimeFormat(全局变量.领取倒计时); ;
-			}
-			刷新计时 = TIME.getTime();
-		}
-	}
-
-	private void FixedUpdate()
-	{
-		刷新显示();
-	}
+    private void Update() { 刷新显示(); }
 }

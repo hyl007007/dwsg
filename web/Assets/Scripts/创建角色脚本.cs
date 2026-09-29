@@ -106,6 +106,7 @@ public class 创建角色脚本 : MonoBehaviour
             玩家.基础信息.名字 = 原名字;
             return;
         }
+        界面扩展存档.新建世界();
         SceneManager.LoadScene(1);
     }
 

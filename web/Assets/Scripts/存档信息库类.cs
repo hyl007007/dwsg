@@ -9,6 +9,9 @@ public class 存档信息库类
 
 	public int 存档版本 = 1;
 
+	// 旧存档无此字段时初始化空扩展，保留原世界数据格式。
+	public 界面扩展存档数据 界面扩展;
+
 	public List<国家信息库类> 国家列表 = new List<国家信息库类>();
 
 	public List<城池信息库类> 城池列表 = new List<城池信息库类>();

@@ -1,47 +1,50 @@
 using UnityEngine;
 using UnityEngine.UI;
+using 缺失界面.窗口2;
 
 public class 显示概况脚本 : MonoBehaviour
 {
-	public Text 国家名字;
+    public Text 国家名字;
+    public Text 国王名字;
+    public Text 国都名字;
+    public Text 城池数量;
+    public Text 成员数量;
+    public Text 科技等级;
+    public Text 排名;
+    public Text 国家名字效率显示;
+    // A display context only: it never changes the local player or their nation.
+    public string 查看国号 { get; set; }
+    public string 当前查看国号 { get { return 查看国号 ?? NationDataSource.Current.OwnNationCode; } }
 
-	public Text 国王名字;
-
-	public Text 国都名字;
-
-	public Text 城池数量;
-
-	public Text 成员数量;
-
-	public Text 科技等级;
-
-	public Text 排名;
-
-	public Text 国家名字效率显示;
-
-    private void Start()
-    {
-		刷新显示();
-    }
+    private void OnEnable() { 刷新显示(); }
 
     public void 刷新显示()
-	{
-		int 本机身份 = 全局变量.本机身份;
-		国家信息库类 国家信息库类 = 全局方法类.获取指定名字的国家(全局变量.所有玩家数据表[本机身份].基础信息.国家);
-		if (国家信息库类 != null)
-		{
-			国家名字.text = 国家信息库类.国名 + "(" + 国家信息库类.国号 + ")";
-			int 国王 = 国家信息库类.国王;
-			国王名字.text = 全局变量.所有玩家数据表[国王].基础信息.名字;
-			城池信息库类 城池信息库类 = 所有城池界面脚本.根据坐标获取指定城池(国家信息库类.国都x, 国家信息库类.国都y);
-			国都名字.text = 城池信息库类.名称;
-			int count = 国家信息库类.城池列表.Count;
-			城池数量.text = count.ToString() + "/" + 全局变量.所有城池列表.Count.ToString();
-			成员数量.text = 国家信息库类.成员列表.Count.ToString();
-			科技等级.text = 国家信息库类.科技等级.ToString();
-			全局变量.所有国家列表.Sort((国家信息库类 x, 国家信息库类 y) => (x.城池列表.Count < y.城池列表.Count) ? 1 : (-1));
-			排名.text = (全局方法类.获取指定国家的索引(国家信息库类.国号) + 1).ToString();
-			国家名字效率显示.text = 国家信息库类.国名 + "(" + 国家信息库类.国号 + "," + 国家信息库类.获取国家规模名称() + ")    效率:" + 国家信息库类.效率.ToString() + "%";
+    {
+        var 数据 = NationDataSource.Current;
+        var 国家 = 数据.ReadNation(当前查看国号);
+        if (国家 != null)
+        {
+            国家名字.text = Short(国家.Name, 16) + "(" + Short(国家.Code, 3) + ")";
+            国王名字.text = 国家.King == null ? "无国王" : Short(国家.King.Name, 10);
+            国都名字.text = 国家.Capital == null ? "无有效国都" : Short(国家.Capital.Name, 10);
+            城池数量.text = 国家.Cities.Count + "/" + 全局变量.所有城池列表.Count;
+            成员数量.text = 国家.Members.Count.ToString();
+            科技等级.text = NationDataSource.Number(国家.Technology);
+            排名.text = 国家.Rank.ToString();
+            国家名字效率显示.text = Short(国家.Name, 14) + "(" + Short(国家.Code, 3) + "," + NationDataSource.Scale(国家.Cities.Count) + ")    效率:" + NationDataSource.Number(国家.Efficiency) + "%";
         }
-	}
+        else
+        {
+            国家名字.text = "未加入国家"; 国王名字.text = "无国王"; 国都名字.text = "无国都";
+            城池数量.text = "0"; 成员数量.text = "0"; 科技等级.text = "0"; 排名.text = "—";
+            国家名字效率显示.text = "返回换国入口加入有效国家";
+        }
+        foreach (Text 文本 in new[] { 国家名字, 国王名字, 国都名字, 城池数量, 成员数量, 科技等级, 排名, 国家名字效率显示 })
+        {
+            if (文本 == null) continue;
+            文本.supportRichText = false; 文本.horizontalOverflow = HorizontalWrapMode.Wrap; 文本.verticalOverflow = VerticalWrapMode.Truncate;
+            文本.resizeTextForBestFit = true; 文本.resizeTextMinSize = 10; 文本.resizeTextMaxSize = Mathf.Max(10, 文本.fontSize);
+        }
+    }
+    private static string Short(string value, int max) { value = value ?? ""; return value.Length <= max ? value : value.Substring(0, max) + "…"; }
 }

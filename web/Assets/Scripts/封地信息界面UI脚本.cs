@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using 缺失界面.窗口4;
 
 public class 封地信息界面UI脚本 : MonoBehaviour
 {
@@ -21,8 +22,36 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public 调整数量脚本 调整数量脚本对象;
 
+    private bool 封地有效()
+    {
+        var 玩家 = 军事缺口入口.当前玩家();
+        return 玩家 != null && 全局变量.第几个封地 >= 0 && 全局变量.第几个封地 < 玩家.封地信息表.Count;
+    }
+
+    public void 打开兵员分类(string 类型)
+    {
+        if (!封地有效()) return;
+        俘虏选中开关.SetIsOnWithoutNotify(类型 == "俘虏");
+        闲兵选中开关.SetIsOnWithoutNotify(类型 == "闲兵");
+        伤兵选中开关.SetIsOnWithoutNotify(类型 == "伤兵");
+        // 保留原场景同一Canvas内的分类布局与操作按钮。
+        俘虏选中开关.onValueChanged.Invoke(俘虏选中开关.isOn);
+        闲兵选中开关.onValueChanged.Invoke(闲兵选中开关.isOn);
+        伤兵选中开关.onValueChanged.Invoke(伤兵选中开关.isOn);
+        if (类型 == "俘虏") 显示俘虏列表();
+        else if (类型 == "伤兵") 显示伤兵列表();
+        else 显示闲兵列表();
+    }
+
+    private static void 注册列表按钮(GameObject 行, int 选中子级)
+    {
+        if (行.transform.childCount > 选中子级) 行.transform.GetChild(选中子级).gameObject.SetActive(false);
+        foreach (var 按 in 行.GetComponentsInChildren<Button>(true)) 界面窗口管理器.注册运行时按钮(按);
+    }
+
 	public void 显示闲兵列表()
 	{
+        if (!封地有效()) return;
 		if (!闲兵选中开关.isOn)
 		{
 			return;
@@ -51,6 +80,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 				gameObject = 闲兵列表对象.transform.GetChild(j).gameObject;
 			}
 			gameObject.SetActive(value: true);
+            注册列表按钮(gameObject, 15);
 			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(闲兵信息表[j].ID);
 			if (兵种属性库类 != null)
 			{
@@ -71,6 +101,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public void 显示伤兵列表()
 	{
+        if (!封地有效()) return;
 		if (!伤兵选中开关.isOn)
 		{
 			return;
@@ -99,6 +130,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 				gameObject = 伤兵列表对象.transform.GetChild(j).gameObject;
 			}
 			gameObject.SetActive(value: true);
+            注册列表按钮(gameObject, 15);
 			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(伤兵信息表[j].ID);
 			if (兵种属性库类 != null)
 			{
@@ -118,6 +150,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public void 显示俘虏列表()
 	{
+        if (!封地有效()) return;
 		if (!俘虏选中开关.isOn)
 		{
 			return;
@@ -134,8 +167,9 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 		for (int j = 0; j < count; j++)
 		{
 			childCount = 俘虏列表对象.transform.childCount;
-			返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].获取指定ID标识的将领索引(俘虏列表[j].将领ID标识);
-			if (返回将领索引.第几个封地 == -1)
+			if (俘虏列表[j].第几个玩家 < 0 || 俘虏列表[j].第几个玩家 >= 全局变量.所有玩家数据表.Count) continue;
+            返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].获取指定ID标识的将领索引(俘虏列表[j].将领ID标识);
+			if (返回将领索引 == null || 返回将领索引.第几个封地 < 0 || 返回将领索引.第几个将领 < 0)
 			{
 				continue;
 			}
@@ -152,6 +186,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			}
 			将领信息 将领信息 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领];
 			gameObject.SetActive(value: true);
+            注册列表按钮(gameObject, 6);
 			将领属性库类 将领属性库类 = 全局将领库.查询指定ID的将领数据(将领信息.将领属性.初始属性.ID);
 			if (将领属性库类 != null)
 			{
@@ -173,6 +208,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public void 劝降俘虏()
 	{
+        if (!封地有效()) return;
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		if (!(全局变量.所有玩家数据表[本机身份].获取将领总数() < 全局变量.所有玩家数据表[本机身份].基础信息.将领数上限))
@@ -181,18 +217,22 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			return;
 		}
 		int childCount = 俘虏列表对象.transform.childCount;
-		for (int i = 0; i < childCount; i++)
+		for (int i = childCount - 1; i >= 0; i--)
 		{
 			GameObject gameObject = 俘虏列表对象.transform.GetChild(i).gameObject;
 			if (!gameObject.activeSelf || !gameObject.transform.GetChild(6).gameObject.activeSelf)
 			{
 				continue;
 			}
-			俘虏列表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表;
-			int 第几个玩家 = 俘虏列表[i].第几个玩家;
+			if (全局变量.所有玩家数据表[本机身份].获取将领总数() >= 全局变量.所有玩家数据表[本机身份].基础信息.将领数上限) break;
+            俘虏列表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表;
+			if (i >= 俘虏列表.Count) continue;
+            int 第几个玩家 = 俘虏列表[i].第几个玩家;
+            if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) continue;
 			int 将领ID标识 = 俘虏列表[i].将领ID标识;
 			返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[i].第几个玩家].获取指定ID标识的将领索引(将领ID标识);
-			int 第几个封地2 = 返回将领索引.第几个封地;
+			if (返回将领索引 == null || 返回将领索引.第几个封地 < 0 || 返回将领索引.第几个将领 < 0) continue;
+            int 第几个封地2 = 返回将领索引.第几个封地;
 			int 第几个将领 = 返回将领索引.第几个将领;
 			int num = 100 - (int)全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地2].将领信息表[第几个将领].详细信息.忠诚;
 			int num2 = UnityEngine.Random.Range(1, 500);
@@ -232,10 +272,12 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			UnityEngine.Debug.Log("劝降失败,冷却" + num2.ToString() + "/" + num3.ToString());
 			全局变量.提示类.显示信息("劝降失败!");
 		}
+	    显示俘虏列表();
 	}
 
 	public void 解散闲兵()
 	{
+        if (!封地有效()) return;
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		List<闲兵信息> 闲兵信息表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].闲兵信息表;
@@ -255,13 +297,15 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			}
 			return;
 		}
-		全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].删除闲兵(闲兵信息表[num].ID, 闲兵信息表[num].数量);
+		if (num >= 闲兵信息表.Count) return;
+        全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].删除闲兵(闲兵信息表[num].ID, 闲兵信息表[num].数量);
 		全局变量.提示类.显示信息("已全部解散!");
 		显示闲兵列表();
 	}
 
 	public void 治疗伤兵()
 	{
+        if (!封地有效()) return;
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		List<伤兵信息> 伤兵信息表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].伤兵信息表;
@@ -281,7 +325,8 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			}
 			return;
 		}
-		调整数量脚本对象.调整类型 = 4;
+		if (num >= 伤兵信息表.Count) return;
+        调整数量脚本对象.调整类型 = 4;
 		调整数量脚本对象.第几个封地 = 第几个封地;
 		调整数量脚本对象.兵种ID = 伤兵信息表[num].ID;
 		调整数量脚本对象.兵种数量 = 伤兵信息表[num].数量;
@@ -291,6 +336,7 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public void 遣散伤兵()
 	{
+        if (!封地有效()) return;
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		List<伤兵信息> 伤兵信息表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].伤兵信息表;
@@ -310,31 +356,38 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			}
 			return;
 		}
-		全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].删除伤兵(伤兵信息表[num].ID, 伤兵信息表[num].数量);
+		if (num >= 伤兵信息表.Count) return;
+        全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].删除伤兵(伤兵信息表[num].ID, 伤兵信息表[num].数量);
+        显示伤兵列表();
 		全局变量.提示类.显示信息("已全部遣散!");
 	}
 
 	public void 释放俘虏()
 	{
+        if (!封地有效()) return;
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		int childCount = 俘虏列表对象.transform.childCount;
-		for (int i = 0; i < childCount; i++)
+		for (int i = childCount - 1; i >= 0; i--)
 		{
 			GameObject gameObject = 俘虏列表对象.transform.GetChild(i).gameObject;
 			if (gameObject.activeSelf && gameObject.transform.GetChild(6).gameObject.activeSelf)
 			{
 				俘虏列表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表;
-				int 第几个玩家 = 俘虏列表[i].第几个玩家;
+				if (i >= 俘虏列表.Count) continue;
+            int 第几个玩家 = 俘虏列表[i].第几个玩家;
+            if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) continue;
 				int 将领ID标识 = 俘虏列表[i].将领ID标识;
 				返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[i].第几个玩家].获取指定ID标识的将领索引(将领ID标识);
-				int 第几个封地2 = 返回将领索引.第几个封地;
+				if (返回将领索引 == null || 返回将领索引.第几个封地 < 0 || 返回将领索引.第几个将领 < 0) continue;
+            int 第几个封地2 = 返回将领索引.第几个封地;
 				int 第几个将领 = 返回将领索引.第几个将领;
 				全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地2].将领信息表[第几个将领].详细信息.状态 = 0.0;
 				全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表.RemoveAt(i);
 				UnityEngine.Debug.Log("释放成功!");
 			}
 		}
+	    显示俘虏列表();
 	}
 
 	public void 选中高亮()

@@ -175,6 +175,10 @@ public class 城池信息库类
 
 	public bool 新建封地(int 第几个玩家)
 	{
+		if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) return false;
+		var 玩家 = 全局变量.所有玩家数据表[第几个玩家];
+		if (玩家.封地信息表.Count >= 10 || 城池封地列表.Exists(f => f.第几个玩家 == 第几个玩家) ||
+			玩家.封地信息表.Exists(f => f.所在城池 != null && f.所在城池.x == 坐标x && f.所在城池.y == 坐标y)) return false;
 		int count = 城池封地列表.Count;
 		double num = 获取封地上限();
 		if ((double)count < num)
@@ -217,7 +221,7 @@ public class 城池信息库类
 	{
 		for (int i = 0; i < 城池封地列表.Count; i++)
 		{
-			if (城池封地列表[i].第几个玩家 == 0)
+			if (城池封地列表[i].第几个玩家 == 全局变量.本机身份)
 			{
 				return true;
 			}
@@ -229,7 +233,7 @@ public class 城池信息库类
 	{
 		for (int i = 0; i < 城池封地列表.Count; i++)
 		{
-			if (城池封地列表[i].第几个玩家 == 0)
+			if (城池封地列表[i].第几个玩家 == 全局变量.本机身份)
 			{
 				return 城池封地列表[i].封地ID标识;
 			}
@@ -239,7 +243,7 @@ public class 城池信息库类
 
 	public bool 是否属于我的城池()
 	{
-		if (城主 == 0)
+		if (城主 == 全局变量.本机身份)
 		{
 			return true;
 		}
@@ -268,15 +272,15 @@ public class 城池信息库类
 
 	public string 获取城主名字()
 	{
-		if (城主 == -1)
+		if (城主 < 0 || 城主 >= 全局变量.所有玩家数据表.Count)
 		{
 			return "无";
 		}
 		string text = "";
 		text = 全局变量.所有玩家数据表[城主].基础信息.名字;
-		if (全局变量.所有玩家数据表[城主].基础信息.称号名 != "无")
+		if (!string.IsNullOrEmpty(全局变量.所有玩家数据表[城主].基础信息.称号名) && 全局变量.所有玩家数据表[城主].基础信息.称号名 != "无")
 		{
-			text = text + "<" + 全局变量.所有玩家数据表[城主].基础信息.名字 + ">";
+			text = text + "<" + 全局变量.所有玩家数据表[城主].基础信息.称号名 + ">";
 		}
 		return text;
 	}
@@ -461,13 +465,12 @@ public class 城池信息库类
 
 	public int 获取城池身份()
 	{
+		if (城主 >= 0 && 城主 == 全局变量.本机身份) return 0;
+		if (string.IsNullOrEmpty(国家)) return 3;
+		if (全局变量.本机身份 < 0 || 全局变量.本机身份 >= 全局变量.所有玩家数据表.Count) return 1;
 		if (全局变量.所有玩家数据表[全局变量.本机身份].基础信息.国家 == 国家)
 		{
 			return 0;
-		}
-		if (国家 == "")
-		{
-			return 3;
 		}
 		return 1;
 	}

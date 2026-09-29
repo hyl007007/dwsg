@@ -1,7 +1,8 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using 缺失界面.窗口4;
 
 public class 将领编队 : MonoBehaviour
 {
@@ -40,6 +41,10 @@ public class 将领编队 : MonoBehaviour
 	public void 获取要显示的将领列表()
 	{
 		int 本机身份 = 全局变量.本机身份;
+        第几个玩家 = 本机身份;
+        var 玩家 = 军事缺口入口.当前玩家();
+        if (玩家 == null) { 要显示的将领列表.Clear(); return; }
+        if (显示第几个封地 >= 玩家.封地信息表.Count || 显示第几个封地 < -1) 显示第几个封地 = -1;
 		int num = 显示第几个封地;
 		要显示的将领列表.Clear();
 		选中列表第几个将领 = 0;
@@ -67,7 +72,7 @@ public class 将领编队 : MonoBehaviour
 		}
 		int count4 = 要显示的将领列表.Count;
 		第几页将领 = 0;
-		总页数 = Mathf.Ceil((float)count4 / 5f);
+		总页数 = Mathf.Max(1, Mathf.Ceil((float)count4 / 4f));
 		页数显示对象.text = (第几页将领 + 1).ToString() + "/" + 总页数.ToString();
 	}
 
@@ -231,9 +236,10 @@ public class 将领编队 : MonoBehaviour
 									int num = 0;
 									num = (选中列表第几个将领 = 第几页将领 * 4 + 列表第几个将领);
 									UnityEngine.Debug.Log("列表" + 列表第几个将领.ToString() + "将领" + 选中列表第几个将领.ToString() + "被单击");
-									int 第几个封地 = 要显示的将领列表[num].第几个封地;
+									if (num < 0 || num >= 要显示的将领列表.Count) return;
+								int 第几个封地 = 要显示的将领列表[num].第几个封地;
 									int 第几个将领 = 要显示的将领列表[num].第几个将领;
-									if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 != 0.0)
+									if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.状态 != 0 || 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 != 0.0)
 									{
 										return;
 									}
@@ -274,7 +280,8 @@ public class 将领编队 : MonoBehaviour
 									int num = 0;
 									int 第几页将领2 = 第几页将领;
 									num = 选中列表第几个将领;
-									int 第几个封地 = 要显示的将领列表[num].第几个封地;
+									if (num < 0 || num >= 要显示的将领列表.Count) return;
+								int 第几个封地 = 要显示的将领列表[num].第几个封地;
 									int 第几个将领 = 要显示的将领列表[num].第几个将领;
 									for (int i = 0; i < 5; i++)
 									{

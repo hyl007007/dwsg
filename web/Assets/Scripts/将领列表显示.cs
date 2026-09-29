@@ -3,10 +3,18 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using 缺失界面.窗口4;
+using System;
 
 public class 将领列表显示 : MonoBehaviour
 {
 	private int 第几个玩家;
+
+    private Coroutine 统帅刷新任务;
+    private Text 空列表提示;
+    private int 上次将领ID = -1;
+    private int 上次角色ID = -1;
+    private readonly System.Collections.Generic.Dictionary<GameObject, bool> 空列表隐藏对象 = new System.Collections.Generic.Dictionary<GameObject, bool>();
 
 	public int 显示第几个封地 = -1;
 
@@ -52,9 +60,95 @@ public class 将领列表显示 : MonoBehaviour
 
 	public 将领改名脚本 将领改名脚本对象;
 
-	private void Start()
-	{
-	}
+    private void Awake()
+    {
+        foreach (string 名 in new[] { "将领封地标题", "将领封地显示" })
+        {
+            var 框 = transform.Find("封地操作/" + 名) as RectTransform;
+            if (框 != null) 框.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(28, 框.rect.height));
+        }
+    }
+
+	private void OnEnable()
+    {
+        第几个玩家 = 全局变量.本机身份;
+        if (军事缺口入口.当前玩家() != null)
+        {
+            重置刷新将领列表();
+            if (上次角色ID == 第几个玩家 && 上次将领ID >= 0) 选中列表将领(上次将领ID);
+        }
+    }
+
+    private void OnDisable()
+    {
+        封地信息 封地; 将领信息 将;
+        上次将领ID = 尝试获取选中将领(out 封地, out 将) ? 将.ID : -1;
+        上次角色ID = 全局变量.本机身份;
+        if (统帅刷新任务 != null) StopCoroutine(统帅刷新任务);
+        统帅刷新任务 = null;
+    }
+
+    public bool 尝试获取选中将领(out 封地信息 封地, out 将领信息 将领)
+    {
+        封地 = null;
+        将领 = null;
+        var 玩家 = 军事缺口入口.当前玩家();
+        int 索引 = 获取选中将领索引();
+        if (玩家 == null || 索引 < 0 || 索引 >= 要显示的将领列表.Count) return false;
+        var 项 = 要显示的将领列表[索引];
+        if (项.第几个封地 < 0 || 项.第几个封地 >= 玩家.封地信息表.Count) return false;
+        封地 = 玩家.封地信息表[项.第几个封地];
+        if (项.第几个将领 < 0 || 项.第几个将领 >= 封地.将领信息表.Count) return false;
+        将领 = 封地.将领信息表[项.第几个将领];
+        return 将领 != null;
+    }
+
+    public void 选择指定将领(int ID)
+    {
+        第几个玩家 = 全局变量.本机身份;
+        显示第几个封地 = -1;
+        获取要显示的将领列表();
+        选中列表将领(ID);
+    }
+
+    private void 选中列表将领(int ID)
+    {
+        var 玩家 = 军事缺口入口.当前玩家();
+        if (玩家 == null) return;
+        int 号 = 要显示的将领列表.FindIndex(x => 玩家.封地信息表[x.第几个封地].将领信息表[x.第几个将领].ID == ID);
+        if (号 < 0) return;
+        第几页将领 = 号 / 5;
+        for (int i = 0; i < 将领列表对象.Count; i++)
+        {
+            var 开关 = 将领列表对象[i].GetComponent<Toggle>();
+            if (开关 != null) 开关.SetIsOnWithoutNotify(i == 号 % 5);
+            将领列表对象[i].transform.GetChild(0).gameObject.SetActive(i == 号 % 5);
+        }
+        刷新列表信息();
+        刷新将领属性信息();
+    }
+
+    private void 显示空状态(bool 空)
+    {
+        if (空列表提示 == null)
+        {
+            var 样式 = new 军事界面样式(transform);
+            var 详情框 = transform.Find("将领信息背景") as RectTransform;
+            空列表提示 = 样式.文本(详情框, "军事空将领提示", "尚未拥有将领。请到封地酒馆招募，再查看属性、修炼或配兵。", Vector2.zero, Vector2.zero, 18);
+            军事界面样式.拉伸(空列表提示.rectTransform, 16);
+            空列表提示.rectTransform.offsetMax = new Vector2(-16, -40);
+            空列表提示.alignment = TextAnchor.MiddleCenter;
+        }
+        空列表提示.gameObject.SetActive(空);
+        if (空 && 空列表隐藏对象.Count == 0)
+            foreach (var 对象 in new[] { 将领详情头像显示对象, 将领成长信息对象, 将领属性信息对象, 将领装备信息对象, 将领配兵信息对象, 将领培养信息对象 })
+                if (对象 != null) { 空列表隐藏对象[对象] = 对象.activeSelf; 对象.SetActive(false); }
+        if (!空)
+        {
+            foreach (var 项 in 空列表隐藏对象) if (项.Key != null) 项.Key.SetActive(项.Value);
+            空列表隐藏对象.Clear();
+        }
+    }
 
 	public void 默认显示全部封地将领()
 	{
@@ -298,7 +392,11 @@ public class 将领列表显示 : MonoBehaviour
 	public void 获取要显示的将领列表()
 	{
 		int 本机身份 = 全局变量.本机身份;
-		int num = 显示第几个封地;
+        第几个玩家 = 本机身份;
+        var 玩家 = 军事缺口入口.当前玩家();
+        if (玩家 == null) { 要显示的将领列表.Clear(); return; }
+        if (显示第几个封地 >= 玩家.封地信息表.Count || 显示第几个封地 < -1) 显示第几个封地 = -1;
+        int num = 显示第几个封地;
 		要显示的将领列表.Clear();
 		if (num != -1)
 		{
@@ -323,7 +421,7 @@ public class 将领列表显示 : MonoBehaviour
 			选择的封地显示对象.text = "全部";
 		}
 		int count4 = 要显示的将领列表.Count;
-		总页数 = Mathf.Ceil((float)count4 / 5f);
+		总页数 = Mathf.Max(1, Mathf.Ceil((float)count4 / 5f));
 		将领数量显示.text = "将领数" + 全局变量.所有玩家数据表[本机身份].获取将领总数().ToString() + "/" + 全局变量.所有玩家数据表[本机身份].基础信息.将领数上限.ToString();
 	}
 
@@ -419,12 +517,16 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 显示选中将领详细信息()
 	{
-		全局变量.所有玩家数据表[第几个玩家].计算最终属性();
+		第几个玩家 = 全局变量.本机身份;
+        if (军事缺口入口.当前玩家() == null) return;
+        军事本地规则.计算属性保留体力(全局变量.所有玩家数据表[第几个玩家]);
 		int num = 获取选中将领索引();
 		if (num == -1)
 		{
+            显示空状态(要显示的将领列表.Count == 0);
 			return;
 		}
+        显示空状态(false);
 		int 第几个封地 = 要显示的将领列表[num].第几个封地;
 		int 第几个将领 = 要显示的将领列表[num].第几个将领;
 		将领属性库类 将领属性库类 = 全局将领库.查询指定ID的将领数据(全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.初始属性.ID);
@@ -509,7 +611,8 @@ public class 将领列表显示 : MonoBehaviour
 				.text = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.最终属性.攻击.ToString();
 			将领属性信息对象.transform.GetChild(2).GetChild(24).GetComponent<Text>()
 				.text = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.最终属性.防御.ToString();
-			StartCoroutine(刷新统帅加成时间());
+			if (统帅刷新任务 != null) StopCoroutine(统帅刷新任务);
+            if (isActiveAndEnabled) 统帅刷新任务 = StartCoroutine(刷新统帅加成时间());
 		}
 		else if (将领装备信息对象.gameObject.activeSelf)
 		{
@@ -1025,96 +1128,32 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领补满配兵()
 	{
-		int index = 获取选中将领索引();
-		int 第几个封地 = 要显示的将领列表[index].第几个封地;
-		int 第几个将领 = 要显示的将领列表[index].第几个将领;
-		int count = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表.Count;
-		for (int i = 0; i < count; i++)
-		{
-			double 数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量;
-			if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID == (double)全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].ID)
-			{
-				double num = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.最终属性.统兵 - 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量;
-				if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 >= num)
-				{
-					全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 + num;
-					全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 - num;
-				}
-				else
-				{
-					全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 + 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量;
-					全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 = 0.0;
-				}
-			}
-		}
-	}
+        封地信息 封地; 将领信息 将;
+        if (!尝试获取选中将领(out 封地, out 将)) return;
+        int 兵种 = (int)将.将领配兵.ID;
+        if (兵种 <= 0) { 全局变量.提示类.显示信息("请先选择兵种。"); return; }
+        int 数量 = (int)Math.Floor(Math.Min(将.将领属性.最终属性.统兵, 将.将领配兵.数量 + 军事本地规则.闲兵数量(封地, 兵种)));
+        全局变量.提示类.显示信息(军事本地规则.配兵(军事缺口入口.当前玩家(), 封地, 将, 兵种, 数量).说明);
+    }
 
 	private void 将领指定配兵(int 点击第几个)
 	{
-		int num = 获取选中将领索引();
-		if (num == -1)
-		{
-			return;
-		}
-		int 第几个封地 = 要显示的将领列表[num].第几个封地;
-		int 第几个将领 = 要显示的将领列表[num].第几个将领;
-		int num2 = 第几页闲兵 * 6 + 点击第几个;
-		if (num2 >= 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表.Count)
-		{
-			return;
-		}
-		double num3 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].ID;
-		double 数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].数量;
-		if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID == num3)
-		{
-			将领补满配兵();
-			return;
-		}
-		将领解除配兵();
-		double 统兵 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.最终属性.统兵;
-		全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID = num3;
-		if (数量 >= 统兵)
-		{
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 = 统兵;
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].数量 - 统兵;
-		}
-		else
-		{
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 + 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].数量;
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[num2].数量 = 0.0;
-		}
-	}
+        封地信息 封地; 将领信息 将;
+        if (!尝试获取选中将领(out 封地, out 将)) return;
+        int 号 = 第几页闲兵 * 6 + 点击第几个;
+        if (号 < 0 || 号 >= 封地.闲兵信息表.Count) return;
+        int 兵种 = 封地.闲兵信息表[号].ID;
+        double 可用 = 军事本地规则.闲兵数量(封地, 兵种) + (将.将领配兵.ID == 兵种 ? 将.将领配兵.数量 : 0);
+        int 数量 = (int)Math.Floor(Math.Min(将.将领属性.最终属性.统兵, 可用));
+        全局变量.提示类.显示信息(军事本地规则.配兵(军事缺口入口.当前玩家(), 封地, 将, 兵种, 数量).说明);
+    }
 
 	private void 将领解除配兵()
 	{
-		int num = 获取选中将领索引();
-		if (num == -1)
-		{
-			return;
-		}
-		int 第几个封地 = 要显示的将领列表[num].第几个封地;
-		int 第几个将领 = 要显示的将领列表[num].第几个将领;
-		bool flag = false;
-		int count = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表.Count;
-		for (int i = 0; i < count; i++)
-		{
-			if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID == (double)全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].ID)
-			{
-				flag = true;
-				全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表[i].数量 + 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量;
-				break;
-			}
-		}
-		if (!flag)
-		{
-			闲兵信息 闲兵信息 = new 闲兵信息();
-			闲兵信息.ID = (int)全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID;
-			闲兵信息.数量 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量;
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].闲兵信息表.Add(闲兵信息);
-		}
-		全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.ID = 0.0;
-		全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领配兵.数量 = 0.0;
-	}
+        封地信息 封地; 将领信息 将;
+        if (!尝试获取选中将领(out 封地, out 将)) return;
+        全局变量.提示类.显示信息(军事本地规则.配兵(军事缺口入口.当前玩家(), 封地, 将, 0, 0).说明);
+    }
 
 	private void 将领修改培养次数(double 要修改的数量)
 	{
@@ -1238,7 +1277,7 @@ public class 将领列表显示 : MonoBehaviour
 
 	private IEnumerator 刷新统帅加成时间()
 	{
-		while (将领属性信息对象.gameObject.activeSelf)
+		while (isActiveAndEnabled && 将领属性信息对象.gameObject.activeInHierarchy)
 		{
 			int num = 获取选中将领索引();
 			if (num == -1)
@@ -1257,8 +1296,9 @@ public class 将领列表显示 : MonoBehaviour
 				将领属性信息对象.transform.GetChild(4).GetChild(1).GetComponent<Text>()
 					.text = TIME.ToTimeFormat(num2);
 			}
-			yield return null;
+			yield return new WaitForSecondsRealtime(1);
 		}
+        统帅刷新任务 = null;
 	}
 
 	private void 列表页数更新显示()

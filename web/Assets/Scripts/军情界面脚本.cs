@@ -42,7 +42,8 @@ public class 军情界面脚本 : MonoBehaviour
 	public void 显示军情列表()
 	{
 		int count = 全局变量.军情列表.Count;
-		总页数 = Mathf.Ceil((float)count / 5f);
+		总页数 = Mathf.Max(1, Mathf.Ceil((float)count / 5f));
+        第几页军情 = Mathf.Clamp(第几页军情, 0, (int)总页数 - 1);
 		int num = 0;
 		int num2 = 0;
 		num2 = 第几页军情 * 5;
@@ -51,7 +52,7 @@ public class 军情界面脚本 : MonoBehaviour
 		{
 			num = num2 + i;
 			军情列表.transform.GetChild(i).gameObject.SetActive(value: false);
-			if (num >= count)
+			if (num >= count || 全局变量.军情列表[num].队列将领列表 == null || 全局变量.军情列表[num].队列将领列表.Count == 0)
 			{
 				continue;
 			}
@@ -68,20 +69,26 @@ public class 军情界面脚本 : MonoBehaviour
 			else if (全局变量.军情列表[num].战场类型 == 1)
 			{
 				城池信息库类 城池信息库类 = 所有城池界面脚本.根据坐标获取指定城池(全局变量.军情列表[num].坐标x, 全局变量.军情列表[num].坐标y);
-				component.text = "【攻占】" + 全局变量.军情列表[num].队列将领列表[0].将领属性.初始属性.名字 + "攻占" + 城池信息库类.名称 + "(" + 全局变量.军情列表[num].坐标x.ToString() + "," + 全局变量.军情列表[num].坐标y.ToString() + ")";
+				if (城池信息库类 == null) continue;
+                component.text = "【攻占】" + 全局变量.军情列表[num].队列将领列表[0].将领属性.初始属性.名字 + "攻占" + 城池信息库类.名称 + "(" + 全局变量.军情列表[num].坐标x.ToString() + "," + 全局变量.军情列表[num].坐标y.ToString() + ")";
 			}
 			Text component2 = 军情列表.transform.GetChild(i).GetChild(2).GetComponent<Text>();
 			Text component3 = 军情列表.transform.GetChild(i).GetChild(3).GetComponent<Text>();
 			军情列表.transform.GetChild(i).GetChild(3).gameObject.SetActive(value: false);
 			军情列表.transform.GetChild(i).GetChild(4).gameObject.SetActive(value: false);
 			long time = TIME.getTime();
-			if (全局变量.军情列表[num].到达时间 <= time)
+			if (全局变量.军情列表[num].已进入战场)
 			{
 				component2.text = "状态:战斗中";
 				军情列表.transform.GetChild(i).GetChild(4).gameObject.SetActive(value: true);
 				continue;
 			}
-			component2.text = "状态:行军中";
+			if (全局变量.军情列表[num].到达时间 <= time)
+            {
+                component2.text = "状态:已到达，等待本地结算";
+                continue;
+            }
+            component2.text = "状态:行军中";
 			军情列表.transform.GetChild(i).GetChild(3).gameObject.SetActive(value: true);
 			long time2 = 全局变量.军情列表[num].到达时间 - time;
 			component3.text = "剩余时间:" + TIME.ToTimeFormat(time2);
@@ -98,6 +105,7 @@ public class 军情界面脚本 : MonoBehaviour
 			if (军情列表.transform.GetChild(i).gameObject.activeSelf && 军情列表.transform.GetChild(i).GetChild(5).gameObject.activeSelf)
 			{
 				num = num2 + i;
+                if (num >= 全局变量.军情列表.Count || !全局变量.军情列表[num].已进入战场) continue;
 				int num3 = 0;
 				foreach (Transform item in 战斗地图列表.transform)
 				{

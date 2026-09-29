@@ -99,24 +99,8 @@ public class 国家信息库类
 
 	public string 获取国家规模名称()
 	{
-		int count = 城池列表.Count;
-		if (count >= 15)
-		{
-			return "侯国";
-		}
-		if (count >= 100)
-		{
-			return "公国";
-		}
-		if (count >= 200)
-		{
-			return "王国";
-		}
-		if (count >= 300)
-		{
-			return "帝国";
-		}
-		return "小国";
+		// Check larger thresholds first; the old >=15 branch masked every larger country.
+		return 缺失界面.窗口2.NationDataSource.Scale(城池列表 == null ? 0 : 城池列表.Count);
 	}
 
 	public void 获取国家城池列表()

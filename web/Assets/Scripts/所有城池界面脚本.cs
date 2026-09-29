@@ -84,9 +84,11 @@ public class 所有城池界面脚本 : MonoBehaviour
 
 	public void 定位地图到指定位置(int x, int y)
 	{
+		if (滑动对象 == null || x < 1 || y < 1 || x > 地图W || y > 地图H) return;
 		float num = 0.0054f;
 		float num2 = 0.0222f;
 		滑动对象.normalizedPosition = new Vector2((float)x * num, 1f - (float)y * num2);
+		if (当前城池坐标显示 != null) 当前城池坐标显示.text = x + "," + y;
 	}
 
 	public static void 初始化城池列表()
@@ -232,22 +234,7 @@ public class 所有城池界面脚本 : MonoBehaviour
 
 	public static 城池信息库类 根据坐标获取指定城池(int 坐标x, int 坐标y)
 	{
-		int num = 0;
-		for (int i = 0; i < 地图H; i++)
-		{
-			for (int j = 0; j < 地图W; j++)
-			{
-				if (全局大地图库.大地图表[i, j] >= 2)
-				{
-					if (坐标x == j + 1 && 坐标y == i + 1)
-					{
-						return 全局变量.所有城池列表[num];
-					}
-					num++;
-				}
-			}
-		}
-		return null;
+		return 全局变量.所有城池列表.Find(城池 => 城池 != null && 城池.坐标x == 坐标x && 城池.坐标y == 坐标y);
 	}
 
 	public void 显示所有城池()
@@ -311,8 +298,9 @@ public class 所有城池界面脚本 : MonoBehaviour
 
 	public void 打开城池信息(int 第几个城池)
 	{
-		城池信息界面UI.SetActive(value: true);
+		if (城池信息界面UI == null || 第几个城池 < 0 || 第几个城池 >= 全局变量.所有城池列表.Count) return;
 		城池信息界面UI.GetComponent<城池信息显示脚本>().显示城池信息(第几个城池);
+		城池信息界面UI.SetActive(value: true);
 	}
 
 	public void 刷新所有城池()

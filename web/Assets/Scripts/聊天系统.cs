@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 // ================================================================
@@ -404,7 +405,7 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return "「系统」只能查看";
 		}
-		return "「" + 频道名称[(int)频道] + "」暂未开放发言";
+		return "离线：请在社交页选择对象；关系频道尚未连接服务器";
 	}
 
 	//消息统一进列表，超上限就顶掉最旧的
@@ -529,7 +530,11 @@ public class 聊天系统 : MonoBehaviour
 		{
 			目标 = 战斗部件;
 		}
-		正在输入 = (目标 != null);
+		// 社交页和其他 UGUI 输入框也需要让地图/战斗快捷键让出键盘。
+		InputField 当前输入 = null;
+		if (EventSystem.current != null && EventSystem.current.currentSelectedGameObject != null)
+			当前输入 = EventSystem.current.currentSelectedGameObject.GetComponent<InputField>();
+		正在输入 = (目标 != null) || (当前输入 != null && 当前输入.isFocused && 当前输入.gameObject.activeInHierarchy);
 		if (目标 == null)
 		{
 			return;
@@ -823,11 +828,11 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 建设置面板(面板部件 部件)
 	{
-		GameObject 面板 = 新建节点("聊天设置", 部件.面板.transform, new Vector2(240f, 146f), new Vector2(148f, 68f), Vector2.zero, Vector2.zero, Vector2.zero);
+		GameObject 面板 = 新建节点("聊天设置", 部件.面板.transform, new Vector2(240f, 190f), new Vector2(148f, 68f), Vector2.zero, Vector2.zero, Vector2.zero);
 		Image 底 = 面板.AddComponent<Image>();
 		底.color = new Color(0.055f, 0.078f, 0.063f, 0.98f);
 		底.raycastTarget = true;
-		加细边框(面板.transform, 240f, 146f, 金色线, 1f);
+		加细边框(面板.transform, 240f, 190f, 金色线, 1f);
 		Sprite 按钮底 = 取图("7992.dat", "7992.dat");
 		Button 播报条开关 = 建按钮(面板.transform, "播报条开关", 播报条文案(), 按钮底, new Vector2(224f, 36f), new Vector2(8f, -8f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
 		播报条开关.onClick.AddListener(切换播报条);
@@ -838,7 +843,9 @@ public class 聊天系统 : MonoBehaviour
 			已读序号 = 自增序号;
 			刷新未读红点();
 		});
-		Button 关闭按钮 = 建按钮(面板.transform, "关闭", "关 闭", 按钮底, new Vector2(224f, 36f), new Vector2(8f, -92f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		Button 社交按钮 = 建按钮(面板.transform, "好友社交", "好友 / 社交", 按钮底, new Vector2(224f, 36f), new Vector2(8f, -92f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		社交按钮.onClick.AddListener(delegate { 打开社交页("好友"); });
+		Button 关闭按钮 = 建按钮(面板.transform, "关闭", "关 闭", 按钮底, new Vector2(224f, 36f), new Vector2(8f, -134f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
 		关闭按钮.onClick.AddListener(delegate
 		{
 			面板.SetActive(value: false);
@@ -1007,6 +1014,12 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 切换频道(聊天频道 频道)
 	{
+		// 私聊及关系频道进入真实 UGUI 关系/会话页；不把离线草稿写入公共播报列表。
+		if (频道 == 聊天频道.私聊 || 频道 == 聊天频道.军团 || 频道 == 聊天频道.师徒 || 频道 == 聊天频道.结拜)
+		{
+			打开社交页(频道名称[(int)频道]);
+			return;
+		}
 		当前频道 = 频道;
 		PlayerPrefs.SetInt(频道存档键, (int)频道);
 		刷新战斗条();
@@ -1014,6 +1027,18 @@ public class 聊天系统 : MonoBehaviour
 		刷新输入行(战斗部件);
 		同步面板(世界部件);
 		同步面板(战斗部件);
+	}
+
+	private void 打开社交页(string 页面)
+	{
+		if (全局变量.主界面UI对象 != null && 全局变量.主界面UI对象.activeInHierarchy && Dwsg.Social.社交界面入口.打开(页面))
+		{
+			if (世界部件 != null && 世界部件.面板 != null) 世界部件.面板.SetActive(false);
+			if (战斗部件 != null && 战斗部件.面板 != null) 战斗部件.面板.SetActive(false);
+			return;
+		}
+		// 战斗进行时保留播报面板，返回世界后才能编辑关系。
+		发送(聊天频道.系统, "社交", "社交关系页需在世界/封地界面打开；当前网络未连接。");
 	}
 
 	private void 同步面板(面板部件 部件)
