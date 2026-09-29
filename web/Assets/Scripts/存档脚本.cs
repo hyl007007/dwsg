@@ -36,6 +36,7 @@ public class 存档脚本 : MonoBehaviour
                 全局变量.本机身份 < 0 || 数据.玩家列表.Count <= 全局变量.本机身份 ||
                 数据.玩家列表[全局变量.本机身份] == null || 数据.玩家列表[全局变量.本机身份].基础信息 == null)
                 return false;
+            TIME.TimeStampToDateTime(数据.存档时间);
             存档 = 数据;
             return true;
         }
