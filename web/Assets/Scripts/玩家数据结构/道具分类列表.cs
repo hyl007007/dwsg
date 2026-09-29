@@ -16,6 +16,14 @@ namespace 玩家数据结构
 
 		public List<道具信息> 任务道具列表 = new List<道具信息>();
 
+		public int 获取添加道具所需格数(string 名字, int 数量)
+		{
+			List<道具信息> list = 获取道具分类列表(名字);
+			if (list == null) return 0;
+			int num = 获取指定道具最小数量的索引(list, 名字);
+			return num == -1 || list[num].数量 + (double)数量 > 999.0 ? 1 : 0;
+		}
+
 		public void 添加道具(string 名字, int 数量)
 		{
 			List<道具信息> list = 获取道具分类列表(名字);
