@@ -7,6 +7,7 @@ using Dwsg.Server.Economy;
 using Dwsg.Server.World;
 using Dwsg.Server.Modules.Generals;
 using Dwsg.Server.Chat;
+using Dwsg.Server.Modules.Combat;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -45,16 +46,20 @@ if (store.Load(worldId) == null)
     GeneralsModule.EnsureMappings(imported);
     store.ImportWorld(imported);
 }
+WorldRoleRegistration.Initialize(store, worldId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 using var authentication = new PhpAuthentication(new Uri(authUrl, UriKind.Absolute));
 var leaseMs = 30000L;
 if (long.TryParse(Environment.GetEnvironmentVariable("DWSG_SESSION_LEASE_MS"), out var configuredLease) && configuredLease >= 1000 && configuredLease <= 300000)
     leaseMs = configuredLease;
 var sessions = new GameSessions(authentication, new AuthorizedWorldProjection(), LegacyWorldModule.CreatePlayer, worldId, leaseMs);
-var runtime = new WorldRuntime(store, sessions.Authorize, initializeEntities: GeneralsModule.EnsureMappings);
+var runtime = new WorldRuntime(store, sessions.Authorize, initializeEntities: GeneralsModule.EnsureMappings,
+    preparePlayer: ProductionModule.InitializePlayer);
 sessions.Runtime = runtime;
 runtime.Register(new EconomyModule());
+runtime.Register(new ProductionModule());
 runtime.Register(new GeneralsModule());
 runtime.Register(new ChatModule());
+runtime.Register(new CombatModule());
 runtime.Committed += sessions.Publish;
 var app = builder.Build();
 app.MapGet("/health", () => Results.Json(new { protocolVersion = 1, worldId }));

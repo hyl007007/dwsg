@@ -6,5 +6,6 @@
     <ProjectReference Include="../Modules/Economy/Dwsg.Economy.csproj" />
     <ProjectReference Include="../Modules/Generals/Dwsg.Generals.csproj" />
     <ProjectReference Include="../Modules/Chat/Dwsg.Chat.csproj" />
+    <ProjectReference Include="../Modules/Combat/Dwsg.Combat.csproj" />
   </ItemGroup>
 </Project>
