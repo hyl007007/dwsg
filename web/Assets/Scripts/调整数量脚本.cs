@@ -37,6 +37,10 @@ public class 调整数量脚本 : MonoBehaviour
 
 	private double 剩余人口;
 
+	private Newtonsoft.Json.Linq.JObject 市场报价;
+
+	private int 市场显示次数;
+
 	public void 滑条改变购买数量()
 	{
 		数量显示对象.text = 数量滑条对象.value.ToString();
@@ -45,6 +49,20 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 输入改变购买数量()
 	{
+		if (调整类型 >= 5 && 调整类型 <= 8)
+		{
+			float 数量;
+			if (!float.TryParse(输入数量对象.text, out 数量) || float.IsNaN(数量) || float.IsInfinity(数量) || 数量 <= 0)
+			{
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请输入有效的兑换数量");
+				return;
+			}
+			数量 = Mathf.Min(数量, 数量滑条对象.maxValue);
+			调整数量 = 数量;
+			数量显示对象.text = 数量.ToString();
+			数量滑条对象.value = 数量;
+			return;
+		}
 		if (输入数量对象.text != null && !(输入数量对象.text == ""))
 		{
 			float num = float.Parse(输入数量对象.text);
@@ -66,6 +84,12 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 显示说明文本()
 	{
+		if (调整类型 >= 5 && 调整类型 <= 8)
+		{
+			市场显示次数++;
+			刷新市场数量(true);
+			return;
+		}
 		if (调整类型 == 1)
 		{
 			已占人口 = 全局变量.所有玩家数据表[第几个玩家].获取已占用人口();
@@ -117,35 +141,34 @@ public class 调整数量脚本 : MonoBehaviour
 				数量滑条对象.maxValue = (float)兵种数量;
 				数量滑条对象.value = 数量滑条对象.maxValue;
 			}
-			else if (调整类型 == 5)
-			{
-				说明文本.text = "【现有资源】\r\n黄金:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金.ToString() + "\r\n白银:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.白银.ToString();
-				数量滑条对象.maxValue = (float)(全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 * 市场脚本对象.铜钱单价);
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 6)
-			{
-				说明文本.text = "【现有资源】\r\n黄金:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金.ToString() + "\r\n白银:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.白银.ToString();
-				数量滑条对象.maxValue = (float)(全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 * 市场脚本对象.粮食单价);
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 7)
-			{
-				说明文本.text = "【现有资源】\r\n铜钱:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱.ToString() + "\r\n粮食:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食.ToString();
-				数量滑条对象.maxValue = Mathf.Floor((float)(全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 * 2.5));
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 8)
-			{
-				说明文本.text = "【现有资源】\r\n铜钱:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱.ToString() + "\r\n粮食:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食.ToString();
-				数量滑条对象.maxValue = Mathf.Floor((float)(全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 * 0.3));
-				数量滑条对象.value = 0f;
-			}
 		}
 	}
 
 	public void 确认调整()
 	{
+		if (调整类型 >= 5 && 调整类型 <= 8)
+		{
+			if (Dwsg.Economy.MarketClient.Pending)
+			{
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在兑换，请稍候");
+				return;
+			}
+			int 本次显示 = 市场显示次数, 本次类型 = 调整类型;
+			说明文本.text += "\r\n正在兑换，请稍候";
+			Dwsg.Economy.MarketClient.Exchange(本次类型, 调整数量, 市场报价, result =>
+			{
+				if (this == null) return;
+				市场脚本对象.刷新显示();
+				if (本次显示 != 市场显示次数 || 本次类型 != 调整类型) return;
+				if (result.Code == Dwsg.Shared.GameCodes.Ok) base.gameObject.SetActive(value: false);
+				else
+				{
+					刷新市场数量(false, result.Message);
+					if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Message);
+				}
+			});
+			return;
+		}
 		if (调整类型 == 1)
 		{
 			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(兵种ID);
@@ -190,34 +213,23 @@ public class 调整数量脚本 : MonoBehaviour
 					base.gameObject.SetActive(value: false);
 				});
 			}
-			else if (调整类型 == 5)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 = 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 - (double)Mathf.Floor((float)(调整数量 / 市场脚本对象.铜钱单价));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 6)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 = 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 - (double)Mathf.Floor((float)(调整数量 / 市场脚本对象.粮食单价));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 7)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 - (double)Mathf.Floor((float)(调整数量 / 2.5));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 8)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 - (double)Mathf.Floor((float)(调整数量 / 0.3));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
+		}
+
+		private void 刷新市场数量(bool 重置, string 信息 = null)
+		{
+			第几个玩家 = 全局变量.本机身份;
+			市场报价 = Dwsg.Economy.MarketClient.GetQuote();
+			var 财产 = 全局变量.所有玩家数据表[第几个玩家].财产信息;
+			说明文本.text = 调整类型 == 5 || 调整类型 == 6
+				? "【现有资源】\r\n黄金:" + 财产.黄金 + "\r\n白银:" + 财产.白银
+				: "【现有资源】\r\n铜钱:" + 财产.铜钱 + "\r\n粮食:" + 财产.粮食;
+			if (市场报价 == null) 说明文本.text += "\r\n市场报价尚未就绪";
+			if (!string.IsNullOrEmpty(信息)) 说明文本.text += "\r\n" + 信息;
+			float 原数量 = (float)调整数量;
+			数量滑条对象.maxValue = (float)Dwsg.Economy.MarketClient.Maximum(市场报价, 调整类型);
+			数量滑条对象.value = 重置 ? 0f : Mathf.Clamp(原数量, 0f, 数量滑条对象.maxValue);
+			调整数量 = 数量滑条对象.value;
+			数量显示对象.text = 数量滑条对象.value.ToString();
 		}
 
 		public void 调整最大数量()

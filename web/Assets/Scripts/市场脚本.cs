@@ -32,14 +32,15 @@ public class 市场脚本 : MonoBehaviour
 	public void 刷新显示()
 	{
 		int 本机身份 = 全局变量.本机身份;
-		铜钱单价 = 全局变量.所有玩家数据表[本机身份].基础信息.等级 * 10f;
-		粮食单价 = 铜钱单价 * 3.0;
+		var 报价 = Dwsg.Economy.MarketClient.GetQuote();
+		铜钱单价 = Dwsg.Shared.Economy.MarketRules.Rate(报价, 5);
+		粮食单价 = Dwsg.Shared.Economy.MarketRules.Rate(报价, 6);
 		if (购买资源选项.isOn)
 		{
 			黄金数量.text = 全局变量.所有玩家数据表[本机身份].财产信息.黄金.ToString();
 			白银数量.text = 全局变量.所有玩家数据表[本机身份].财产信息.白银.ToString();
-			铜钱购买提示.text = "1黄金=" + 铜钱单价.ToString() + "铜钱";
-			粮食购买提示.text = "1黄金=" + 粮食单价.ToString() + "粮食";
+			铜钱购买提示.text = 报价 == null ? "正在获取市场报价" : "1黄金=" + 铜钱单价.ToString() + "铜钱";
+			粮食购买提示.text = 报价 == null ? "正在获取市场报价" : "1黄金=" + 粮食单价.ToString() + "粮食";
 		}
 		else if (转换资源选项.isOn)
 		{
@@ -50,28 +51,28 @@ public class 市场脚本 : MonoBehaviour
 
 	public void 黄金购买铜钱()
 	{
-		调整数量脚本对象.调整类型 = 5;
-		调整数量脚本对象.gameObject.SetActive(value: true);
-		调整数量脚本对象.显示说明文本();
+		显示资源兑换(5);
 	}
 
 	public void 黄金购买粮食()
 	{
-		调整数量脚本对象.调整类型 = 6;
-		调整数量脚本对象.gameObject.SetActive(value: true);
-		调整数量脚本对象.显示说明文本();
+		显示资源兑换(6);
 	}
 
 	public void 铜钱转换粮食()
 	{
-		调整数量脚本对象.调整类型 = 7;
-		调整数量脚本对象.gameObject.SetActive(value: true);
-		调整数量脚本对象.显示说明文本();
+		显示资源兑换(7);
 	}
 
 	public void 粮食转换铜钱()
 	{
-		调整数量脚本对象.调整类型 = 8;
+		显示资源兑换(8);
+	}
+
+	private void 显示资源兑换(int 类型)
+	{
+		调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
+		调整数量脚本对象.调整类型 = 类型;
 		调整数量脚本对象.gameObject.SetActive(value: true);
 		调整数量脚本对象.显示说明文本();
 	}
