@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Economy/Dwsg.Economy.csproj" />
+    <ProjectReference Include="../../Generals/Dwsg.Generals.csproj" />
+    <ProjectReference Include="../../../Runtime/Dwsg.Runtime.csproj" />
+    <ProjectReference Include="../../../Persistence/Dwsg.Persistence.csproj" />
+  </ItemGroup>
+</Project>
