@@ -21,6 +21,14 @@ namespace Dwsg.Network
         private static bool connecting, workerRunning, reconnect, forceFull;
         private static readonly Queue<PendingCommand> pending = new Queue<PendingCommand>();
         public static WorldSnapshot CurrentSnapshot { get; private set; }
+        public static int GetCityFiefCount(int legacyCityIndex)
+        {
+            var cities = CurrentSnapshot?.PublicWorld["城池列表"] as JArray;
+            if (cities != null && legacyCityIndex >= 0 && legacyCityIndex < cities.Count)
+                return cities[legacyCityIndex].Value<int>("封地数量");
+            return legacyCityIndex >= 0 && legacyCityIndex < 全局变量.所有城池列表.Count
+                ? 全局变量.所有城池列表[legacyCityIndex].城池封地列表.Count : 0;
+        }
         public static bool Enabled { get { return !string.IsNullOrWhiteSpace(Endpoint); } }
         public static bool Connected { get { return connectionId != null; } }
         public static bool HasRole { get { return CurrentSnapshot != null && !string.IsNullOrEmpty(CurrentSnapshot.PlayerId); } }
