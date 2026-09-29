@@ -48,7 +48,8 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
         var cities = new JArray();
         foreach (var original in ((JArray)state.Data["城池列表"]).Cast<JObject>())
         {
-            var item = Select(original, "名称", "坐标x", "坐标y", "规模", "国家", "天赋类型", "天赋加成", "税率", "图腾类型", "图腾加成", "公告");
+            var item = Select(original, "名称", "坐标x", "坐标y", "规模", "国家", "天赋类型", "天赋加成", "税率", "图腾类型", "图腾加成", "公告",
+                "城墙", "道路", "炮塔", "战功", "协防几率", "协防数量f", "协防数量m");
             item["城主"] = PlayerId(original["城主"]);
             item["封地数量"] = (original["城池封地列表"] as JArray)?.Count ?? 0;
             cities.Add(item);
@@ -58,7 +59,16 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
         foreach (var field in new[] { "商城商品", "商城配置版本", "道具配置", "山贼难度配置", "将领姓名配置" })
             if (state.Data[field] != null) world[field] = state.Data[field].DeepClone();
         if (state.Data["山贼列表"] is JArray bandits)
-            world["山贼列表"] = new JArray(bandits.Cast<JObject>().Select(b => Select(b, "坐标x", "坐标y", "等级", "难度")));
+            world["山贼列表"] = new JArray(bandits.Cast<JObject>().Select(b => {
+                var item = Select(b, "坐标x", "坐标y", "等级", "难度", "掉落宝物", "掉落宝箱", "掉落装备");
+                item["将领数据列表"] = new JArray(((JArray)b["将领数据列表"]).Cast<JObject>().Select(g => new JObject {
+                    ["ID"] = g["ID"]?.DeepClone(),
+                    ["将领配兵"] = Select((JObject)g["将领配兵"], "ID", "数量"),
+                    ["将领属性"] = new JObject {
+                        ["成长点数"] = Select((JObject)g["将领属性"]["成长点数"], "等级"),
+                        ["初始属性"] = Select((JObject)g["将领属性"]["初始属性"], "名字") } }));
+                return item;
+            }));
         var entities = new JObject();
         if (actor != null)
             foreach (var kind in new[] { "generals", "equipment", "fiefs" })
@@ -78,7 +88,8 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
             foreach (var entry in battles.Properties())
             {
                 var battle = (JObject)entry.Value;
-                publicMarches.Add(Select(battle, "BattleId", "X", "Y", "Phase", "ArrivalUtcMs", "PlayerId"));
+                if (!battle.Value<bool>("SettlementApplied"))
+                    publicMarches.Add(Select(battle, "BattleId", "X", "Y", "Phase", "ArrivalUtcMs", "PlayerId"));
                 if (actor != null && battle.Value<string>("PlayerId") == actor.PlayerId)
                 {
                     var own = (JObject)battle.DeepClone();

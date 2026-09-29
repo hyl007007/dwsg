@@ -43,8 +43,12 @@ namespace Dwsg.Network
                 foreach (JObject city in visible) city["城主"] = Index(indexes, city["城主"]);
                 ApplyValue(全局变量.所有城池列表, 全局变量.所有城池列表.GetType(), visible);
             }
-            int own;
-            if (snapshot.PlayerId != null && indexes.TryGetValue(snapshot.PlayerId, out own))
+            if (publicChanges["山贼列表"] is JArray bandits)
+                ApplyValue(全局变量.所有山贼数据列表, 全局变量.所有山贼数据列表.GetType(), bandits);
+            int own = -1;
+            var hasOwner = snapshot.PlayerId != null && indexes.TryGetValue(snapshot.PlayerId, out own);
+            if (!hasOwner) own = -1;
+            if (hasOwner)
             {
                 全局变量.本机身份 = own;
                 var changes = (JObject)privateChanges.DeepClone();
@@ -56,8 +60,28 @@ namespace Dwsg.Network
                     changes.Remove("背包装备列表");
                 }
                 ApplyValue(全局变量.所有玩家数据表[own], 全局变量.所有玩家数据表[own].GetType(), changes);
+                foreach (var fief in 全局变量.所有玩家数据表[own].封地信息表)
+                    foreach (var general in fief.将领信息表)
+                        if (general.详细信息 != null) general.详细信息.身份 = own;
             }
+            ApplyOwnFiefLinks(own);
             return true;
+        }
+        private static void ApplyOwnFiefLinks(int own)
+        {
+            foreach (var city in 全局变量.所有城池列表)
+            {
+                var updated = new List<封地索引>();
+                if (own >= 0)
+                    foreach (var fief in 全局变量.所有玩家数据表[own].封地信息表)
+                    {
+                        if (fief.所在城池 == null || fief.所在城池.x != city.坐标x || fief.所在城池.y != city.坐标y) continue;
+                        var link = city.城池封地列表.Find(item => item.第几个玩家 == own && item.封地ID标识 == fief.ID);
+                        updated.Add(link ?? new 封地索引(own, fief.ID));
+                    }
+                city.城池封地列表.Clear();
+                city.城池封地列表.AddRange(updated);
+            }
         }
         private static void ApplyEquipment(object backpack, JObject values, JObject mappings, string owner)
         {
@@ -99,7 +123,15 @@ namespace Dwsg.Network
             {
                 var list = (IList)(existing ?? Activator.CreateInstance(type));
                 var itemType = type.GetGenericArguments()[0];
-                var useIdentity = itemType.Name == "将领信息" || itemType.Name == "封地信息" || itemType.Name == "玩家数据";
+                var useIdentity = itemType.Name == "将领信息" || itemType.Name == "封地信息" || itemType.Name == "玩家数据" || itemType.Name == "山贼属性信息";
+                var incomingKeys = new HashSet<string>(StringComparer.Ordinal);
+                if (useIdentity)
+                    foreach (var item in array)
+                    {
+                        var key = Identity(item, itemType);
+                        // Original bandit squads deliberately reuse ID 0; retain their distinct positional objects.
+                        if (key == null || !incomingKeys.Add(key)) { useIdentity = false; break; }
+                    }
                 var identities = new Dictionary<string, object>(StringComparer.Ordinal);
                 foreach (var item in list)
                 {
@@ -109,7 +141,7 @@ namespace Dwsg.Network
                 var items = new List<object>();
                 for (var i = 0; i < array.Count; i++)
                 {
-                    var key = useIdentity ? Identity(array[i]) : null;
+                    var key = useIdentity ? Identity(array[i], itemType) : null;
                     object previous = null;
                     if (key != null) identities.TryGetValue(key, out previous);
                     else if (i < list.Count) previous = list[i];
@@ -133,9 +165,11 @@ namespace Dwsg.Network
             }
             return value.ToObject(type);
         }
-        private static string Identity(JToken value)
+        private static string Identity(JToken value, Type type)
         {
             var obj = value as JObject;
+            if (type.Name == "山贼属性信息" && obj?["坐标x"] != null && obj["坐标y"] != null)
+                return obj.Value<int>("坐标x").ToString(CultureInfo.InvariantCulture) + ":" + obj.Value<int>("坐标y").ToString(CultureInfo.InvariantCulture);
             var key = obj?["ID"] ?? obj?["基础信息"]?["ID"];
             return key != null && (key.Type == JTokenType.Integer || key.Type == JTokenType.Float)
                 ? key.Value<long>().ToString(CultureInfo.InvariantCulture) : null;
@@ -143,6 +177,9 @@ namespace Dwsg.Network
         private static string Identity(object value, Type type)
         {
             if (value == null) return null;
+            if (type.Name == "山贼属性信息")
+                return Convert.ToInt32(type.GetField("坐标x").GetValue(value)).ToString(CultureInfo.InvariantCulture) + ":" +
+                    Convert.ToInt32(type.GetField("坐标y").GetValue(value)).ToString(CultureInfo.InvariantCulture);
             var field = type.GetField("ID");
             if (field != null) return Convert.ToInt64(field.GetValue(value)).ToString(CultureInfo.InvariantCulture);
             var basic = type.GetField("基础信息");
