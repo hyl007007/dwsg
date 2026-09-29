@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 
 namespace 玩家数据结构
@@ -27,33 +28,13 @@ namespace 玩家数据结构
 
 		public void 生成将领数据(将领属性库类 要生成的将领信息)
 		{
-			将领属性 = new 将领属性();
-			将领属性.初始属性 = new 初始属性();
-			将领属性.初始属性.ID = 要生成的将领信息.ID;
-			将领属性.初始属性.名字 = 要生成的将领信息.名字;
-			将领属性.初始属性.头像特效 = 要生成的将领信息.头像特效;
-			将领属性.初始属性.职业 = 要生成的将领信息.职业;
-			将领属性.初始属性.类型 = 要生成的将领信息.类型;
-			将领属性.初始属性.成长 = 要生成的将领信息.成长;
-			将领属性.初始属性.突围 = 要生成的将领信息.突围;
-			将领属性.初始属性.武力 = 要生成的将领信息.武力;
-			将领属性.初始属性.智力 = 要生成的将领信息.智力;
-			将领属性.初始属性.统帅 = 要生成的将领信息.统帅;
-			将领属性.初始属性.体力上限 = 100.0;
-			将领属性.初始属性.系列 = 要生成的将领信息.系列;
-			将领属性.成长点数 = new 成长点数();
-			将领属性.最终属性 = new 最终属性();
-			详细信息 = new 详细信息();
-			详细信息.忠诚 = 61.0;
-			详细信息.将领叛逃计时器 = 60.0;
-			将领装备表 = new List<将领装备>();
-			将领配兵 = new 将领配兵();
-			将领培养 = new 将领培养();
-			将领培养.保底上限 = 50.0;
-			将领培养.保底次数 = 0.0;
-			将领培养.培养次数 = 1.0;
+			将领信息 generated = Dwsg.Shared.Generals.GeneralCreationRules.Create(Newtonsoft.Json.Linq.JObject.FromObject(要生成的将领信息)).ToObject<将领信息>();
+			将领属性 = generated.将领属性;
+			详细信息 = generated.详细信息;
+			将领装备表 = generated.将领装备表;
+			将领配兵 = generated.将领配兵;
+			将领培养 = generated.将领培养;
 		}
-
 		public void 将领重置等级()
 		{
 			详细信息.经验 = 0.0;
@@ -67,60 +48,26 @@ namespace 玩家数据结构
 
 		public void 将领获取经验值(double 获取的经验值)
 		{
-			double num = 获取的经验值;
-			int num2 = 0;
-			while (true)
-			{
-				if (num2 < 99)
-				{
-					详细信息.升级需要经验 = 获取当前等级升级需要经验(将领属性.成长点数.等级);
-					double num3 = 详细信息.升级需要经验 - 详细信息.经验;
-					if (num3 >= 0.0)
-					{
-						if (!(num >= num3))
-						{
-							break;
-						}
-						if (将领属性.成长点数.等级 < 99.0)
-						{
-							num -= num3;
-							将领属性.成长点数.等级 = 将领属性.成长点数.等级 + 1.0;
-							将领属性.成长点数.总分配点数 = 将领属性.成长点数.总分配点数 + 1.0;
-							num2++;
-							continue;
-						}
-						详细信息.经验 = 详细信息.升级需要经验;
-						return;
-					}
-					return;
-				}
-				return;
-			}
-			详细信息.经验 += num;
-			if (详细信息.经验 > 详细信息.升级需要经验)
-			{
-				详细信息.经验 = 详细信息.升级需要经验;
-			}
+			JObject document = JObject.FromObject(this);
+			Dwsg.Shared.Generals.GeneralExperienceRules.Add(document, 获取的经验值);
+			将领属性.成长点数.等级 = document["将领属性"]["成长点数"]["等级"].Value<double>();
+			将领属性.成长点数.总分配点数 = document["将领属性"]["成长点数"]["总分配点数"].Value<double>();
+			详细信息.经验 = document["详细信息"]["经验"].Value<double>();
+			详细信息.升级需要经验 = document["详细信息"]["升级需要经验"].Value<double>();
 		}
-
 		public double 计算将领升级需要经验()
 		{
-			return 15.0 * 将领属性.成长点数.等级 * 将领属性.成长点数.等级 * 将领属性.成长点数.等级;
+			return Dwsg.Shared.Generals.GeneralExperienceRules.RequiredForLevel(将领属性.成长点数.等级);
 		}
 
 		public double 获取升级需要经验(double 等级)
 		{
-			double num = 0.0;
-			for (int i = 0; (double)i < 等级; i++)
-			{
-				num += (double)(15 * i * i * i);
-			}
-			return num;
+			return Dwsg.Shared.Generals.GeneralExperienceRules.TotalForLevel(等级);
 		}
 
 		public double 获取当前等级升级需要经验(double 等级)
 		{
-			return 15.0 * 等级 * 等级 * 等级;
+			return Dwsg.Shared.Generals.GeneralExperienceRules.RequiredForLevel(等级);
 		}
 	}
 }
