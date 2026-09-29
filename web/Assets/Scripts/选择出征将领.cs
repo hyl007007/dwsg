@@ -7,7 +7,7 @@ using 玩家数据结构;
 
 public class 选择出征将领 : MonoBehaviour
 {
-	private int 第几个玩家 = 全局变量.本机身份;
+	private int 第几个玩家 => 全局变量.本机身份;
 
 	private int 当前选中封地 = 全局变量.第几个封地;
 
@@ -39,6 +39,9 @@ public class 选择出征将领 : MonoBehaviour
 
 	private List<返回将领索引> 已选中将领列表 = new List<返回将领索引>();
 
+	private bool 正在提交山贼出征;
+	private bool 正在提交补兵;
+
 	public GameObject 战斗界面UI;
 
 	public 战斗系统 战斗系统对象;
@@ -57,6 +60,26 @@ public class 选择出征将领 : MonoBehaviour
 
 	public void 山贼_出征选中将领()
 	{
+		if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			Newtonsoft.Json.Linq.JArray 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[全局变量.本机身份].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后出征"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			正在提交山贼出征 = true;
+			Dwsg.Network.GameNetwork.SendCommand("combat.bandit.dispatch", new Newtonsoft.Json.Linq.JObject {
+				["x"] = 山贼坐标x, ["y"] = 山贼坐标y, ["generalIds"] = 将领ID列表 }, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");
+			});
+			return;
+		}
 		List<将领信息> list = new List<将领信息>();
 		int count = 已选中将领列表.Count;
 		for (int i = 0; i < count; i++)
@@ -506,6 +529,29 @@ public class 选择出征将领 : MonoBehaviour
 
 	private void 选中将领批量补兵()
 	{
+		if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			if (正在提交补兵 || 已选中将领列表.Count == 0) return;
+			Queue<string> 将领队列 = new Queue<string>();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后补兵"); return; }
+				将领队列.Enqueue(将领ID);
+			}
+			正在提交补兵 = true;
+			Action 补下一个 = null;
+			补下一个 = () => {
+				if (将领队列.Count == 0) { 正在提交补兵 = false; 显示编队将领列表(); return; }
+				Dwsg.Network.GameNetwork.SendCommand("generals.refillTroops", new Newtonsoft.Json.Linq.JObject { ["generalId"] = 将领队列.Dequeue() }, 结果 => {
+					if (结果.Code != Dwsg.Shared.GameCodes.Ok) 全局变量.提示类.显示信息(结果.Message);
+					补下一个();
+				});
+			};
+			补下一个();
+			return;
+		}
 		int count = 已选中将领列表.Count;
 		for (int i = 0; i < count; i++)
 		{

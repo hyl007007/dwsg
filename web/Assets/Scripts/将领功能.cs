@@ -502,6 +502,42 @@ public class 将领功能 : MonoBehaviour
 		StartCoroutine(自动战斗());
 	}
 
+	public void 应用服务器演出(Dwsg.Shared.Combat.CombatUnit 将领)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		本将领信息 = 将领.General.ToObject<将领信息>();
+		原本带兵 = 将领.OriginalQuantity;
+		更新显示统兵();
+		检查血量情况();
+		进度条位置对象.localPosition = new Vector2(将领.Progress, 0.36f);
+		if (将领.Remaining <= 0) 设置死亡状态();
+	}
+
+	public void 服务器攻击演出(bool 穿透)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		设置攻击状态();
+		Invoke("设置等待状态", 0.8f);
+		if (穿透) { 将领显示中特效(); Invoke("将领隐藏中特效", 0.3f); }
+	}
+
+	public void 服务器伤害演出(double 伤害, bool 格挡, bool 闪避)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		将领显示打击特效();
+		Invoke("将领隐藏打击特效", 0.3f);
+		if (格挡) { 将领显示挡特效(); Invoke("将领隐藏挡特效", 0.3f); }
+		if (闪避) { 将领显示闪特效(); Invoke("将领隐藏闪特效", 0.3f); }
+		foreach (GameObject 显示 in 战斗系统脚本对象.伤害显示缓存表)
+		{
+			if (显示.activeSelf) continue;
+			显示.SetActive(true);
+			显示.transform.position = new Vector2(transform.position.x, transform.position.y + UnityEngine.Random.Range(-2f, 2f) * 0.5f);
+			显示.transform.GetChild(0).GetChild(0).GetComponent<Text>().text = "-" + 伤害;
+			break;
+		}
+	}
+
 	private IEnumerator 自动战斗()
 	{
 		int 不攻击计次 = 0;

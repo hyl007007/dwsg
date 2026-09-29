@@ -40,6 +40,7 @@ namespace Dwsg.Shared.Combat
         public string LastTargetId;
         public double OriginalQuantity;
         public double Wounded;
+        public bool Retired;
         public float Progress;
         public bool WaitForTarget;
         public int WaitFrames;
@@ -73,6 +74,8 @@ namespace Dwsg.Shared.Combat
         public int X, Y;
         public long ArrivalUtcMs, NextTickUtcMs, StartedUtcMs, Frame;
         public string Phase = "marching";
+        public bool SettlementApplied;
+        public long SettledUtcMs;
         public ulong RandomState;
         public float AttackFormationX = -24.25f, DefenseFormationX = 24.25f;
         public int AttackEntered, DefenseEntered;
@@ -120,7 +123,7 @@ namespace Dwsg.Shared.Combat
                 Enter(battle.Defenders, ref battle.DefenseFormationX, ref battle.DefenseEntered, false);
                 foreach (CombatUnit actor in battle.Attackers.Concat(battle.Defenders))
                 {
-                    if (actor.Slot < 0 || actor.Remaining <= 0) continue;
+                    if (actor.Retired || actor.Slot < 0 || actor.Remaining <= 0) continue;
                     CombatProfile attackerProfile = profile(actor, utc);
                     actor.Progress = Math.Min(3f, actor.Progress + 战斗规则.攻击进度步长(actor.Troop.Value<float>("攻击速度"),
                         (float)CombatModifiers.SpeedTechnology(attackerProfile.MachineTechnology, actor.TroopClass) / 100f,
@@ -138,7 +141,8 @@ namespace Dwsg.Shared.Combat
                     actor.Progress = 0f;
                 }
                 if (battle.Defenders.Sum(unit => unit.Remaining) <= 0) battle.Phase = "won";
-                else if (battle.Attackers.Sum(unit => unit.Remaining) <= 0) battle.Phase = "lost";
+                else if (battle.Attackers.Where(unit => !unit.Retired).Sum(unit => unit.Remaining) <= 0)
+                    battle.Phase = battle.Attackers.All(unit => unit.Retired) ? "withdrawn" : "lost";
             }
             battle.RandomState = random.State;
         }
@@ -150,6 +154,7 @@ namespace Dwsg.Shared.Combat
             position = attacking ? Math.Min(destination, position + speed / 60f) : Math.Max(destination, position - speed / 60f);
             if (position != destination || entered >= units.Count) return;
             CombatUnit unit = units[entered];
+            if (unit.Retired) { entered++; return; }
             int[] priority = unit.TroopClass == 3 ? Middle : unit.TroopClass == 4 ? Rear : Front;
             // 一次原出征至多五将，前两列都不会占满；保留原对应兵种的坑位顺序。
             unit.Slot = priority.First(slot => units.All(other => other.Slot != slot));
@@ -191,7 +196,7 @@ namespace Dwsg.Shared.Combat
             {
                 for (int column = 0; column < 3; column++)
                 {
-                    var target = opponents.FirstOrDefault(unit => unit.Slot == column * 5 + row && unit.Remaining > 0);
+                    var target = opponents.FirstOrDefault(unit => !unit.Retired && unit.Slot == column * 5 + row && unit.Remaining > 0);
                     if (target == null) continue;
                     actor.LastTargetId = target.GeneralId;
                     var previousTarget = battle.Attackers.Concat(battle.Defenders).FirstOrDefault(unit => unit.GeneralId == target.LastTargetId);
