@@ -127,7 +127,14 @@ namespace Dwsg.Network
                         reconnect = true; connectionId = null; Notify(StatusChanged, result);
                         yield return new WaitForSecondsRealtime(2); continue;
                     }
-                    if (result.Code == GameCodes.Unauthenticated || result.Code == GameCodes.SessionReplaced)
+                    if (result.Code == GameCodes.Unauthenticated)
+                    {
+                        // Host 重启或连接租约过期也会使旧连接失效。
+                        // 通过 connect 重新核验 PHP 凭据；凭据确实失效时由 ConnectCore 停止重试。
+                        connectionId = null; reconnect = true;
+                        continue;
+                    }
+                    if (result.Code == GameCodes.SessionReplaced)
                     {
                         connectionId = null; reconnect = false; Notify(StatusChanged, result);
                         // Keep the exact pending request until this same player explicitly logs in again.

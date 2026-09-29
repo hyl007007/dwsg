@@ -11,6 +11,7 @@ public class 显示国库脚本 : MonoBehaviour
     private Button 捐献按钮;
     private string 打开时国家;
     private int 打开时角色 = -1;
+    private bool 正在捐献;
 
     private void OnEnable()
     {
@@ -19,7 +20,11 @@ public class 显示国库脚本 : MonoBehaviour
         打开时国家 = 概况 == null ? NationDataSource.Current.OwnNationCode : 概况.当前查看国号;
         安装捐献(); 捐献铜钱.text = 捐献粮食.text = ""; 操作反馈.text = "请输入要捐献的铜钱、粮食数量。";
         获取国家国库();
+        Dwsg.Network.GameNetwork.SnapshotReceived += 刷新联机国库;
     }
+
+    private void OnDisable() { Dwsg.Network.GameNetwork.SnapshotReceived -= 刷新联机国库; }
+    private void 刷新联机国库(Dwsg.Shared.WorldSnapshot 快照) { 获取国家国库(); }
 
     private void 安装捐献()
     {
@@ -84,7 +89,7 @@ public class 显示国库脚本 : MonoBehaviour
         if (捐献按钮 != null)
         {
             bool 可操作 = 国家 != null && 国家.Code == 数据.OwnNationCode && 打开时角色 == 数据.ActorId;
-            捐献按钮.interactable = 捐献铜钱.interactable = 捐献粮食.interactable = 可操作;
+            捐献按钮.interactable = 捐献铜钱.interactable = 捐献粮食.interactable = 可操作 && !正在捐献;
             var 玩家 = NationBasicActions.Current.Actor;
             可用资源.text = 玩家 == null || 玩家.财产信息 == null ? "当前角色资源未就绪。" :
                 "可用铜钱 " + NationUiFactory.Amount(玩家.财产信息.铜钱) + "\n可用粮食 " + NationUiFactory.Amount(玩家.财产信息.粮食);
@@ -95,11 +100,28 @@ public class 显示国库脚本 : MonoBehaviour
 
     public void 捐献国库()
     {
-        if (捐献铜钱 == null || 捐献粮食 == null) return;
-        var 结果 = NationBasicActions.Current.Donate(打开时国家, 捐献铜钱.text, 捐献粮食.text, 打开时角色);
-        操作反馈.text = 结果.Message;
-        if (结果.Success) 捐献铜钱.text = 捐献粮食.text = "";
+        if (正在捐献 || 捐献铜钱 == null || 捐献粮食 == null) return;
+        var 数据 = NationDataSource.Current;
+        if (打开时角色 != 数据.ActorId || 打开时国家 != 数据.OwnNationCode)
+        { 操作反馈.text = "请返回自己所属的国家操作。"; return; }
+        double 铜钱, 粮食;
+        if (!NationBasicActions.TryAmount(捐献铜钱.text, out 铜钱) || !NationBasicActions.TryAmount(捐献粮食.text, out 粮食) || (铜钱 == 0 && 粮食 == 0))
+        { 操作反馈.text = "请输入正整数捐献数量；未填写的资源按0计算。"; return; }
+        int 提交角色 = 打开时角色; string 提交国家 = 打开时国家;
+        正在捐献 = true;
+        操作反馈.text = "正在确认捐献…";
         获取国家国库();
+        NationClient.Donate(提交国家, (long)铜钱, (long)粮食, 结果 =>
+        {
+            if (this == null) return;
+            正在捐献 = false;
+            if (打开时角色 == 提交角色 && 打开时国家 == 提交国家)
+            {
+                操作反馈.text = 结果.Message;
+                if (结果.Code == Dwsg.Shared.GameCodes.Ok) 捐献铜钱.text = 捐献粮食.text = "";
+            }
+            获取国家国库();
+        });
     }
 
     public void 领取俸禄()

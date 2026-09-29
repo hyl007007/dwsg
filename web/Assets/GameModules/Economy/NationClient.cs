@@ -8,6 +8,29 @@ using 玩家数据结构;
 
 public static class NationClient
 {
+    public static void Donate(string tag, long copper, long grain, Action<GameResult> completed)
+    {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            Dwsg.Network.GameNetwork.SendCommand("nation.donate", new JObject { ["tag"] = tag, ["copper"] = copper, ["grain"] = grain }, completed);
+            return;
+        }
+        int identity = 全局变量.本机身份;
+        if (identity < 0 || identity >= 全局变量.所有玩家数据表.Count)
+        { completed(GameResult.Reject(GameCodes.RoleRequired, "原角色尚未进入游戏")); return; }
+        var world = OfflineWorld(identity);
+        var result = NationRules.Donate(world, "offline", tag, copper, grain);
+        if (result.Code == GameCodes.Ok)
+        {
+            var wallet = world.RequirePlayer("offline")["财产信息"];
+            var player = 全局变量.所有玩家数据表[identity];
+            var nation = 全局方法类.获取指定名字的国家(tag);
+            var current = TerritoryRules.Nation(world, tag);
+            player.财产信息.铜钱 = wallet.Value<double>("铜钱"); player.财产信息.粮食 = wallet.Value<double>("粮食");
+            nation.铜钱 = current.Value<double>("铜钱"); nation.粮食 = current.Value<double>("粮食");
+        }
+        completed(result);
+    }
     public static void ClaimSalary(Action<GameResult> completed)
     {
         int identity = 全局变量.本机身份;

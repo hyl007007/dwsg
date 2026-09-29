@@ -11,6 +11,41 @@ namespace Dwsg.Shared.Economy
         private static readonly string[] Materials = { "玉玺", "虎符", "印绶", "令牌" };
         private static readonly int[] Quantities = { 1, 10, 100, 1000 };
 
+        public static GameResult Donate(WorldState world, string playerId, string tag, long copper, long grain)
+        {
+            const long maximum = 9007199254740991L;
+            if (copper < 0 || grain < 0 || copper > maximum || grain > maximum || (copper == 0 && grain == 0))
+                return GameResult.Reject(GameCodes.InvalidArgument, "请输入正整数捐献数量；未填写的资源按0计算。");
+            JObject player; int identity;
+            try { player = world.RequirePlayer(playerId); identity = world.ResolvePlayerIndex(playerId); }
+            catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Unauthenticated, "当前角色数据未就绪。"); }
+            var basic = player["基础信息"] as JObject;
+            var nation = TerritoryRules.Nation(world, tag);
+            double index;
+            if (string.IsNullOrEmpty(tag) || nation == null || basic?.Value<string>("国家") != tag ||
+                !ShopRules.TryNumber(basic?["ID"], out index) || index != identity ||
+                (!(nation["成员列表"] is JArray members) || !members.Any(m => ShopRules.TryNumber(m, out index) && index == identity)) &&
+                (!ShopRules.TryNumber(nation["国王"], out index) || index != identity))
+                return GameResult.Reject(GameCodes.Forbidden, "只能向自己所属的国家捐献，请返回国家页。");
+            var wallet = player["财产信息"] as JObject;
+            string[] resources = { "铜钱", "粮食" };
+            long[] amounts = { copper, grain };
+            var personal = new double[2]; var national = new double[2];
+            for (int i = 0; i < resources.Length; i++)
+            {
+                if (wallet == null || !ShopRules.TryNumber(wallet[resources[i]], out personal[i]) || personal[i] < 0 || personal[i] > maximum ||
+                    !ShopRules.TryNumber(nation[resources[i]], out national[i]) || national[i] < 0 || national[i] > maximum - amounts[i])
+                    return GameResult.Reject(GameCodes.Unavailable, "资源数量异常，未扣除资源。");
+                if (personal[i] < amounts[i]) return GameResult.Reject(GameCodes.InsufficientFunds, "捐献失败，" + resources[i] + "不足。");
+            }
+            // 两种资源全部检查后一起更新，失败不得出现只扣一项的半笔捐献。
+            for (int i = 0; i < resources.Length; i++)
+            { wallet[resources[i]] = personal[i] - amounts[i]; nation[resources[i]] = national[i] + amounts[i]; }
+            var result = GameResult.Success(new JObject { ["tag"] = tag, ["copper"] = copper, ["grain"] = grain });
+            result.Message = "已捐献铜钱 " + copper + "、粮食 " + grain + "。";
+            return result;
+        }
+
         public static GameResult Create(WorldState candidate, string playerId, string name, string tag, string declaration, int x, int y, long utcSeconds)
         {
             // Membership, materials, fief migration and city ownership are one original-world transaction.

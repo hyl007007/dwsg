@@ -28,6 +28,15 @@ public class 登录脚本 : MonoBehaviour
         GameNetwork.Configure(游戏服务器地址, Environment.GetEnvironmentVariable("DWSG_WORLD_ID") ?? 联机世界);
     }
 
+    public void 准备登录入口()
+    {
+        // 原场景默认隐藏登录布局，因此不能依靠它的 Awake 选择联机模式。
+        GameNetwork.Configure(游戏服务器地址, Environment.GetEnvironmentVariable("DWSG_WORLD_ID") ?? 联机世界);
+        if (!GameNetwork.Enabled || 全局变量.是否为登录) return;
+        if (开始游戏 != null) 开始游戏.SetActive(false);
+        gameObject.SetActive(true);
+    }
+
     private void Start()
     {
         var 账号输入 = 账号.GetComponentInParent<InputField>();

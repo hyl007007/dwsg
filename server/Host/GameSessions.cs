@@ -158,7 +158,15 @@ public sealed class GameSessions
     {
         long sequenceLimit;
         lock (session.StreamGate) sequenceLimit = session.Sequence;
-        var snapshot = Runtime.Snapshot(session.Actor, projection);
+        WorldSnapshot snapshot;
+        try { snapshot = Runtime.Snapshot(session.Actor, projection); }
+        catch (UnauthorizedAccessException)
+        {
+            // PHP 核验与获取世界锁之间可能被另一连接替换，不能误报为可自动重试的服务故障。
+            return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新登录。"));
+        }
+        if (!IsCurrent(session))
+            return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新登录。"));
         var visibleMessages = new HashSet<string>((snapshot.PublicWorld["chatMessages"] as JArray ?? new JArray())
             .OfType<JObject>().Select(message => message.Value<string>("messageId")), StringComparer.Ordinal);
         lock (session.StreamGate)

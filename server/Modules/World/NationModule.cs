@@ -12,7 +12,7 @@ namespace Dwsg.Server.World
         private readonly Action<WorldState> initializeNation;
         public NationModule(Action<WorldState> initializeNation = null) { this.initializeNation = initializeNation; }
 
-        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "nation.create", "nation.join", "nation.research", "nation.salary" };
+        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "nation.create", "nation.join", "nation.research", "nation.salary", "nation.donate" };
 
         public static void InitializeSalary(WorldState candidate, string stablePlayerId, long serverUtcMs)
         {
@@ -34,6 +34,17 @@ namespace Dwsg.Server.World
             if (actor == null || actor.IsSystem || string.IsNullOrEmpty(actor.PlayerId) || actor.WorldId != candidate.WorldId || command.WorldId != candidate.WorldId ||
                 candidate.EntityMappings["humanPlayers"]?[actor.PlayerId]?.Type != JTokenType.Boolean || !candidate.EntityMappings["humanPlayers"].Value<bool>(actor.PlayerId))
                 return GameResult.Reject(GameCodes.Forbidden, "此连接没有可操作国家的真人角色");
+            if (command.Type == "nation.donate")
+            {
+                var donation = command.Payload; long copper, grain;
+                if (donation == null || donation.Properties().Any(p => p.Name != "tag" && p.Name != "copper" && p.Name != "grain") ||
+                    donation["tag"]?.Type != JTokenType.String || donation["copper"]?.Type != JTokenType.Integer || donation["grain"]?.Type != JTokenType.Integer ||
+                    !long.TryParse(donation["copper"].ToString(), out copper) || !long.TryParse(donation["grain"].ToString(), out grain))
+                    return GameResult.Reject(GameCodes.InvalidArgument, "捐献数量必须是整数。");
+                var donated = NationRules.Donate(candidate, actor.PlayerId, donation.Value<string>("tag"), copper, grain);
+                if (donated.Code == GameCodes.Ok) donated.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "nation.donated", ServerUtcMs = context.ServerUtcMs, Data = donated.Data });
+                return donated;
+            }
             if (command.Type == "nation.salary")
             {
                 var salary = command.Payload; int office;

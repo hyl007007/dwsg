@@ -7,6 +7,8 @@ public class 初始化脚本 : MonoBehaviour
     private void Start()
     {
         Application.targetFrameRate = 60;
+        foreach (var root in gameObject.scene.GetRootGameObjects())
+            foreach (var login in root.GetComponentsInChildren<登录脚本>(true)) login.准备登录入口();
         开始初始化();
         if (Dwsg.Network.GameNetwork.Enabled)
         {

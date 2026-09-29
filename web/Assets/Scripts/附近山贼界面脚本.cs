@@ -77,8 +77,13 @@ public class 附近山贼界面脚本 : MonoBehaviour
             bool 有数据 = i < 显示列表.Count;
             行.gameObject.SetActive(有数据);
             行.GetChild(5).gameObject.SetActive(有数据 && ReferenceEquals(显示列表[i], 选中));
-            var 勾选 = 行.GetComponent<Toggle>();
-            if (勾选 != null) 勾选.SetIsOnWithoutNotify(有数据 && ReferenceEquals(显示列表[i], 选中));
+            var 勾选 = 行.GetComponentInChildren<Toggle>(true);
+            if (勾选 != null)
+            {
+                // 原 Toggle 在“选中按钮”子物体；列表刷新后允许暂未选择任何目标。
+                if (勾选.group != null) 勾选.group.allowSwitchOff = true;
+                勾选.SetIsOnWithoutNotify(有数据 && ReferenceEquals(显示列表[i], 选中));
+            }
             if (!有数据) continue;
             var 贼 = 显示列表[i];
             int 头像号 = (int)贼.等级 - 1;
@@ -103,6 +108,7 @@ public class 附近山贼界面脚本 : MonoBehaviour
 
     public void 刷新显示选中山贼()
     {
+        选中 = null;
         for (int i = 0; i < 显示列表.Count; i++)
             if (山贼列表对象.transform.GetChild(i).GetChild(5).gameObject.activeSelf) { 选中 = 显示列表[i]; break; }
         显示选中详情();

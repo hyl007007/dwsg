@@ -10,6 +10,7 @@ public class 全局将领库
 	
 	public static void 初始化将领库()
 	{
+		属性表.Clear();
 		double num = 0.0;
 		将领属性库类 将领属性库类 = new 将领属性库类();
 		将领属性库类.快捷生成普通将领(1.0, "普通男将");
