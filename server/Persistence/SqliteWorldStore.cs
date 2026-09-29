@@ -219,6 +219,36 @@ public sealed class SqliteWorldStore : IWorldStore, IDisposable
         lock (gate) connection.Dispose();
     }
 
+    // Local administrator only. SQLite includes committed WAL pages in its online backup.
+    public void BackupTo(string destinationPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        string path = Path.GetFullPath(destinationPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        lock (gate)
+        {
+            // Reserve a new file so an existing backup or the live database is never overwritten.
+            using (File.Open(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+            try
+            {
+                using var backup = new SqliteConnection(new SqliteConnectionStringBuilder
+                {
+                    DataSource = path, Mode = SqliteOpenMode.ReadWrite, Pooling = false, DefaultTimeout = 10
+                }.ToString());
+                backup.Open();
+                using var sync = backup.CreateCommand();
+                sync.CommandText = "PRAGMA synchronous=FULL";
+                sync.ExecuteNonQuery();
+                connection.BackupDatabase(backup);
+            }
+            catch
+            {
+                File.Delete(path);
+                throw;
+            }
+        }
+    }
+
     private void Initialize()
     {
         int applicationId = Convert.ToInt32(Scalar("PRAGMA application_id"));

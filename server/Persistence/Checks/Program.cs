@@ -130,6 +130,44 @@ bool schemaRejected = false;
 try { using var invalid = new SqliteWorldStore(invalidSchema); } catch (InvalidDataException) { schemaRejected = true; }
 Check(schemaRejected, "unknown schema fails closed");
 
+var backupWorld = Original("online-backup");
+string liveDatabase = Database("backup-source"), backupDatabase = Database("backup-restored");
+var backupRole = new RoleBinding { WorldId = backupWorld.WorldId, AccountId = "backup-account", LegacyPlayerIndex = 0,
+    PlayerId = ((JObject)backupWorld.EntityMappings["players"]!).Properties().First().Name };
+using (var live = new SqliteWorldStore(liveDatabase))
+{
+    live.ImportWorld(backupWorld, new[] { backupRole });
+    // The real connection keeps the latest committed pages in WAL throughout backup and restore.
+    var native = (SqliteConnection)typeof(SqliteWorldStore).GetField("connection", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(live)!;
+    using (var checkpoint = native.CreateCommand())
+    {
+        checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA wal_autocheckpoint=0";
+        checkpoint.ExecuteNonQuery();
+    }
+    var committed = Change(backupWorld, "wal-receipt");
+    Check(live.Commit(committed).Code == GameCodes.Ok && new FileInfo(liveDatabase + "-wal").Length > 0, "online backup source contains committed WAL pages");
+    live.BackupTo(backupDatabase);
+    Check(native.State == System.Data.ConnectionState.Open, "hot backup keeps live source connection open");
+    using (var restored = new SqliteWorldStore(backupDatabase))
+    {
+        var recovered = restored.Load(backupWorld.WorldId)!;
+        Check(recovered.Revision == 1 && JToken.DeepEquals(recovered.Data, committed.Candidate.Data), "online backup restores whole original world and revision from WAL");
+        Check(JToken.DeepEquals(recovered.EntityMappings, backupWorld.EntityMappings), "online backup restores every stable player mapping");
+        Check(restored.ResolveRole(backupWorld.WorldId, backupRole.AccountId)!.PlayerId == backupRole.PlayerId, "online backup restores account role binding");
+        Check(restored.FindReceipt(backupWorld.WorldId, "server", "wal-receipt")!.ResultJson == committed.Receipt.ResultJson,
+            "online backup restores exact command receipt");
+        Check(restored.Commit(committed).Replayed && restored.Load(backupWorld.WorldId)!.Revision == 1, "restored receipt prevents duplicate commit");
+    }
+    Check(live.Commit(Change(live.Load(backupWorld.WorldId)!, "after-backup")).Code == GameCodes.Ok, "live world continues after hot backup");
+    using (var independent = new SqliteWorldStore(backupDatabase))
+        Check(independent.Load(backupWorld.WorldId)!.Revision == 1 && independent.FindReceipt(backupWorld.WorldId, "server", "after-backup") == null,
+            "later source commits do not change backup snapshot");
+    bool overwriteRejected = false, sourceOverwriteRejected = false;
+    try { live.BackupTo(backupDatabase); } catch (IOException) { overwriteRejected = true; }
+    try { live.BackupTo(liveDatabase); } catch (IOException) { sourceOverwriteRejected = true; }
+    Check(overwriteRejected && sourceOverwriteRejected && live.Load(backupWorld.WorldId)!.Revision == 2, "backup refuses to overwrite existing destination or live database");
+}
+
 Console.WriteLine($"PASS {assertions} persistence checks. Audit directory: {output}");
 
 string Database(string name) => Path.Combine(output, name + ".sqlite");
