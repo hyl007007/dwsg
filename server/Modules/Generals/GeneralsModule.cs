@@ -17,11 +17,11 @@ namespace Dwsg.Server.Modules.Generals
 
 	public sealed partial class GeneralsModule : IGameModule, IGameTickModule
 	{
-		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss" }).ToArray(); } }
+		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss", "generals.healWounded" }).ToArray(); } }
 
 		public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
 		{
-			if (command.Type == "generals.refreshTavern" || command.Type == "generals.recruit" || command.Type == "generals.dismiss")
+			if (command.Type == "generals.refreshTavern" || command.Type == "generals.recruit" || command.Type == "generals.dismiss" || command.Type == "generals.healWounded")
 				return ExecuteRoster(candidate, context, command);
 			if (context?.Actor == null || context.Actor.IsSystem || string.IsNullOrEmpty(context.Actor.PlayerId))
 				return GameResult.Reject(GameCodes.Unauthenticated, "请先登录角色");

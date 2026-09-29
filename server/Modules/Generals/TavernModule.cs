@@ -46,6 +46,7 @@ namespace Dwsg.Server.Modules.Generals
 				GameResult result;
 				if (command.Type == "generals.refreshTavern") result = RefreshTavern(working, playerId, player, command.Payload, context.ServerUtcMs);
 				else if (command.Type == "generals.recruit") result = Recruit(working, playerId, player, command.Payload, context.ServerUtcMs);
+				else if (command.Type == "generals.healWounded") result = HealWounded(working, playerId, player, command.Payload);
 				else result = Dismiss(working, playerId, player, command.Payload, context.ServerUtcMs);
 				if (result.Code != GameCodes.Ok) return result;
 				candidate.Data = working.Data;
