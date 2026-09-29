@@ -110,6 +110,24 @@ public static class 将领操作回归检查
 				typeof(调整数量脚本).GetField("调整数量", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(treatment, 1.0); treatment.gameObject.SetActive(true); string before = Snapshot(); treatment.确认调整();
 				Assert(before == Snapshot() && treatment.gameObject.activeSelf, "失败治疗改变原数据或关闭面板");
 			});
+			check("原三属性单点与全加守恒并保留成长点和军情引用", () => {
+				将领信息 general = ready(0); 成长点数 points = general.将领属性.成长点数; points.等级 = 10; points.总分配点数 = 9;
+				list.将领武力加点(); list.将领智力加点(); list.将领统帅加点(); list.将领武力全加();
+				Assert(points.武力分配点 == 7 && points.智力分配点 == 1 && points.统帅分配点 == 1 && points.总分配点数 == 0, "原单点/全加点数不守恒");
+				Assert(ReferenceEquals(points, general.将领属性.成长点数) && ReferenceEquals(general, 全局变量.军情列表[0].队列将领列表[0]), "原成长点或军情实例被更换");
+			});
+			check("原免费洗点归还等级减一点数且保留等级经验成长", () => {
+				将领信息 general = ready(0); 成长点数 points = general.将领属性.成长点数; points.等级 = 10; points.总分配点数 = 0; points.武力分配点 = 3; points.智力分配点 = 4; points.统帅分配点 = 2;
+				general.详细信息.经验 = 123; double growth = general.将领属性.初始属性.成长; 玩家数据 player = 全局变量.所有玩家数据表[0]; string inventory = JsonConvert.SerializeObject(player.背包道具列表); string money = JsonConvert.SerializeObject(player.财产信息);
+				list.将领洗点();
+				Assert(points.武力分配点 == 0 && points.智力分配点 == 0 && points.统帅分配点 == 0 && points.总分配点数 == 9 && points.等级 == 10 && general.详细信息.经验 == 123 && general.将领属性.初始属性.成长 == growth, "洗点改变原等级经验成长或归还点数错误");
+				Assert(inventory == JsonConvert.SerializeObject(player.背包道具列表) && money == JsonConvert.SerializeObject(player.财产信息), "原免费洗点被收取额外道具或货币");
+			});
+			check("原无可分配点或出征将领加点洗点拒绝后数据不变", () => {
+				ready(0); string before = Snapshot(); list.将领武力加点(); Assert(before == Snapshot(), "无点数仍消耗成负数");
+				将领信息 occupied = ready(1); occupied.将领属性.成长点数.等级 = 10; occupied.将领属性.成长点数.总分配点数 = 9; before = Snapshot();
+				list.将领智力全加(); list.将领洗点(); Assert(before == Snapshot(), "出征加点/洗点改变原军情或将领数据");
+			});
 		}
 		catch (Exception error) { failures++; Debug.LogError(error); }
 		Debug.Log("M04 原将领操作回归结束，失败数=" + failures);

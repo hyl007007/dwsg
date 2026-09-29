@@ -8,7 +8,8 @@ namespace Dwsg.Shared.Generals
 	{
 		public static readonly string[] CommandTypes = {
 			"generals.allocateTroops", "generals.refillTroops", "generals.releaseTroops", "generals.setFormation",
-			"generals.equip", "generals.unequip", "generals.equipBest", "generals.unequipAll"
+			"generals.equip", "generals.unequip", "generals.equipBest", "generals.unequipAll",
+			"generals.allocatePoints", "generals.resetPoints"
 		};
 
 		// 参数中的旧编号只供原客户端及已完成身份映射的服务端内部使用。
@@ -42,6 +43,12 @@ namespace Dwsg.Shared.Generals
 				case "generals.unequip": Unequip(candidate, generalId, LegacyGenerals.Integer(arguments["equipmentSlot"])); break;
 				case "generals.equipBest": EquipBest(candidate, general); break;
 				case "generals.unequipAll": for (int slot = 0; slot < 4; slot++) Unequip(candidate, generalId, slot); break;
+				case "generals.allocatePoints":
+					JToken attribute = arguments["attribute"];
+					GeneralPointRules.Allocate(general, attribute?.Type == JTokenType.String ? attribute.Value<string>() : null,
+						arguments["count"] == null ? (int?)null : LegacyGenerals.Integer(arguments["count"]));
+					break;
+				case "generals.resetPoints": GeneralPointRules.Reset(general); break;
 				default: throw new GeneralRuleException(GeneralFailure.InvalidArgument, "将领操作无效");
 			}
 			if (GeneralAttributeRules.Recalculate(candidate, utcSeconds)) throw new GeneralRuleException(GeneralFailure.InvalidData, "属性数据异常");
