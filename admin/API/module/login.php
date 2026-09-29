@@ -6,7 +6,6 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     die($jdata);
 }
     $users = !empty($d['user']) ? purge($d['user']) : '';
-    $pwd = !empty($d['pwd']) ? md5($d['pwd']) : md5('123456');
     $user_o = DB::table('user')->where(['user'=>$account,'appid'=>$appid])->find();
 
     if($app_res['djzt']==1){
@@ -43,7 +42,9 @@ if($myurl != $_SERVER['SERVER_NAME']){ //拦截未通过认证的调用
     }
     
 	if($app_res['dl_type']==0){
-		$user = DB::table('user')->where(['user'=>$users,'pwd'=>$pwd,'appid'=>$appid])->find();
+		$user = isset($d['pwd']) && is_string($d['pwd']) && $d['pwd'] !== ''
+			? DB::table('user')->where(['user'=>$users,'pwd'=>md5($d['pwd']),'appid'=>$appid])->find()
+			: false;
 	}else{
 		$user = DB::table('user')->where(['user'=>$users,'appid'=>$appid])->find();
 	}
