@@ -330,7 +330,7 @@ public class 聊天系统 : MonoBehaviour
 		}
 		if (GameNetwork.Enabled)
 		{
-			return ChatClient.Send(落点 == 聊天频道.国家 ? "nation" : "world", 内容);
+			return ChatClient.Send(落点 == 聊天频道.国家 ? "nation" : 落点 == 聊天频道.城池 ? "city" : "world", 内容);
 		}
 		聊天消息 消息 = new 聊天消息();
 		消息.频道 = 落点;
@@ -355,7 +355,8 @@ public class 聊天系统 : MonoBehaviour
 	private static void 接收联机消息(JObject 数据, bool 自己)
 	{
 		聊天消息 消息 = new 聊天消息();
-		消息.频道 = 数据.Value<string>("channel") == "nation" ? 聊天频道.国家 : 聊天频道.世界;
+		string 频道 = 数据.Value<string>("channel");
+		消息.频道 = 频道 == "nation" ? 聊天频道.国家 : 频道 == "city" ? 聊天频道.城池 : 聊天频道.世界;
 		消息.发送者 = 数据.Value<string>("senderName").Replace("<", "＜").Replace(">", "＞");
 		消息.内容 = 数据.Value<string>("content").Replace("<", "＜").Replace(">", "＞");
 		消息.时间 = 数据.Value<long>("serverUtcMs") / 1000;
@@ -399,7 +400,7 @@ public class 聊天系统 : MonoBehaviour
 			return true;
 		case 聊天频道.城池:
 			落点 = 频道;
-			return !GameNetwork.Enabled;
+			return true;
 		default:
 			落点 = 频道;
 			return false;
@@ -521,6 +522,7 @@ public class 聊天系统 : MonoBehaviour
 
 	private void Update()
 	{
+		ChatClient.RefreshSelection();
 		挂界面();
 		同步面板(世界部件);
 		同步面板(战斗部件);

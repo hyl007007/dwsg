@@ -54,7 +54,8 @@ using (var store = new SqliteWorldStore(database))
     Check(runtime.Execute(actors[2], spoof).Code == GameCodes.InvalidArgument, "client supplied sender and nation are rejected");
     Check(runtime.Execute(actors[2], Command("long", "world", new string('字', 41))).Code == GameCodes.InvalidArgument, "server enforces original forty character limit");
     Check(runtime.Execute(actors[2], Command("empty", "world", "  \n ")).Code == GameCodes.InvalidArgument, "empty message rejected");
-    Check(runtime.Execute(actors[2], Command("city", "city", "未开放")).Code == GameCodes.InvalidArgument, "unsupported online channel rejected explicitly");
+    Check(runtime.Execute(actors[2], Command("city", "city", "缺少当前城池")).Code == GameCodes.InvalidArgument, "city channel requires explicit valid coordinates");
+    Check(runtime.Execute(actors[2], Command("private", "private", "未开放")).Code == GameCodes.InvalidArgument, "unsupported online channel rejected explicitly");
     Check(runtime.Execute(new AuthenticatedActor("unbound", actors[2].PlayerId, state.WorldId, "forged"), Command("unauthorized", "world", "越权")).Code ==
         GameCodes.Unauthenticated, "inactive or forged connection cannot send");
     Check(store.Load(state.WorldId).Revision == 2 && ((JArray)store.Load(state.WorldId).Data["聊天消息"]).Count == 2,
@@ -83,6 +84,7 @@ for (int i = 0; i <= ChatModule.HistoryLimit; i++)
     CheckResult(module.Execute(capacity, new CommandContext(actors[0], 100000L + i * ChatModule.MinimumIntervalMs), Command("capacity-" + i, "world", "第" + i + "条")));
 Check(((JArray)capacity.Data["聊天消息"]).Count == ChatModule.HistoryLimit && ((JArray)capacity.Data["聊天消息"])[0].Value<string>("content") == "第1条",
     "server history is bounded by original three hundred message limit");
+CityChecks.Run(JObject.Parse(File.ReadAllText(args[0])), directory, Check);
 Console.WriteLine($"PASS {assertions} chat/runtime/SQLite/client checks. Two real PHP HTTP connections remain a Host integration check. Audit: {directory}");
 
 GameCommand Command(string id, string channel, string content) => new() { WorldId = state.WorldId, RequestId = id, Type = "chat.send",

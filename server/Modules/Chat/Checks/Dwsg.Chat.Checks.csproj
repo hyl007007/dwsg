@@ -4,6 +4,7 @@
     <ProjectReference Include="../Dwsg.Chat.csproj" />
     <ProjectReference Include="../../../Persistence/Dwsg.Persistence.csproj" />
     <ProjectReference Include="../../../Runtime/Dwsg.Runtime.csproj" />
+    <ProjectReference Include="../../Economy/Dwsg.Economy.csproj" />
     <Compile Include="../../../../web/Assets/GameModules/Chat/ChatInbox.cs" />
   </ItemGroup>
 </Project>
