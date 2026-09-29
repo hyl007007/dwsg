@@ -20,6 +20,7 @@ void Check(bool valid, string name)
     checks++;
     Console.WriteLine("PASS " + name);
 }
+Check(MonarchRules.RequiredExperience(62) == 2848782, "original Unity level 62 double-Pow float-cast threshold");
 JObject Product(JObject data, string name) => data["商城商品"].OfType<JObject>().First(item => item.Value<string>("道具名") == name);
 JObject Definition(string name) => seed["道具配置"].OfType<JObject>().First(item => item.Value<string>("名字") == name);
 JObject Player(int slots, double capacity = 300, params double[] stacks)
