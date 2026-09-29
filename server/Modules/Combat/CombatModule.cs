@@ -173,6 +173,7 @@ namespace Dwsg.Server.Modules.Combat
                 GameResult settled = Settle(world, battle, context.ServerUtcMs);
                 if (settled.Code != GameCodes.Ok) return settled;
             }
+            else Camp(world, battle.X, battle.Y)["将领数据列表"] = new JArray(battle.Defenders.Select(unit => unit.General.DeepClone()));
             Save(world, battle);
             return Updated(world, context, battle, battle.SettlementApplied ? "combat.bandit.settled" : "combat.bandit.updated");
         }

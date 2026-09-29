@@ -206,6 +206,24 @@ Check(runtime.Execute(actors[0], Command("combat.bandit.withdraw", new JObject {
 now += 10000; runtime.Tick(world.WorldId);
 Check(Battle(delayedId).Phase == "fighting" && !Battle(delayedId).SettlementApplied && Battle(delayedId).Attackers.Count == 1, "followup creates its own battlefield after prior one ended");
 Check(runtime.Execute(actors[0], Command("combat.bandit.withdraw", new JObject { ["battleId"] = delayedId })).Code == GameCodes.Ok, "remaining followup army can retreat normally");
+var partialCasualties = runtime.Execute(actors[1], Dispatch(actors[1], highCamp, 1, 2));
+Check(partialCasualties.Code == GameCodes.Ok, "original high level camp opens live casualty check");
+string partialId = partialCasualties.Data.Value<string>("battleId");
+now += 10000; runtime.Tick(world.WorldId);
+bool publicCasualties = false;
+for (int advance = 0; advance < 120 && !Battle(partialId).SettlementApplied; advance++)
+{
+    now += 1000; runtime.Tick(world.WorldId);
+    BanditBattle actual = Battle(partialId);
+    if (actual.SettlementApplied || !actual.Defenders.Any(unit => unit.Remaining < unit.OriginalQuantity)) continue;
+    JObject visible = ((JArray)store.Load(world.WorldId).Data["山贼列表"]).OfType<JObject>().Single(camp => camp.Value<int>("坐标x") == actual.X && camp.Value<int>("坐标y") == actual.Y);
+    publicCasualties = ((JArray)visible["将领数据列表"]).Select(unit => unit["将领配兵"].Value<double>("数量")).SequenceEqual(actual.Defenders.Select(unit => unit.Remaining));
+    break;
+}
+Check(publicCasualties, "public original NPC troop counts match live committed battle casualties");
+Check(runtime.Execute(actors[1], Command("combat.bandit.withdraw", new JObject { ["battleId"] = partialId })).Code == GameCodes.Ok, "partial casualty check retreats through real outcomes");
+for (int id = 1; id <= 2; id++)
+    Check(runtime.Execute(actors[1], Command("generals.allocateTroops", new JObject { ["generalId"] = GeneralId(actors[1], id), ["troopTypeId"] = 104, ["count"] = 300 })).Code == GameCodes.Ok, "real pool refills casualty probe army " + id);
 // 真实骑兵两支army共同击败原山贼，验证胜利结算也按各自占用释放。
 var lastVictory = runtime.Execute(actors[1], Dispatch(actors[1], queueCamp, 1, 2));
 Check(lastVictory.Code == GameCodes.Ok, "another owner can attack after prior armies end");
