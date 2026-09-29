@@ -141,6 +141,11 @@ public class 将领列表显示 : MonoBehaviour
 	}
 	public void 解雇将领()
 	{
+		if (GameNetwork.Enabled)
+		{
+			执行将领操作("generals.dismiss", new JObject());
+			return;
+		}
 		if (删除指定将领())
 		{
 			重置刷新将领列表();
@@ -754,45 +759,12 @@ public class 将领列表显示 : MonoBehaviour
 	private bool 删除指定将领()
 	{
 		int num = 获取选中将领索引();
-		if (num < 0 || num >= 要显示的将领列表.Count || 第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count)
-		{
-			return false;
-		}
-		int 第几个封地 = 要显示的将领列表[num].第几个封地;
-		int 第几个将领 = 要显示的将领列表[num].第几个将领;
-		玩家数据 玩家 = 全局变量.所有玩家数据表[第几个玩家];
-		if (第几个封地 < 0 || 第几个封地 >= 玩家.封地信息表.Count || 第几个将领 < 0 || 第几个将领 >= 玩家.封地信息表[第几个封地].将领信息表.Count)
-		{
-			return false;
-		}
-		if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.状态 == 0.0 || 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.状态 == 3.0)
-		{
-			if (玩家.封地信息表[第几个封地].将领信息表[第几个将领].将领属性.初始属性.系列 == "名将" && (全局变量.所有玩家数据表.Count <= 2 || 全局变量.所有玩家数据表[2].封地信息表.Count == 0))
-			{
-				return false;
-			}
-			if (!GeneralsClientAdapter.PrepareDismissal(玩家, 玩家.封地信息表[第几个封地].将领信息表[第几个将领].ID)) return false;
-			if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.初始属性.系列 != "名将")
-			{
-				全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表.RemoveAt(第几个将领);
-				UnityEngine.Debug.Log(" 删除将领  " + 第几个将领.ToString());
-				全局变量.提示类.显示信息("已解雇!");
-			}
-			else
-			{
-				全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.忠诚 = 100.0;
-				全局变量.所有玩家数据表[2].添加将领信息到列表(0, 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领]);
-				全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表.RemoveAt(第几个将领);
-				UnityEngine.Debug.Log(" 删除名将  " + 第几个将领.ToString());
-				全局变量.提示类.显示信息("名将已回归大自然!");
-			}
-			return true;
-		}
-		else
-		{
-			全局变量.提示类.显示信息("状态非空闲!");
-		}
-		return false;
+		if (num < 0 || num >= 要显示的将领列表.Count || 第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) return false;
+		int fief = 要显示的将领列表[num].第几个封地;
+		int general = 要显示的将领列表[num].第几个将领;
+		玩家数据 player = 全局变量.所有玩家数据表[第几个玩家];
+		if (fief < 0 || fief >= player.封地信息表.Count || general < 0 || general >= player.封地信息表[fief].将领信息表.Count) return false;
+		return GeneralsClientAdapter.DismissLegacy(第几个玩家, player.封地信息表[fief].将领信息表[general].ID);
 	}
 
 	public void 将领数扩容()
@@ -989,8 +961,12 @@ public class 将领列表显示 : MonoBehaviour
 		if (fief < 0 || fief >= player.封地信息表.Count || general < 0 || general >= player.封地信息表[fief].将领信息表.Count) return;
 		GeneralsClientAdapter.Execute(第几个玩家, player.封地信息表[fief].将领信息表[general].ID, type, arguments, () =>
 		{
-			刷新将领属性信息();
-			刷新列表信息();
+			if (type == "generals.dismiss") 重置刷新将领列表();
+			else
+			{
+				刷新将领属性信息();
+				刷新列表信息();
+			}
 		});
 	}
 	private void 将领补满配兵()

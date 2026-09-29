@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Dwsg.Network;
 using Dwsg.Shared;
 using Dwsg.Shared.Generals;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using 玩家数据结构;
 
@@ -48,24 +50,46 @@ namespace Dwsg.Generals
 					WorldSnapshot latest = GameNetwork.CurrentSnapshot;
 					if (latest == null || latest.PlayerId != snapshot.PlayerId || latest.WorldId != snapshot.WorldId) { 提示("角色连接已改变，请重新刷新"); return; }
 					GeneralLegacyAdapter.Apply(player, latest.PrivatePlayer);
+					if (type == "generals.dismiss") 提示(result.Data.Value<bool>("returnedToNature") ? "名将已回归大自然!" : "已解雇!");
 					success?.Invoke();
 				});
 			}
 			catch (GeneralRuleException failure) { 提示(failure.Message); }
 		}
 
-		public static bool PrepareDismissal(玩家数据 player, int generalId)
+		public static bool DismissLegacy(int playerIndex, int generalId)
 		{
 			try
 			{
-				if (GameNetwork.Enabled) { 提示("联机将领解雇尚未接入，请保留当前将领"); return false; }
-				GeneralLegacyAdapter.Apply(player, GeneralRules.PrepareDismissal(JObject.FromObject(player), generalId, TIME.getTime()));
+				if (GameNetwork.Enabled) { 提示("请通过联机解雇入口操作"); return false; }
+				玩家数据 player = 全局变量.所有玩家数据表[playerIndex];
+				将领信息 existing = null;
+				List<将领信息> source = null;
+				foreach (封地信息 fief in player.封地信息表)
+					foreach (将领信息 general in fief.将领信息表)
+						if (general.ID == generalId) { existing = general; source = fief.将领信息表; }
+				GeneralDismissal change = DismissalRules.Execute(JArray.FromObject(全局变量.所有玩家数据表), playerIndex, generalId, TIME.getTime());
+				JsonConvert.PopulateObject(change.RemovedGeneral["将领配兵"].ToString(), existing.将领配兵);
+				JsonConvert.PopulateObject(change.RemovedGeneral["详细信息"].ToString(), existing.详细信息);
+				JsonConvert.PopulateObject(change.RemovedGeneral["将领属性"]["成长点数"].ToString(), existing.将领属性.成长点数);
+				JsonConvert.PopulateObject(change.RemovedGeneral["将领属性"]["最终属性"].ToString(), existing.将领属性.最终属性);
+				source.Remove(existing);
+				GeneralLegacyAdapter.Apply(player, (JObject)change.Players[playerIndex]);
+				if (change.ReturnedToNature)
+				{
+					existing.ID = change.ReturnedLegacyId;
+					玩家数据 nature = 全局变量.所有玩家数据表[2];
+					nature.封地信息表[0].将领信息表.Add(existing);
+					nature.将领ID标识 = change.Players[2].Value<int>("将领ID标识");
+					GeneralLegacyAdapter.Apply(nature, (JObject)change.Players[2]);
+				}
+				提示(change.ReturnedToNature ? "名将已回归大自然!" : "已解雇!");
 				return true;
 			}
 			catch (GeneralRuleException failure) { 提示(failure.Message); return false; }
 		}
 
-		static string FindMapping(WorldSnapshot snapshot, string name, Func<JObject, bool> predicate)
+		internal static string FindMapping(WorldSnapshot snapshot, string name, Func<JObject, bool> predicate)
 		{
 			JObject mappings = snapshot.PrivatePlayer["entityMappings"]?[name] as JObject;
 			JProperty found = mappings?.Properties().SingleOrDefault(p => p.Value is JObject && p.Value.Value<string>("playerId") == snapshot.PlayerId && predicate((JObject)p.Value));

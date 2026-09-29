@@ -23,9 +23,21 @@ public class 招募将领 : MonoBehaviour
 
 	private void Start()
 	{
+		Dwsg.Network.GameNetwork.SnapshotApplied += 接收酒馆状态;
 		自动刷新招募将领();
 	}
 
+	private void OnDestroy()
+	{
+		Dwsg.Network.GameNetwork.SnapshotApplied -= 接收酒馆状态;
+	}
+
+	private void 接收酒馆状态(Dwsg.Shared.WorldSnapshot snapshot)
+	{
+		if (!Dwsg.Network.GameNetwork.Enabled || snapshot.PrivatePlayer["tavern"] == null) return;
+		Dwsg.Generals.TavernClientAdapter.Apply(将领列表);
+		显示将领列表();
+	}
 	private void 显示将领数量()
 	{
 		int 本机身份 = 全局变量.本机身份;
@@ -51,60 +63,37 @@ public class 招募将领 : MonoBehaviour
 	{
 		UnityEngine.Debug.Log("自动刷新招募将领列表");
 		随机5个将领(0);
-		显示将领列表();
 	}
 
 	public void 招贤令刷新招募将领()
 	{
 		随机5个将领(1);
-		显示将领列表();
 	}
 
 	public void 金榜刷新招募将领()
 	{
 		随机5个将领(2);
-		显示将领列表();
 	}
 
 	public void 皇榜刷新招募将领()
 	{
 		随机5个将领(3);
-		显示将领列表();
 	}
 
 	public void 招募选中将领()
 	{
 		添加将领到将领列表();
-		显示将领列表();
 	}
 
 	public void 添加将领到将领列表()
 	{
-		int 本机身份 = 全局变量.本机身份;
-		int 第几个封地 = 全局变量.第几个封地;
-		int num = 0;
-		while (true)
+		for (int index = 0; index < 5 && index < 将领列表.Count; index++)
 		{
-			if (num < 5 && 将领列表对象.transform.GetChild(num).gameObject.activeSelf)
+			if (将领列表对象.transform.GetChild(index).gameObject.activeSelf && 将领列表对象.transform.GetChild(index).GetChild(12).gameObject.activeSelf)
 			{
-				if (将领列表对象.transform.GetChild(num).GetChild(12).gameObject.activeSelf)
-				{
-					break;
-				}
-				num++;
-				continue;
+				Dwsg.Generals.TavernClientAdapter.Recruit(index, 将领列表, 显示将领列表);
+				return;
 			}
-			return;
-		}
-		if (全局变量.所有玩家数据表[本机身份].获取将领总数() < 全局变量.所有玩家数据表[本机身份].基础信息.将领数上限)
-		{
-			全局变量.所有玩家数据表[本机身份].添加将领信息到列表(第几个封地, 将领列表[num]);
-			将领列表.RemoveAt(num);
-			全局变量.提示类.显示信息("招募成功!");
-		}
-		else
-		{
-			全局变量.提示类.显示信息("招募失败,将领上限!");
 		}
 	}
 
@@ -153,65 +142,7 @@ public class 招募将领 : MonoBehaviour
 
 	private void 随机5个将领(int 随机类型)
 	{
-		
-		int 本机身份 = 全局变量.本机身份;
-		string a = "";
-		switch (随机类型)
-		{
-			case 1:
-				a = 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具("招贤令", 0, 0);
-				break;
-			case 2:
-				a = 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具("招贤金榜", 0, 0);
-				break;
-			case 3:
-				a = 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具("皇榜", 0, 0);
-				break;
-			case 0:
-				随机类型 = 1;
-				break;
-		}
-		print(a);
-		if (a == "使用失败")
-		{
-			return;
-		}
-        全局变量.酒馆刷新时间 = TIME.getTime();
-        倒计时 = 3600f;
-		将领列表.Clear();
-		for (int i = 0; i < 5; i++)
-		{
-			将领信息 将领信息 = new 将领信息();
-			if ((double)UnityEngine.Random.Range(0, 1000) < 0.0 && 随机类型 == 3)
-			{
-				将领属性库类 将领属性库类 = 全局将领库.查询指定名字的将领数据(全局将领库.随机获取一个君王名());
-				if (将领属性库类 != null)
-				{
-					将领属性库类.获取随机属性();
-					将领信息.生成将领数据(将领属性库类);
-				}
-			}
-			else
-			{
-				将领属性库类 将领属性库类2 = new 将领属性库类();
-				if (随机类型 == 3)
-				{
-					将领属性库类2 = 全局将领库.查询指定ID的将领数据(UnityEngine.Random.Range(1, 9));
-				}
-				if (随机类型 == 2)
-				{
-					将领属性库类2 = 全局将领库.查询指定ID的将领数据(UnityEngine.Random.Range(1, 7));
-				}
-				if (随机类型 == 1)
-				{
-					将领属性库类2 = 全局将领库.查询指定ID的将领数据(UnityEngine.Random.Range(1, 5));
-				}
-				将领属性库类2.获取随机属性();
-				将领信息.生成将领数据(将领属性库类2);
-				将领信息.将领属性.初始属性.名字 = 随机姓名.生成随机姓名();
-			}
-			将领列表.Add(将领信息);
-		}
+		Dwsg.Generals.TavernClientAdapter.Refresh(随机类型, 将领列表, 显示将领列表);
 	}
 
 	private void Update()

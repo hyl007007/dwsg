@@ -20,6 +20,7 @@ public static class 将领操作回归检查
 			全局将领库.属性表 = new List<将领属性库类>(); 全局将领库.初始化将领库();
 			全局装备库.属性表 = new List<装备属性库类>(); 全局装备库.初始化装备库();
 			全局兵种库.属性表 = new List<兵种属性库类>(); 全局兵种库.初始化兵种库();
+			全局道具库.道具列表 = new List<道具信息库类>(); 全局道具库.初始化道具库();
 			全局变量.本机身份 = 0; 全局变量.第几个封地 = 0;
 			全局变量.将领状态图标资源表 = new Sprite[4];
 			全局变量.将领编队图标资源表 = Resources.LoadAll<Sprite>("将领编队图标");
@@ -69,6 +70,26 @@ public static class 将领操作回归检查
 				string before = Snapshot(); formation.点击列表将领(0); Assert(before == Snapshot(), "将领重复加入编队");
 				for (int i = 0; i < 5; i++) for (int j = 0; j < 5; j++) formation.编队列表对象.transform.GetChild(i).GetChild(1).GetChild(j).GetChild(3).gameObject.SetActive(i == 0 && j == 0);
 				formation.编队列表读写(); Assert(player.编队信息表[0][0] == -1 && general.详细信息.编队 == 0, "编队未移除");
+			});
+			check("原酒馆免费生成五候选，实际招募到原封地无额外费用", () => {
+				ready(0); 玩家数据 player = 全局变量.所有玩家数据表[0]; player.财产信息.黄金 = 777;
+				招募将领 tavern = Find<招募将领>(scene); tavern.自动刷新招募将领();
+				Assert(tavern.将领列表.Count == 5, "未生成五候选");
+				将领信息 selected = tavern.将领列表[0];
+				for (int i = 0; i < 5; i++) tavern.将领列表对象.transform.GetChild(i).GetChild(12).gameObject.SetActive(i == 0);
+				tavern.招募选中将领();
+				Assert(tavern.将领列表.Count == 4 && player.封地信息表[0].将领信息表.Count == 2 && ReferenceEquals(selected, player.封地信息表[0].将领信息表[1]), "招募未保留实际候选实例");
+				Assert(player.财产信息.黄金 == 777, "原免费招募被收费");
+			});
+			check("原三道具酒馆刷新按最小堆消费一次", () => {
+				ready(0); 玩家数据 player = 全局变量.所有玩家数据表[0]; 招募将领 tavern = Find<招募将领>(scene);
+				string[] names = { "招贤令", "招贤金榜", "皇榜" }; Action[] refresh = { tavern.招贤令刷新招募将领, tavern.金榜刷新招募将领, tavern.皇榜刷新招募将领 };
+				for (int i = 0; i < 3; i++)
+				{
+					List<道具信息> stacks = player.背包道具列表.获取道具分类列表(names[i]);
+					stacks.Clear(); stacks.Add(new 道具信息 { 名字 = names[i], 数量 = 3 }); stacks.Add(new 道具信息 { 名字 = names[i], 数量 = 1 });
+					refresh[i](); Assert(stacks.Count == 1 && stacks[0].数量 == 3 && tavern.将领列表.Count == 5, "道具消费或候选数量错误");
+				}
 			});
 		}
 		catch (Exception error) { failures++; Debug.LogError(error); }

@@ -15,12 +15,14 @@ namespace Dwsg.Server.Modules.Generals
 		public int Wounded { get; set; }
 	}
 
-	public sealed class GeneralsModule : IGameModule
+	public sealed partial class GeneralsModule : IGameModule, IGameTickModule
 	{
-		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes; } }
+		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss" }).ToArray(); } }
 
 		public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
 		{
+			if (command.Type == "generals.refreshTavern" || command.Type == "generals.recruit" || command.Type == "generals.dismiss")
+				return ExecuteRoster(candidate, context, command);
 			if (context?.Actor == null || context.Actor.IsSystem || string.IsNullOrEmpty(context.Actor.PlayerId))
 				return GameResult.Reject(GameCodes.Unauthenticated, "请先登录角色");
 			if (context.Actor.WorldId != candidate.WorldId || command.WorldId != candidate.WorldId)
@@ -80,11 +82,18 @@ namespace Dwsg.Server.Modules.Generals
 		{
 			JObject generals = Map(candidate, "generals");
 			JObject equipment = Map(candidate, "equipment");
+			JObject fiefs = Map(candidate, "fiefs");
 			Map(candidate, "generalOccupancy");
 			JObject players = LegacyGenerals.Object(candidate.EntityMappings["players"]);
 			foreach (JProperty binding in players.Properties())
 			{
 				JObject player = candidate.RequirePlayer(binding.Name);
+				foreach (JObject fief in LegacyGenerals.Array(player["封地信息表"]))
+				{
+					int legacyFiefId = LegacyGenerals.Integer(fief["ID"]);
+					if (!fiefs.Properties().Any(p => p.Value.Value<string>("playerId") == binding.Name && p.Value.Value<int>("legacyId") == legacyFiefId))
+						fiefs[Guid.NewGuid().ToString("N")] = new JObject { ["playerId"] = binding.Name, ["legacyId"] = legacyFiefId };
+				}
 				foreach (JToken fief in LegacyGenerals.Array(player["封地信息表"]))
 					foreach (JToken general in LegacyGenerals.Array(fief["将领信息表"]))
 					{

@@ -56,6 +56,12 @@ namespace Dwsg.Shared.Generals
 			LegacyGenerals.RequireIdle(general, true);
 			for (int slot = 0; slot < 4; slot++) Unequip(candidate, generalId, slot);
 			Release(fief, general);
+			for (int team = 0; team < 5; team++)
+			{
+				JArray formation = LegacyGenerals.Formation(candidate, team);
+				for (int slot = 0; slot < 5; slot++) if (LegacyGenerals.Integer(formation[slot]) == generalId) formation[slot] = -1;
+			}
+			general["详细信息"]["编队"] = 0.0;
 			if (GeneralAttributeRules.Recalculate(candidate, utcSeconds)) throw new GeneralRuleException(GeneralFailure.InvalidData, "属性数据异常");
 			return candidate;
 		}
