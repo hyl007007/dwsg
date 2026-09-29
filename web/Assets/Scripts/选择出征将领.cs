@@ -101,6 +101,11 @@ public class 选择出征将领 : MonoBehaviour
 
 	public void 城池_出征选中将领()
 	{
+		if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			全局变量.提示类.显示信息("城池出征尚未接入服务器，操作未提交");
+			return;
+		}
 		if (index==1)
 		{
             List<将领信息> list = new List<将领信息>();
@@ -188,6 +193,11 @@ public class 选择出征将领 : MonoBehaviour
 				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
 				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("增援成功!");
 			});
+			return;
+		}
+		if (Dwsg.Network.GameNetwork.Enabled && 战斗系统对象.战场类型 == 1)
+		{
+			全局变量.提示类.显示信息("城池增援尚未接入服务器，操作未提交");
 			return;
 		}
 		List<将领信息> list = new List<将领信息>();
