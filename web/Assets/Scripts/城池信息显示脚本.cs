@@ -142,21 +142,17 @@ public class 城池信息显示脚本 : MonoBehaviour
 
     public void 开辟封地()
 	{
-		if (全局变量.所有玩家数据表[全局变量.本机身份].封地信息表.Count<=10)
+		int 请求城池 = 显示第几个城池;
+		TerritoryClient.CreateFief(全局变量.所有城池列表[请求城池], 结果 =>
 		{
-            if (!全局变量.所有城池列表[显示第几个城池].是否有我的封地())
-            {
-                全局变量.所有城池列表[显示第几个城池].新建封地(全局变量.本机身份);
-                全局变量.提示类.显示信息("开辟封地成功!");
-                开辟封地按钮.SetActive(value: false);
-                进入封地按钮.SetActive(value: true);
-            }
-        }
-        else
-        {
-            全局变量.提示类.显示信息("开辟封地失败!");
-        }
-
+			if (this == null) return;
+			全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认开辟封地，请重试");
+			if (结果 != null && 结果.Code == Dwsg.Shared.GameCodes.Ok && 显示第几个城池 == 请求城池)
+			{
+				开辟封地按钮.SetActive(value: false);
+				进入封地按钮.SetActive(value: true);
+			}
+		});
     }
 
 	public void 进入封地()
