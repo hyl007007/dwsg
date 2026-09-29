@@ -8,6 +8,9 @@ public class 单将撤退脚本 : MonoBehaviour
     public Camera 摄像机;
     public GameObject 撤退布局;
     public GameObject 被选中将领;
+    public Transform 原小弹窗参考;
+    private 原界面小弹窗 弹窗;
+    private Text 撤退说明;
     private readonly List<RaycastResult> 界面命中 = new List<RaycastResult>();
 
     private bool 点击操作界面()
@@ -51,6 +54,24 @@ public class 单将撤退脚本 : MonoBehaviour
         被选中将领 = null;
     }
 
+    private void 显示撤退(将领功能 将)
+    {
+        if (弹窗 == null)
+        {
+            var 撤退 = 撤退布局.transform.Find("撤退").GetComponent<Button>();
+            var 返回 = 撤退布局.transform.Find("返回").GetComponent<Button>();
+            弹窗 = 撤退布局.AddComponent<原界面小弹窗>();
+            弹窗.初始化(原小弹窗参考, "将领撤退", 清除选择);
+            撤退说明 = 弹窗.添加说明("撤退说明", "");
+            弹窗.添加说明("影响说明", "撤出当前战斗，返回所属封地。", 16);
+            弹窗.使用原按钮(撤退);
+            弹窗.使用原按钮(返回);
+            返回.onClick.AddListener(清除选择);
+        }
+        撤退说明.text = 将.本将领信息.将领属性.初始属性.名字 + " · 撤出本次战斗？";
+        撤退布局.SetActive(true);
+    }
+
     void Update()
     {
         if (被选中将领 && !可撤退(被选中将领.GetComponent<将领功能>())) 清除选择();
@@ -65,7 +86,7 @@ public class 单将撤退脚本 : MonoBehaviour
             if (可撤退(将))
             {
                 被选中将领 = 将.gameObject;
-                if (撤退布局) 撤退布局.SetActive(true);
+                if (撤退布局) 显示撤退(将);
             }
         }
     }
