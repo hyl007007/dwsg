@@ -125,7 +125,12 @@ namespace Dwsg.Network
                         // Keep the exact pending request until this same player explicitly logs in again.
                         yield return new WaitForSecondsRealtime(.25f); continue;
                     }
-                    ApplyResponse(response);
+                    if (!ApplyResponse(response))
+                    {
+                        forceFull = true;
+                        yield return null;
+                        continue;
+                    }
                     if (active != null) { pending.Dequeue(); active.Completed(result); }
                     var delay = Math.Max(.1, Math.Min(.5, (sessionExpires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 3000.0));
                     yield return new WaitForSecondsRealtime((float)delay);

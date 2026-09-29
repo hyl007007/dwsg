@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Globalization;
 using Dwsg.Shared;
 using Newtonsoft.Json.Linq;
 
@@ -9,6 +10,8 @@ namespace Dwsg.Network
 {
     public static class LegacySnapshotAdapter
     {
+        private static string equipmentOwner;
+        private static readonly Dictionary<string, object> equipmentReferences = new Dictionary<string, object>(StringComparer.Ordinal);
         public static bool Apply(WorldSnapshot snapshot, JObject publicChanges, JObject privateChanges)
         {
             var players = snapshot.PublicWorld["玩家列表"] as JArray;
@@ -46,9 +49,43 @@ namespace Dwsg.Network
                 全局变量.本机身份 = own;
                 var changes = (JObject)privateChanges.DeepClone();
                 if (changes["基础信息"] is JObject basic) basic["ID"] = own;
+                if (changes["背包装备列表"] is JObject equipment)
+                {
+                    ApplyEquipment(全局变量.所有玩家数据表[own].背包装备列表, equipment,
+                        snapshot.PrivatePlayer["entityMappings"]?["equipment"] as JObject ?? new JObject(), snapshot.WorldId + ":" + snapshot.PlayerId);
+                    changes.Remove("背包装备列表");
+                }
                 ApplyValue(全局变量.所有玩家数据表[own], 全局变量.所有玩家数据表[own].GetType(), changes);
             }
             return true;
+        }
+        private static void ApplyEquipment(object backpack, JObject values, JObject mappings, string owner)
+        {
+            if (equipmentOwner != owner) { equipmentReferences.Clear(); equipmentOwner = owner; }
+            var fields = new[] { "头盔装备列表", "武器装备列表", "铠甲装备列表", "坐骑装备列表" };
+            for (var slot = 0; slot < fields.Length; slot++)
+            {
+                var field = backpack.GetType().GetField(fields[slot]);
+                var list = (IList)field.GetValue(backpack);
+                var itemType = field.FieldType.GetGenericArguments()[0];
+                var array = values[fields[slot]] as JArray;
+                if (array == null) continue;
+                var stableIds = new Dictionary<int, string>();
+                foreach (var entry in mappings.Properties())
+                    if (entry.Value.Value<int>("slot") == slot) stableIds[entry.Value.Value<int>("legacyIndex")] = entry.Name;
+                var updated = new List<object>();
+                for (var i = 0; i < array.Count; i++)
+                {
+                    string id;
+                    object previous = null;
+                    if (stableIds.TryGetValue(i, out id)) equipmentReferences.TryGetValue(id, out previous);
+                    var current = ApplyValue(previous, itemType, array[i]);
+                    if (id != null) equipmentReferences[id] = current;
+                    updated.Add(current);
+                }
+                list.Clear();
+                foreach (var item in updated) list.Add(item);
+            }
         }
         private static int Index(Dictionary<string, int> indexes, JToken id)
         {
@@ -62,15 +99,31 @@ namespace Dwsg.Network
             {
                 var list = (IList)(existing ?? Activator.CreateInstance(type));
                 var itemType = type.GetGenericArguments()[0];
+                var useIdentity = itemType.Name == "将领信息" || itemType.Name == "封地信息" || itemType.Name == "玩家数据";
+                var identities = new Dictionary<string, object>(StringComparer.Ordinal);
+                foreach (var item in list)
+                {
+                    var key = useIdentity ? Identity(item, itemType) : null;
+                    if (key != null) identities[key] = item;
+                }
+                var items = new List<object>();
                 for (var i = 0; i < array.Count; i++)
-                    if (i < list.Count) list[i] = ApplyValue(list[i], itemType, array[i]);
-                    else list.Add(ApplyValue(null, itemType, array[i]));
-                while (list.Count > array.Count) list.RemoveAt(list.Count - 1);
+                {
+                    var key = useIdentity ? Identity(array[i]) : null;
+                    object previous = null;
+                    if (key != null) identities.TryGetValue(key, out previous);
+                    else if (i < list.Count) previous = list[i];
+                    items.Add(ApplyValue(previous, itemType, array[i]));
+                }
+                list.Clear();
+                foreach (var item in items) list.Add(item);
                 return list;
             }
             if (value is JObject obj)
             {
-                var target = existing ?? Activator.CreateInstance(type);
+                // The original DTOs include parameterized constructors; use their existing JSON codec.
+                if (existing == null) return obj.ToObject(type);
+                var target = existing;
                 foreach (var fieldValue in obj.Properties())
                 {
                     var field = type.GetField(fieldValue.Name, BindingFlags.Public | BindingFlags.Instance);
@@ -79,6 +132,21 @@ namespace Dwsg.Network
                 return target;
             }
             return value.ToObject(type);
+        }
+        private static string Identity(JToken value)
+        {
+            var obj = value as JObject;
+            var key = obj?["ID"] ?? obj?["基础信息"]?["ID"];
+            return key != null && (key.Type == JTokenType.Integer || key.Type == JTokenType.Float)
+                ? key.Value<long>().ToString(CultureInfo.InvariantCulture) : null;
+        }
+        private static string Identity(object value, Type type)
+        {
+            if (value == null) return null;
+            var field = type.GetField("ID");
+            if (field != null) return Convert.ToInt64(field.GetValue(value)).ToString(CultureInfo.InvariantCulture);
+            var basic = type.GetField("基础信息");
+            return basic == null ? null : Identity(basic.GetValue(value), basic.FieldType);
         }
     }
 }
