@@ -7,7 +7,30 @@ namespace Dwsg.Shared.Economy
     public static class MaterialPackRules
     {
         public static string MaterialName(string itemName)
-        { return itemName == "冰玉大材料包" ? "冰玉" : itemName == "仙芝大材料包" ? "仙芝" : null; }
+        {
+            switch (itemName)
+            {
+                case "冰玉大材料包": return "冰玉";
+                case "仙芝大材料包": return "仙芝";
+                case "山海精华材料包": return "山海精华";
+                case "地魄灵石材料包": return "地魄灵石";
+                case "天魂灵石材料包": return "天魂灵石";
+                case "昆仑玄铁材料包": return "昆仑玄铁";
+                default: return null;
+            }
+        }
+
+        private static string MaterialType(string material)
+        {
+            switch (material)
+            {
+                case "山海精华": return "炼魂材料_坐骑";
+                case "地魄灵石": return "炼魂材料_铠甲";
+                case "天魂灵石": return "炼魂材料_头盔";
+                case "昆仑玄铁": return "炼魂材料_武器";
+                default: return "强化材料";
+            }
+        }
 
         public static GameResult Use(JObject player, JArray originalItemDefinitions, string itemName, int quantity)
         {
@@ -16,8 +39,9 @@ namespace Dwsg.Shared.Economy
             if (quantity <= 0) return GameResult.Reject(GameCodes.InvalidArgument, "使用数量无效");
             var packDefinition = originalItemDefinitions?.OfType<JObject>().FirstOrDefault(item => item.Value<string>("名字") == itemName);
             var materialDefinition = originalItemDefinitions?.OfType<JObject>().FirstOrDefault(item => item.Value<string>("名字") == material);
-            if (packDefinition?.Value<string>("分类") != "宝箱" || packDefinition.Value<string>("类型") != "装备强化材料箱子" ||
-                materialDefinition?.Value<string>("分类") != "强化" || materialDefinition.Value<string>("类型") != "强化材料")
+            string materialType = MaterialType(material);
+            if (packDefinition?.Value<string>("分类") != "宝箱" || packDefinition.Value<string>("类型") != (materialType == "强化材料" ? "装备强化材料箱子" : "炼魂材料箱子") ||
+                materialDefinition?.Value<string>("分类") != "强化" || materialDefinition.Value<string>("类型") != materialType)
                 return GameResult.Reject(GameCodes.Unavailable, "材料包原道具定义不完整");
             var original = player?["背包道具列表"] as JObject;
             if (original == null) return GameResult.Reject(GameCodes.Unavailable, "背包道具数据不完整");
