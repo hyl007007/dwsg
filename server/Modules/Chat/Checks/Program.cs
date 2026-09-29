@@ -49,6 +49,7 @@ using (var store = new SqliteWorldStore(database))
         !published[1].AudiencePlayerIds.Contains(actors[2].PlayerId), "national event recipient whitelist excludes other country");
     Check(ChatModule.ReadHistory(store.Load(state.WorldId), actors[2]).Count == 1 && ChatModule.ReadHistory(store.Load(state.WorldId), actors[0]).Count == 2,
         "authorized history filters national messages");
+    Check(ChatModule.ReadHistory(store.Load(state.WorldId), null).Count == 1, "authenticated roleless projection exposes only world chat");
     var spoof = Command("spoof", "world", "尝试冒充"); spoof.Payload["senderName"] = "管理员"; spoof.Payload["nation"] = sameNation[0].Nation;
     Check(runtime.Execute(actors[2], spoof).Code == GameCodes.InvalidArgument, "client supplied sender and nation are rejected");
     Check(runtime.Execute(actors[2], Command("long", "world", new string('字', 41))).Code == GameCodes.InvalidArgument, "server enforces original forty character limit");

@@ -59,8 +59,8 @@ public sealed class ChatModule : IGameModule
     // The Host adds this filtered view to the authenticated snapshot, never the raw national log.
     public static JArray ReadHistory(WorldState state, AuthenticatedActor actor)
     {
-        if (actor == null || actor.IsSystem || actor.WorldId != state.WorldId) return new JArray();
-        string nation = Nation(state, state.RequirePlayer(actor.PlayerId));
+        if (actor != null && (actor.IsSystem || actor.WorldId != state.WorldId)) return new JArray();
+        string nation = actor == null ? null : Nation(state, state.RequirePlayer(actor.PlayerId));
         return new JArray((state.Data["聊天消息"] as JArray ?? new JArray()).OfType<JObject>()
             .Where(m => m.Value<string>("channel") == "world" || (nation != null && m.Value<string>("channel") == "nation" &&
                 m.Value<string>("nation") == nation)).Select(m => m.DeepClone()));
