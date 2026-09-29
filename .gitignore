@@ -1,6 +1,14 @@
 # Local audit artifacts and disposable test data
 /audit/
 
+# Game server and shared .NET build outputs
+/server/**/bin/
+/server/**/obj/
+/shared/bin/
+/shared/obj/
+/shared/**/*.csproj.user
+/server/**/*.csproj.user
+
 # Local deployment credentials and installation state
 /admin/include/config.php
 /admin/install/install.lock

@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+using Dwsg.Generals;
+using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
@@ -154,6 +156,13 @@ public class 将领编队 : MonoBehaviour
         封地信息 地 = null;
         if (玩家 != null && 选中将领 != null)
             foreach (var 项 in 玩家.封地信息表) if (项.将领信息表.Contains(选中将领)) { 地 = 项; break; }
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (选中将领 == null) { 全局变量.提示类.显示信息("请先选择将领。"); return; }
+            GeneralsClientAdapter.Execute(全局变量.本机身份, 选中将领.ID, "generals.setFormation",
+                new JObject { ["teamIndex"] = 队, ["slotIndex"] = 槽 }, 刷新编队);
+            return;
+        }
         var 结果 = 选中将领 == null ? 军事结果.拒绝(军事错误.无将领, "请先选择将领。")
             : 将领流程规则.加入编队(玩家, 地, 选中将领, 队, 槽);
         全局变量.提示类.显示信息(结果.说明);
@@ -180,6 +189,12 @@ public class 将领编队 : MonoBehaviour
                 var 标记 = 编队列表对象.transform.GetChild(i).GetChild(1).GetChild(j).GetChild(3);
                 if (!标记.gameObject.activeSelf) continue;
                 标记.gameObject.SetActive(false);
+                if (Dwsg.Network.GameNetwork.Enabled && 玩家 != null && 玩家.编队信息表[i][j] != -1)
+                {
+                    GeneralsClientAdapter.Execute(全局变量.本机身份, null, "generals.setFormation",
+                        new JObject { ["teamIndex"] = i, ["slotIndex"] = j }, 刷新编队);
+                    return;
+                }
                 if (玩家 != null && 玩家.编队信息表[i][j] != -1)
                     全局变量.提示类.显示信息(将领流程规则.移出编队(玩家, i, j).说明);
                 else 加入(i, j);

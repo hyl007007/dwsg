@@ -5,6 +5,9 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Dwsg.Client.Chat;
+using Dwsg.Network;
+using Newtonsoft.Json.Linq;
 
 // ================================================================
 // 聊天系统：把全游戏的播报统一收进聊天里
@@ -49,6 +52,7 @@ public enum 聊天频道
 
 public class 聊天消息
 {
+	public string 通知ID;
 	public 聊天频道 频道;
 
 	public string 发送者;
@@ -298,6 +302,8 @@ public class 聊天系统 : MonoBehaviour
 
 		public readonly List<Text> 频道文字 = new List<Text>();
 
+		public readonly Dictionary<RectTransform, string> 通知行 = new Dictionary<RectTransform, string>();
+
 		public int 已刷新版本 = -1;
 
 		public 聊天频道 已刷新频道 = 聊天频道.全部;
@@ -316,6 +322,7 @@ public class 聊天系统 : MonoBehaviour
 			实例 = 载体.AddComponent<聊天系统>();
 			实例.读取存档();
 		}
+		ChatClient.Initialize(接收联机消息, 播报, 清空聊天);
 		实例.挂界面();
 	}
 
@@ -378,6 +385,10 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return false;
 		}
+		if (GameNetwork.Enabled)
+		{
+			return ChatClient.Send(落点 == 聊天频道.国家 ? "nation" : 落点 == 聊天频道.城池 ? "city" : "world", 内容);
+		}
 		聊天消息 消息 = new 聊天消息();
 		消息.频道 = 落点;
 		消息.发送者 = 取本机名字();
@@ -394,6 +405,20 @@ public class 聊天系统 : MonoBehaviour
 		}
 		加入消息(消息);
 		return true;
+	}
+
+	private static void 接收联机消息(JObject 数据, bool 自己)
+	{
+		聊天消息 消息 = new 聊天消息();
+		string 频道 = 数据.Value<string>("channel");
+		消息.频道 = 频道 == "nation" ? 聊天频道.国家 : 频道 == "city" ? 聊天频道.城池 : 频道 == "rumor" ? 聊天频道.传闻 : 频道 == "system" ? 聊天频道.系统 : 聊天频道.世界;
+		消息.通知ID = 数据.Value<string>("notificationId");
+		消息.发送者 = 数据.Value<string>("senderName").Replace("<", "＜").Replace(">", "＞");
+		消息.内容 = 数据.Value<string>("content").Replace("<", "＜").Replace(">", "＞");
+		消息.时间 = 数据.Value<long>("serverUtcMs") / 1000;
+		消息.自己 = 自己;
+		加入消息(消息);
+		if (自己 && 实例 != null) 实例.已读消息.Add(消息.序号);
 	}
 
 	//本机玩家的名字；取不到就退成「我」，不因为拿不到名字就不让说话
@@ -427,6 +452,8 @@ public class 聊天系统 : MonoBehaviour
 			落点 = 聊天频道.世界;
 			return true;
 		case 聊天频道.国家:
+			落点 = 频道;
+			return true;
 		case 聊天频道.城池:
 			落点 = 频道;
 			return true;
@@ -487,7 +514,8 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return 0;
 		}
-		return Math.Min(99, 聊天记录查询.未读(全部消息, 实例.已读消息, 聊天频道.全部, 实例.屏蔽角色));
+		var 普通消息 = Dwsg.Network.GameNetwork.Enabled ? 全部消息.Where(m => string.IsNullOrEmpty(m.通知ID)).ToList() : 全部消息;
+		return Math.Min(99, 聊天记录查询.未读(普通消息, 实例.已读消息, 聊天频道.全部, 实例.屏蔽角色) + ChatClient.UnreadNotifications);
 	}
 
 	public static void 查看相关消息(string roleId, string roleName)
@@ -573,6 +601,7 @@ public class 聊天系统 : MonoBehaviour
 	private void Update()
 	{
 		绑定社交数据();
+		ChatClient.RefreshSelection();
 		挂界面();
 		适应键盘(世界部件);
 		适应键盘(战斗部件);
@@ -589,6 +618,8 @@ public class 聊天系统 : MonoBehaviour
 		if (Time.unscaledTime >= 下次角标刷新)
 		{
 			下次角标刷新 = Time.unscaledTime + 0.5f;
+			标记可见通知(世界部件);
+			标记可见通知(战斗部件);
 			刷新未读红点();
 		}
 	}
@@ -690,6 +721,8 @@ public class 聊天系统 : MonoBehaviour
 	//世界界面和战斗界面各挂一份；对象被销毁（比如重进场景）就重新补
 	private void 挂界面()
 	{
+		if (世界界面 == null) 世界部件 = null;
+		if (战斗界面 == null) 战斗部件 = null;
 		if (世界界面 == null && 全局变量.主界面UI对象 != null)
 		{
 			建世界界面();
@@ -756,6 +789,8 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 刷新未读红点()
 	{
+		if (世界部件 != null) 刷新频道高亮(世界部件);
+		if (战斗部件 != null) 刷新频道高亮(战斗部件);
 		if (世界部件 == null || 世界部件.未读红点 == null)
 		{
 			return;
@@ -1326,8 +1361,13 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 刷新频道高亮(面板部件 部件)
 	{
+		if (部件 == null || 部件.面板 == null)
+		{
+			return;
+		}
 		for (int i = 0; i < 部件.频道按钮.Count; i++)
 		{
+			if (部件.频道按钮[i] == null) continue;
 			bool 选中 = ((int)当前频道 == i);
 			Image 图 = 部件.频道按钮[i].GetComponent<Image>();
 			if (图 != null)
@@ -1336,6 +1376,11 @@ public class 聊天系统 : MonoBehaviour
 			}
 			if (i < 部件.频道文字.Count && 部件.频道文字[i] != null)
 			{
+				if (i == (int)聊天频道.系统)
+				{
+					int 未读 = ChatClient.UnreadNotifications;
+					部件.频道文字[i].text = 未读 > 0 ? "系统(" + (未读 > 99 ? "99+" : 未读.ToString()) + ")" : "系统";
+				}
 				部件.频道文字[i].color = (选中 ? 选中字色 : 未选中字色);
 				int count = Math.Min(99, 聊天记录查询.未读(全部消息, 已读消息, (聊天频道)i, 屏蔽角色));
 				部件.频道文字[i].text = 频道名称[i] + (count > 0 ? " · " + count : "");
@@ -1348,6 +1393,7 @@ public class 聊天系统 : MonoBehaviour
 		float previousHeight = 部件.内容.rect.height;
 		Vector2 previousPosition = 部件.内容.anchoredPosition;
 		bool atBottom = 部件.滚动.verticalNormalizedPosition <= .02f;
+		部件.通知行.Clear();
 		for (int i = 部件.内容.childCount - 1; i >= 0; i--)
 		{
 			GameObject 旧行 = 部件.内容.GetChild(i).gameObject;
@@ -1387,9 +1433,25 @@ public class 聊天系统 : MonoBehaviour
 		刷新空提示(部件, 待显示.Count == 0);
 	}
 
+	private void 标记可见通知(面板部件 部件)
+	{
+		if (!GameNetwork.Enabled || 部件 == null || 部件.面板 == null || !部件.面板.activeInHierarchy || 部件.滚动 == null || 部件.滚动.viewport == null ||
+			(当前频道 != 聊天频道.全部 && 当前频道 != 聊天频道.系统)) return;
+		List<string> 可见通知 = new List<string>();
+		Rect 视口 = 部件.滚动.viewport.rect;
+		foreach (var 行 in 部件.通知行)
+		{
+			if (行.Key == null) continue;
+			Bounds 范围 = RectTransformUtility.CalculateRelativeRectTransformBounds(部件.滚动.viewport, 行.Key);
+			if (范围.min.y < 视口.yMax && 范围.max.y > 视口.yMin && 范围.min.x < 视口.xMax && 范围.max.x > 视口.xMin) 可见通知.Add(行.Value);
+		}
+		ChatClient.MarkNotificationsRead(可见通知);
+	}
+
 	private void 建消息行(面板部件 部件, 聊天消息 消息)
 	{
 		GameObject 行 = 新建节点("消息", 部件.内容, new Vector2(行宽, 60f), Vector2.zero, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+		if (!string.IsNullOrEmpty(消息.通知ID)) 部件.通知行[(RectTransform)行.transform] = 消息.通知ID;
 		LayoutElement 占位 = 行.AddComponent<LayoutElement>();
 		占位.preferredHeight = 60f;
 

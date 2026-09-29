@@ -278,9 +278,10 @@ $ip = isset($d['ip']) ? purge($d['ip']) : '';  //设备IP
 $md5 = isset($d['md5']) ? purge($d['md5']) : '';  //软件MD5
 
 $res = DB::table('api')->where(['ec_api'=>$d['action']])->find();
+if (!$res && $d['action'] === 'gameauth') $res = ['id'=>0,'callsl'=>0,'in_api'=>'gameauth'];
 if($res){
     $sl = $res['callsl'] + 1;
-    DB::table('api')->where(['id'=>$res['id']])->update(['callsl'=>$sl]);
+    if ($res['id'] > 0) DB::table('api')->where(['id'=>$res['id']])->update(['callsl'=>$sl]);
     $d['action'] = $res['in_api'];
 }else{
     out(201,'接口不存在。',$app_res);

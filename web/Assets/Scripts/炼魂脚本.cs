@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
@@ -253,6 +253,12 @@ public class 炼魂脚本 : MonoBehaviour
 
     public void 锁定指定炼魂()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (装备对象 == null || 装备对象.炼魂属性 == null) return;
+            Dwsg.Generals.GeneralsClientAdapter.SetSoulLocks(装备对象, 选中锁定槽位(), 显示装备所有信息);
+            return;
+        }
         if (装备对象 == null || 装备对象.炼魂属性 == null) return;
         for (int i = 0; i < 装备对象.炼魂属性.Count && i < 炼魂列表对象.transform.childCount && i < 6; i++)
             if (装备对象.炼魂属性[i] != null)
@@ -285,6 +291,7 @@ public class 炼魂脚本 : MonoBehaviour
 
     public void 开始炼魂()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) { 炼魂(1); return; }
         List<炼魂属性> 结果;
         string 说明;
         if (尝试炼魂(out 结果, out 说明)) 装备对象.炼魂属性 = 结果;
@@ -294,6 +301,7 @@ public class 炼魂脚本 : MonoBehaviour
 
     public List<炼魂属性> 开始炼魂一次()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) { 炼魂(1); return 装备对象 == null ? new List<炼魂属性>() : new List<炼魂属性>(装备对象.炼魂属性); }
         List<炼魂属性> 结果;
         string 说明;
         if (尝试炼魂(out 结果, out 说明)) return 结果;
@@ -303,6 +311,7 @@ public class 炼魂脚本 : MonoBehaviour
 
     public void 开始炼魂30次()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) { 炼魂(30); return; }
         int 次数 = 0;
         string 说明 = "";
         for (int i = 0; i < 30; i++)
@@ -317,4 +326,18 @@ public class 炼魂脚本 : MonoBehaviour
         显示装备所有信息();
         显示炼魂反馈(次数 == 0 ? 说明 : "炼魂完成" + 次数 + "次。" + (次数 < 30 ? 说明 : ""));
     }
+
+    private List<int> 选中锁定槽位()
+	{
+		List<int> indices = new List<int>();
+		for (int i = 0; i < 装备对象.炼魂属性.Count; i++)
+			if (炼魂列表对象.transform.GetChild(i).GetChild(4).gameObject.activeSelf) indices.Add(i);
+		return indices;
+	}
+
+    private void 炼魂(int count)
+	{
+		int mode = 高级炼魂选中1.isOn ? 2 : 高级炼魂选中.isOn ? 1 : 0;
+		Dwsg.Generals.GeneralsClientAdapter.RefineEquipment(装备对象, mode, count, 选中锁定槽位(), 显示装备所有信息);
+	}
 }

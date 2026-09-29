@@ -13,13 +13,14 @@ public class 市场脚本 : MonoBehaviour
     public void 刷新显示()
     {
         var p = FiefActions.Player(全局变量.本机身份); if (p == null) return;
-        铜钱单价 = FiefActions.TradeRate(全局变量.本机身份, 5); 粮食单价 = FiefActions.TradeRate(全局变量.本机身份, 6);
+        var 报价 = Dwsg.Economy.MarketClient.GetQuote();
+        铜钱单价 = Dwsg.Shared.Economy.MarketRules.Rate(报价, 5); 粮食单价 = Dwsg.Shared.Economy.MarketRules.Rate(报价, 6);
         if (黄金数量 != null) 黄金数量.text = p.财产信息.黄金.ToString("0.##");
         if (白银数量 != null) 白银数量.text = p.财产信息.白银.ToString("0.##");
         if (铜钱数量 != null) 铜钱数量.text = p.财产信息.铜钱.ToString("0.##");
         if (粮食数量 != null) 粮食数量.text = p.财产信息.粮食.ToString("0.##");
-        if (铜钱购买提示 != null) 铜钱购买提示.text = "1黄金=" + 铜钱单价.ToString("0") + "铜钱";
-        if (粮食购买提示 != null) 粮食购买提示.text = "1黄金=" + 粮食单价.ToString("0") + "粮食";
+        if (铜钱购买提示 != null) 铜钱购买提示.text = 报价 == null ? "正在获取市场报价" : "1黄金=" + 铜钱单价.ToString("0") + "铜钱";
+        if (粮食购买提示 != null) 粮食购买提示.text = 报价 == null ? "正在获取市场报价" : "1黄金=" + 粮食单价.ToString("0") + "粮食";
         if (铜钱转换提示 != null) 铜钱转换提示.text = "1铜钱=2.5粮食";
         if (粮食转换提示 != null) 粮食转换提示.text = "10粮食=3铜钱";
     }

@@ -18,6 +18,8 @@ public class 创建角色脚本 : MonoBehaviour
     public Text 名将列表对象;
 
     private int 第几个玩家 = 全局变量.本机身份;
+    private bool 正在联机建角;
+    private string 选择的联机国家 = "";
 
     public Text 君主名输入结果;
 
@@ -51,8 +53,33 @@ public class 创建角色脚本 : MonoBehaviour
         else 存档脚本.显示操作提示(内容);
     }
 
+    private void Start()
+    {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (Dwsg.Network.GameNetwork.HasRole)
+            {
+                Dwsg.Network.GameNetwork.ApplyInitialSnapshot();
+                第几个玩家 = 全局变量.本机身份;
+                君主名对象.text = 全局变量.所有玩家数据表[第几个玩家].基础信息.名字;
+                国家名对象.text = 全局变量.所有玩家数据表[第几个玩家].基础信息.国家;
+            }
+            else 君主名对象.text = "";
+            return;
+        }
+        if (全局变量.是否为登录==false)
+        {
+            君主名对象.text = "";
+        }
+    }
+
     public void 创建角色进入游戏()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            创建联机角色进入游戏();
+            return;
+        }
         if (全局变量.验证变量 ==0)
         {
             return;
@@ -148,8 +175,46 @@ public class 创建角色脚本 : MonoBehaviour
         SceneManager.LoadScene(1);
     }
 
+    private void 创建联机角色进入游戏()
+    {
+        if (正在联机建角) return;
+        if (!全局变量.是否为登录)
+        {
+            说明文本.text = "请先登录并连接游戏服务器。";
+            return;
+        }
+        if (Dwsg.Network.GameNetwork.HasRole)
+        {
+            if (Dwsg.Network.GameNetwork.ApplyInitialSnapshot()) SceneManager.LoadScene(1);
+            return;
+        }
+        string 名字 = 读取君主名();
+        if (名字.Length == 0 || 名字.Length > 20 || 名字.IndexOfAny(new[] { '<', '>', '\r', '\n' }) >= 0)
+        {
+            说明文本.text = "请输入 1 到 20 字的君主名，不能包含换行或尖括号。";
+            return;
+        }
+        string 国家 = 国家名对象.text;
+        if (string.IsNullOrEmpty(国家)) return;
+        正在联机建角 = true;
+        Dwsg.Network.GameNetwork.CreateRole(名字, 国家, result =>
+        {
+            if (this == null) return;
+            正在联机建角 = false;
+            if (result != null && result.Code == Dwsg.Shared.GameCodes.Ok && Dwsg.Network.GameNetwork.HasRole &&
+                Dwsg.Network.GameNetwork.ApplyInitialSnapshot()) SceneManager.LoadScene(1);
+            else 说明文本.text = result?.Message ?? "服务器未确认角色创建，请重试。";
+        });
+    }
+
     public void 显示选择的国家名()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            国家名对象.text = Dwsg.Network.GameNetwork.HasRole
+                ? 全局变量.所有玩家数据表[全局变量.本机身份].基础信息.国家 : 选择的联机国家;
+            return;
+        }
         国家名对象.text = 全局变量.所有玩家数据表[第几个玩家].基础信息.国家;
     }
 
@@ -210,7 +275,9 @@ public class 创建角色脚本 : MonoBehaviour
         int num = 获取选中国家索引();
         if (num != -1)
         {
-            全局变量.所有玩家数据表[第几个玩家].基础信息.国家 = 全局变量.所有国家列表[num].国号;
+            if (Dwsg.Network.GameNetwork.Enabled)
+                选择的联机国家 = 全局变量.所有国家列表[num].国号;
+            else 全局变量.所有玩家数据表[第几个玩家].基础信息.国家 = 全局变量.所有国家列表[num].国号;
         }
     }
 

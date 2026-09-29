@@ -1,4 +1,7 @@
-﻿using System.Collections;
+using Dwsg.Generals;
+using Dwsg.Network;
+using Newtonsoft.Json.Linq;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,6 +11,8 @@ using System;
 
 public class 将领列表显示 : MonoBehaviour
 {
+    private 将领信息 培养选择将领;
+    private double 培养选择次数;
 	private int 第几个玩家;
 
     private Coroutine 统帅刷新任务;
@@ -359,6 +364,7 @@ public class 将领列表显示 : MonoBehaviour
 	}
 	public void 解雇将领()
 	{
+        if (GameNetwork.Enabled) { 执行将领操作("generals.dismiss", new JObject()); return; }
 		删除指定将领();
 		重置刷新将领列表();
 	}
@@ -655,7 +661,7 @@ public class 将领列表显示 : MonoBehaviour
 	{
 		第几个玩家 = 全局变量.本机身份;
         if (军事缺口入口.当前玩家() == null) return;
-        军事本地规则.计算属性保留体力(全局变量.所有玩家数据表[第几个玩家]);
+        if (!GameNetwork.Enabled) 军事本地规则.计算属性保留体力(全局变量.所有玩家数据表[第几个玩家]);
 		int num = 获取选中将领索引();
 		if (num == -1)
 		{
@@ -892,7 +898,7 @@ public class 将领列表显示 : MonoBehaviour
 				.text = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领培养.保底次数.ToString() + "/" + 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领培养.保底上限.ToString();
 			将领培养信息对象.transform.GetChild(4).GetChild(3).GetChild(1)
 				.GetComponent<Text>()
-				.text = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领培养.培养次数.ToString();
+				.text = 获取培养次数(全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领]).ToString();
 		}
 	}
 
@@ -940,6 +946,12 @@ public class 将领列表显示 : MonoBehaviour
 
     public void 全部穿戴装备()
     {
+        if (GameNetwork.Enabled)
+        {
+		执行将领操作("generals.equipBest", new JObject());
+
+            return;
+        }
         封地信息 地; 将领信息 将;
         if (!可操作将领(out 地, out 将)) return;
         var 玩家 = 军事缺口入口.当前玩家();
@@ -958,6 +970,12 @@ public class 将领列表显示 : MonoBehaviour
 
     public void 全部卸载装备()
     {
+        if (GameNetwork.Enabled)
+        {
+		执行将领操作("generals.unequipAll", new JObject());
+
+            return;
+        }
         封地信息 地; 将领信息 将;
         if (!可操作将领(out 地, out 将)) return;
         var 玩家 = 军事缺口入口.当前玩家();
@@ -996,6 +1014,19 @@ public class 将领列表显示 : MonoBehaviour
 
     public void 将领卸载选中装备()
     {
+        if (GameNetwork.Enabled)
+        {
+		for (int slot = 0; slot < 4; slot++)
+		{
+			if (将领装备信息对象.transform.GetChild(1).GetChild(slot).GetChild(2).gameObject.activeSelf)
+			{
+				执行将领操作("generals.unequip", new JObject { ["equipmentSlot"] = slot });
+				return;
+			}
+		}
+
+            return;
+        }
         封地信息 地; 将领信息 将;
         if (!可操作将领(out 地, out 将)) return;
         int 部位 = 选中装备部位();
@@ -1093,6 +1124,13 @@ public class 将领列表显示 : MonoBehaviour
 
 	public void 将领使用经验书()
 	{
+        if (GameNetwork.Enabled)
+        {
+            int selected = 获取选中将领索引();
+            if (selected < 0 || selected >= 要显示的将领列表.Count ||
+                !GeneralsClientAdapter.CaptureExperienceBookTarget(使用道具脚本对象, 第几个玩家,
+                    要显示的将领列表[selected].第几个封地, 要显示的将领列表[selected].第几个将领)) return;
+        }
 		int num = 获取选中将领索引();
 		if (num != -1)
 		{
@@ -1105,6 +1143,12 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领清空分配加点()
 	{
+        if (GameNetwork.Enabled)
+        {
+		执行将领操作("generals.resetPoints", new JObject());
+
+            return;
+        }
 		封地信息 地; 将领信息 将;
 		if (!可操作将领(out 地, out 将)) return;
 		int num = 获取选中将领索引();
@@ -1121,6 +1165,14 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领分配加点(string 加点类型, int 加点方式)
 	{
+        if (GameNetwork.Enabled)
+        {
+		JObject arguments = new JObject { ["attribute"] = 加点类型 };
+		if (加点方式 != 1) arguments["count"] = 1;
+		执行将领操作("generals.allocatePoints", arguments);
+
+            return;
+        }
 		封地信息 地; 将领信息 将;
 		if (!可操作将领(out 地, out 将)) return;
 		int num = 获取选中将领索引();
@@ -1206,6 +1258,12 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领补满配兵()
 	{
+        if (GameNetwork.Enabled)
+        {
+		执行将领操作("generals.refillTroops", new JObject());
+
+            return;
+        }
         封地信息 封地; 将领信息 将;
         if (!尝试获取选中将领(out 封地, out 将)) return;
         int 兵种 = (int)将.将领配兵.ID;
@@ -1216,6 +1274,19 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领指定配兵(int 点击第几个)
 	{
+        if (GameNetwork.Enabled)
+        {
+		int index = 获取选中将领索引();
+		if (index < 0 || index >= 要显示的将领列表.Count) return;
+		int fief = 要显示的将领列表[index].第几个封地;
+		if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count || fief < 0 || fief >= 全局变量.所有玩家数据表[第几个玩家].封地信息表.Count) return;
+		List<闲兵信息> pool = 全局变量.所有玩家数据表[第几个玩家].封地信息表[fief].闲兵信息表;
+		int troopIndex = 第几页闲兵 * 6 + 点击第几个;
+		if (troopIndex < 0 || troopIndex >= pool.Count) return;
+		执行将领操作("generals.allocateTroops", new JObject { ["troopTypeId"] = pool[troopIndex].ID });
+
+            return;
+        }
         封地信息 封地; 将领信息 将;
         if (!尝试获取选中将领(out 封地, out 将)) return;
         int 号 = 第几页闲兵 * 6 + 点击第几个;
@@ -1228,6 +1299,12 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领解除配兵()
 	{
+        if (GameNetwork.Enabled)
+        {
+		执行将领操作("generals.releaseTroops", new JObject());
+
+            return;
+        }
         封地信息 封地; 将领信息 将;
         if (!尝试获取选中将领(out 封地, out 将)) return;
         全局变量.提示类.显示信息(军事本地规则.配兵(军事缺口入口.当前玩家(), 封地, 将, 0, 0).说明);
@@ -1246,6 +1323,17 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领加减培养次数(int 加减类型)
 	{
+        if (GameNetwork.Enabled)
+        {
+		将领信息 general = 获取选中培养将领();
+		if (general == null) return;
+		double onlineCount = 获取培养次数(general) + (加减类型 == 0 ? 1 : -1);
+		if (onlineCount < 1 || onlineCount > 100 || (加减类型 == 0 && onlineCount > 全局变量.所有玩家数据表[第几个玩家].背包道具列表.获取指定道具数量("将神魂"))) return;
+		if (GameNetwork.Enabled) 培养选择次数 = onlineCount;
+		else general.将领培养.培养次数 = onlineCount;
+
+            return;
+        }
 		int num = 获取选中将领索引();
 		if (num == -1)
 		{
@@ -1280,6 +1368,14 @@ public class 将领列表显示 : MonoBehaviour
 
 	private void 将领培养计算()
 	{
+        if (GameNetwork.Enabled)
+        {
+		将领信息 general = 获取选中培养将领();
+		if (general == null) return;
+		执行将领操作("generals.cultivate", new JObject { ["count"] = 获取培养次数(general) });
+
+            return;
+        }
 		封地信息 地; 将领信息 将;
 		if (!可操作将领(out 地, out 将)) return;
 		int num = 获取选中将领索引();
@@ -1432,5 +1528,46 @@ public class 将领列表显示 : MonoBehaviour
 		//		return -1;
 		//	});
 		//}
+	}
+
+	private void 执行将领操作(string type, JObject arguments)
+	{
+		int index = 获取选中将领索引();
+		if (index < 0 || index >= 要显示的将领列表.Count || 第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) return;
+		玩家数据 player = 全局变量.所有玩家数据表[第几个玩家];
+		int fief = 要显示的将领列表[index].第几个封地;
+		int general = 要显示的将领列表[index].第几个将领;
+		if (fief < 0 || fief >= player.封地信息表.Count || general < 0 || general >= player.封地信息表[fief].将领信息表.Count) return;
+		GeneralsClientAdapter.Execute(第几个玩家, player.封地信息表[fief].将领信息表[general].ID, type, arguments, () =>
+		{
+			if (type == "generals.dismiss") 重置刷新将领列表();
+			else
+			{
+				刷新将领属性信息();
+				刷新列表信息();
+			}
+		});
+	}
+
+	private 将领信息 获取选中培养将领()
+	{
+		int index = 获取选中将领索引();
+		if (index < 0 || index >= 要显示的将领列表.Count || 第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) return null;
+		玩家数据 player = 全局变量.所有玩家数据表[第几个玩家];
+		int fief = 要显示的将领列表[index].第几个封地;
+		int general = 要显示的将领列表[index].第几个将领;
+		if (fief < 0 || fief >= player.封地信息表.Count || general < 0 || general >= player.封地信息表[fief].将领信息表.Count) return null;
+		return player.封地信息表[fief].将领信息表[general];
+	}
+
+	private double 获取培养次数(将领信息 general)
+	{
+		if (!GameNetwork.Enabled) return general.将领培养.培养次数;
+		if (!ReferenceEquals(培养选择将领, general))
+		{
+			培养选择将领 = general;
+			培养选择次数 = general.将领培养.培养次数;
+		}
+		return 培养选择次数;
 	}
 }

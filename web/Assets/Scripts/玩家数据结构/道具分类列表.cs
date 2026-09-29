@@ -16,56 +16,28 @@ namespace 玩家数据结构
 
 		public List<道具信息> 任务道具列表 = new List<道具信息>();
 
-		public void 添加道具(string 名字, int 数量)
+		public int 获取添加道具所需格数(string 名字, int 数量)
 		{
-			List<道具信息> 列表 = 获取道具分类列表(名字);
-			if (列表 == null || 数量 <= 0) return;
-			foreach (var 堆 in 列表)
-			{
-				if (堆 == null || 堆.名字 != 名字 || 堆.数量 < 0 || 堆.数量 >= 999 || 堆.数量 != System.Math.Floor(堆.数量)) continue;
-				int 加入 = System.Math.Min(数量, 999 - (int)堆.数量);
-				堆.数量 += 加入; 数量 -= 加入;
-				if (数量 == 0) return;
-			}
-			while (数量 > 0)
-			{
-				int 加入 = System.Math.Min(数量, 999);
-				列表.Add(new 道具信息(名字, 加入)); 数量 -= 加入;
-			}
+			return Dwsg.Shared.Economy.ItemStackRules.RequiredSlots(获取道具分类列表(名字), 名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量);
 		}
 
 		public int 所需新增格数(string 名字, int 数量)
+        {
+            return Dwsg.Shared.Economy.ItemStackRules.RequiredSlots(获取道具分类列表(名字), 名字, 数量, 道具 => 道具.名字, 道具 => 道具.数量);
+        }
+
+        public void 添加道具(string 名字, int 数量)
 		{
-			var 列表 = 获取道具分类列表(名字);
-			if (列表 == null || 数量 <= 0) return -1;
-			long 剩余 = 数量;
-			foreach (var 堆 in 列表)
-			{
-				if (堆 == null) return -1;
-				if (堆.名字 != 名字) continue;
-				if (double.IsNaN(堆.数量) || double.IsInfinity(堆.数量) || 堆.数量 < 1 || 堆.数量 > 999 || 堆.数量 != System.Math.Floor(堆.数量)) return -1;
-				剩余 = System.Math.Max(0, 剩余 - (999 - (int)堆.数量));
-			}
-			return (int)((剩余 + 998) / 999);
+			Dwsg.Shared.Economy.ItemStackRules.Add(获取道具分类列表(名字), 名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量, (道具, 个数) => 道具.数量 = 个数,
+				(道具名, 个数) => new 道具信息(道具名, 个数));
 		}
 
 		public bool 扣除道具(string 道具名字, int 数量)
 		{
-			if (数量 <= 0 || 获取指定道具数量(道具名字) < 数量) return false;
-			List<道具信息> 列表 = 获取道具分类列表(道具名字);
-			if (列表 == null) return false;
-			foreach (var 堆 in 列表)
-				if (堆 == null || (堆.名字 == 道具名字 && (double.IsNaN(堆.数量) || double.IsInfinity(堆.数量) || 堆.数量 < 1 || 堆.数量 > 999 || 堆.数量 != System.Math.Floor(堆.数量)))) return false;
-			int 剩余 = 数量;
-			for (int i = 列表.Count - 1; i >= 0 && 剩余 > 0; i--)
-			{
-				if (列表[i].名字 != 道具名字) continue;
-				int 扣除 = System.Math.Min(剩余, (int)列表[i].数量);
-				列表[i].数量 -= 扣除;
-				剩余 -= 扣除;
-				if (列表[i].数量 <= 0) 列表.RemoveAt(i);
-			}
-			return 剩余 == 0;
+			return Dwsg.Shared.Economy.ItemStackRules.Subtract(获取道具分类列表(道具名字), 道具名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量, (道具, 个数) => 道具.数量 = 个数);
 		}
 
 		public bool 删除道具(string 道具名字)
@@ -144,6 +116,7 @@ namespace 玩家数据结构
 
 		private string 使用道具并扣除库存(string 道具名字, int 第几个封地, int 第几个将领)
 		{
+			if (道具名字 == "新手礼包") return EconomyClient.UseStarterPack(全局变量.所有玩家数据表[全局变量.本机身份]);
 			string text = "使用失败";
 			List<道具信息> list = 获取道具分类列表(道具名字);
 			if (list != null)
@@ -170,19 +143,7 @@ namespace 玩家数据结构
 
 		public int 获取指定道具最小数量的索引(List<道具信息> 列表, string 道具名字)
 		{
-			if (列表 == null) return -1;
-			double num = double.MaxValue;
-			int result = -1;
-			int count = 列表.Count;
-			for (int i = 0; i < count; i++)
-			{
-				if (列表[i] != null && 列表[i].名字 == 道具名字 && 列表[i].数量 > 0 && 列表[i].数量 < num)
-				{
-					num = 列表[i].数量;
-					result = i;
-				}
-			}
-			return result;
+			return Dwsg.Shared.Economy.ItemStackRules.MinimumIndex(列表, 道具名字, 道具 => 道具.名字, 道具 => 道具.数量);
 		}
 
 		public int 获取指定道具的索引(List<道具信息> 列表, string 道具名字)

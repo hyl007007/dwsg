@@ -146,12 +146,7 @@ public class 将领功能 : MonoBehaviour
 		}
 		if (num == 全局变量.本机身份)
 		{
-			double num2 = 要扣除的血量 * 0.3;
-			if (战斗系统脚本对象.战场类型 == 0)
-			{
-				num2 = 0.0;
-			}
-			double 添加数量 = Mathf.Floor((float)(要扣除的血量 - num2));
+			double 添加数量 = Dwsg.Shared.Combat.战斗规则.伤兵数量(要扣除的血量, 战斗系统脚本对象.战场类型);
 			全局变量.所有玩家数据表[全局变量.本机身份].封地信息表[第几个封地].添加伤兵((int)本将领信息.将领配兵.ID, 添加数量);
 		}
 		更新显示统兵();
@@ -234,7 +229,7 @@ public class 将领功能 : MonoBehaviour
         //if (本将领信息.详细信息.身份 == 0.0)
 			//print("当前将领攻击力" + (攻击 * 0.05 + num4) * (1.0 + num + num2 + num3) * (1.0 + num5 + num8) * (1.0 + num6 + num7));
 
-        return (攻击 * 0.05 + num4) * (1.0 + num + num2 + num3) * (1.0 + num5 + num8) * (1.0 + num6 + num7);
+        return Dwsg.Shared.Combat.战斗规则.最终攻击力(攻击, num4, num, num2, num3, num5, num6, num7, num8);
 	}
 
 	private double 获取最终防御力()
@@ -268,7 +263,7 @@ public class 将领功能 : MonoBehaviour
 		}
         //if (本将领信息.详细信息.身份 == 0.0)
             //print("当前将领防御力"+(防御 * 0.05 + num4) * (1.0 + num + num2 + num3) * (1.0 + num5 + num8) * (1.0 + num6 + num7));
-		return (防御 * 0.05 + num4) * (1.0 + num + num2 + num3) * (1.0 + num5 + num8) * (1.0 + num6 + num7);
+		return Dwsg.Shared.Combat.战斗规则.最终防御力(防御, num4, num, num2, num3, num5, num6, num7, num8);
 	}
 
 	private double 获取守方血量()
@@ -287,18 +282,12 @@ public class 将领功能 : MonoBehaviour
 			num4 = 全局兵种库.属性表[num5].生命值;
 		}
 		double 生命值 = 被攻击的将领脚本.本将领信息.将领属性.最终属性.生命值;
-		return (num4 + 生命值) * (1.0 + num + num3) * (1.0 + num2);
+		return Dwsg.Shared.Combat.战斗规则.守方血量(生命值, num4, num, num3, num2);
 	}
 
 	private double 计算最终伤害(double 最终攻击力, double 最终防御力, double 守方血量)
 	{
-		double num = (最终攻击力 - 最终防御力) * 本将领信息.详细信息.剩余兵力 / 守方血量;
-		num = Mathf.Round((float)num);
-		if (num < 0.0)
-		{
-			num = 0.0;
-		}
-		return num;
+		return Dwsg.Shared.Combat.战斗规则.最终伤害(最终攻击力, 最终防御力, 本将领信息.详细信息.剩余兵力, 守方血量);
 	}
 
 	private bool 开始攻击()
@@ -322,8 +311,7 @@ public class 将领功能 : MonoBehaviour
 			double num = 被攻击的将领脚本.扣除血量(要扣除的血量);
 			int index2 = (int)被攻击的将领脚本.本将领信息.详细信息.身份;
 			int index3 = 被攻击的将领脚本.兵种索引;
-			double num2 = num * 全局兵种库.属性表[index3].攻击力 * 0.5;
-			num2 *= 1.0 + 全局变量.所有玩家数据表[index2].获取指定状态加成("将领经验") / 100.0;
+			double num2 = Dwsg.Shared.Combat.战斗规则.将领经验(num, 全局兵种库.属性表[index3].攻击力, 全局变量.所有玩家数据表[index2].获取指定状态加成("将领经验"));
 			本将领信息.将领获取经验值(num2);
 			if (被攻击的将领脚本.本将领信息.详细信息.剩余兵力 <= 0.0 && 被攻击的将领脚本.本将领信息.ID != 0)
 			{
@@ -506,9 +494,7 @@ public class 将领功能 : MonoBehaviour
 		float num = (float)全局变量.所有玩家数据表[index].科技信息.攻速类科技(兵种) / 100f;
 		float num2 = (float)全局变量.所有玩家数据表[index].基础信息.攻速类称号加成() / 100f;
 		float num3 = (float)全局变量.所有玩家数据表[index].获取指定状态加成("攻击速度") / 100f;
-		float num4 = 攻击速度 * (1f + num + num2 + num3);
-		float num5 = 4f / (60f / num4);
-		num5 *= Time.deltaTime;
+		float num5 = Dwsg.Shared.Combat.战斗规则.攻击进度步长(攻击速度, num, num2, num3, Time.deltaTime);
 		进度条位置对象.localPosition = Vector2.MoveTowards(进度条位置对象.localPosition, new Vector2(3f, 0.36f), num5);
 		if (进度条位置对象.localPosition.x >= 3f)
 		{
@@ -519,7 +505,44 @@ public class 将领功能 : MonoBehaviour
 
 	public void 开始战斗()
 	{
+		if (战斗系统脚本对象.服务器战场) return;
 		StartCoroutine(自动战斗());
+	}
+
+	public void 应用服务器演出(Dwsg.Shared.Combat.CombatUnit 将领)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		本将领信息 = 将领.General.ToObject<将领信息>();
+		原本带兵 = 将领.OriginalQuantity;
+		更新显示统兵();
+		检查血量情况();
+		进度条位置对象.localPosition = new Vector2(将领.Progress, 0.36f);
+		if (将领.Remaining <= 0) 设置死亡状态();
+	}
+
+	public void 服务器攻击演出(bool 穿透)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		设置攻击状态();
+		Invoke("设置等待状态", 0.8f);
+		if (穿透) { 将领显示中特效(); Invoke("将领隐藏中特效", 0.3f); }
+	}
+
+	public void 服务器伤害演出(double 伤害, bool 格挡, bool 闪避)
+	{
+		if (!战斗系统脚本对象.服务器战场) return;
+		将领显示打击特效();
+		Invoke("将领隐藏打击特效", 0.3f);
+		if (格挡) { 将领显示挡特效(); Invoke("将领隐藏挡特效", 0.3f); }
+		if (闪避) { 将领显示闪特效(); Invoke("将领隐藏闪特效", 0.3f); }
+		foreach (GameObject 显示 in 战斗系统脚本对象.伤害显示缓存表)
+		{
+			if (显示.activeSelf) continue;
+			显示.SetActive(true);
+			显示.transform.position = new Vector2(transform.position.x, transform.position.y + UnityEngine.Random.Range(-2f, 2f) * 0.5f);
+			显示.transform.GetChild(0).GetChild(0).GetComponent<Text>().text = "-" + 伤害;
+			break;
+		}
 	}
 
 	private IEnumerator 自动战斗()
@@ -864,6 +887,7 @@ public class 将领功能 : MonoBehaviour
 	{
 		if (已退出战场 || !战斗系统脚本对象 || 本将领信息 == null || 本将领信息.详细信息 == null) return;
 		bool 攻方撤退 = 战斗系统脚本对象.全军撤退 && 本将领信息.详细信息.坑位颜色 == 0.0;
+		if (战斗系统脚本对象 != null && 战斗系统脚本对象.服务器战场) return;
 		if (战斗系统脚本对象.全军撤退 || 战斗系统脚本对象.战斗结束)
 			退出战场(攻方撤退, false);
 	}

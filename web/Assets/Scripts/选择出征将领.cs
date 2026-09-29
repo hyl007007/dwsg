@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,7 +9,7 @@ using Dwsg.Window3;
 
 public class 选择出征将领 : MonoBehaviour
 {
-	private int 第几个玩家 = 全局变量.本机身份;
+	private int 第几个玩家 => 全局变量.本机身份;
 
 	private int 当前选中封地 = 全局变量.第几个封地;
 
@@ -549,7 +549,7 @@ public class 选择出征将领 : MonoBehaviour
     {
         var 玩家 = 军事缺口入口.当前玩家();
         if (玩家 == null || 号 < 0 || 号 >= 玩家.封地信息表.Count) return;
-        第几个玩家 = 全局变量.本机身份;
+
         当前选中封地 = 号;
         已选中将领列表.Clear();
         选择快照.Clear();
@@ -587,7 +587,7 @@ public class 选择出征将领 : MonoBehaviour
 
     private void OnEnable()
     {
-        第几个玩家 = 全局变量.本机身份;
+
         var 玩家 = 军事缺口入口.当前玩家();
         int 号 = 玩家 != null && 玩家.封地信息表.Count > 0 ? Mathf.Clamp(全局变量.第几个封地, 0, 玩家.封地信息表.Count - 1) : -1;
         bool 保留 = ReferenceEquals(选择玩家, 玩家) && 当前选中封地 == 号;
@@ -613,6 +613,9 @@ public class 选择出征将领 : MonoBehaviour
         显示编队将领列表();
     }
 
+	private bool 正在提交山贼出征;
+	private bool 正在提交补兵;
+
 	public GameObject 战斗界面UI;
 
 	public 战斗系统 战斗系统对象;
@@ -632,6 +635,26 @@ public class 选择出征将领 : MonoBehaviour
 
 	public void 山贼_出征选中将领()
 	{
+        if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			Newtonsoft.Json.Linq.JArray 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[全局变量.本机身份].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后出征"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			正在提交山贼出征 = true;
+			Dwsg.Network.GameNetwork.SendCommand("combat.bandit.dispatch", new Newtonsoft.Json.Linq.JObject {
+				["x"] = 山贼坐标x, ["y"] = 山贼坐标y, ["generalIds"] = 将领ID列表 }, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");
+			});
+			return;
+		}
         List<将领信息> 将领表;
         if (附近山贼.获取指定坐标的山贼(山贼坐标x, 山贼坐标y) == null) { 全局变量.提示类.显示信息("山贼目标已变更。"); return; }
         if (!校验选中将领(out 将领表)) return;
@@ -649,6 +672,35 @@ public class 选择出征将领 : MonoBehaviour
 
 	public void 城池_出征选中将领()
 	{
+        if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			var 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[全局变量.本机身份].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后出征"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			var 参数 = new Newtonsoft.Json.Linq.JObject { ["x"] = 城池坐标x, ["y"] = 城池坐标y, ["generalIds"] = 将领ID列表 };
+            if (index != 1 && 精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
+			{
+				if (!int.TryParse(精准到达_时.text, out int 时) || !int.TryParse(精准到达_分.text, out int 分) || !int.TryParse(精准到达_秒.text, out int 秒)
+					|| 时 < 0 || 时 > 23 || 分 < 0 || 分 > 59 || 秒 < 0 || 秒 > 59)
+				{ 全局变量.提示类.显示信息("精确到达时间无效"); return; }
+				long 当前服务器秒 = Dwsg.Network.GameNetwork.CurrentSnapshot.ServerUtcMs / 1000;
+				DateTime 今天 = TIME.TimeStampToDateTime(当前服务器秒 + 10);
+				参数["arrivalUtcMs"] = TIME.DateTimeToTimeStamp(new DateTime(今天.Year, 今天.Month, 今天.Day, 时, 分, 秒)) * 1000;
+			}
+			正在提交山贼出征 = true;
+            Dwsg.Network.GameNetwork.SendCommand(index == 1 ? "combat.city.garrison.dispatch" : "combat.city.dispatch", 参数, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");
+			});
+			return;
+		}
         if (资源点标识 != null) { 资源点_出征选中将领(); return; }
         if (和平驻防模式) { 城池_驻防选中将领(); return; }
         List<将领信息> 将领表;
@@ -678,6 +730,7 @@ public class 选择出征将领 : MonoBehaviour
 
     private void 资源点_出征选中将领()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) { 全局变量.提示类.显示信息("资源点出征尚未接入服务器，操作未提交"); return; }
         if (资源选择载入号 != 资源点规则.本地.载入号) { 全局变量.提示类.显示信息("世界已切换，请重新选择资源点。"); return; }
         List<将领信息> 将领表;
         if (!校验选中将领(out 将领表)) return;
@@ -693,6 +746,7 @@ public class 选择出征将领 : MonoBehaviour
 
     public void 城池_驻防选中将领()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) { int 原操作 = index; index = 1; 城池_出征选中将领(); index = 原操作; return; }
         List<将领信息> 将领表;
         if (!校验选中将领(out 将领表)) return;
         var 玩家 = 军事缺口入口.当前玩家();
@@ -713,6 +767,27 @@ public class 选择出征将领 : MonoBehaviour
         战斗系统对象 = 界面 != null ? 界面.战斗系统脚本对象 : null;
         if (战斗系统对象 == null || 战斗系统对象.战斗结束 || 战斗系统对象.等待销毁战场 || 战斗系统对象.攻身份 != 全局变量.本机身份)
         { 全局变量.提示类.显示信息("当前战场不允许本机增援。"); return; }
+        if (Dwsg.Network.GameNetwork.Enabled && 战斗系统对象.服务器战场)
+		{
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			Newtonsoft.Json.Linq.JArray 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后增援"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			正在提交山贼出征 = true;
+			Dwsg.Network.GameNetwork.SendCommand(Dwsg.Combat.CombatClient.CommandType(战斗系统对象.服务器战场ID, "reinforce"), new Newtonsoft.Json.Linq.JObject {
+				["battleId"] = 战斗系统对象.服务器战场ID, ["generalIds"] = 将领ID列表 }, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("增援成功!");
+			});
+			return;
+		}
+        if (Dwsg.Network.GameNetwork.Enabled) { 全局变量.提示类.显示信息("此战场尚未接入服务器，操作未提交"); return; }
         List<将领信息> 将领表;
         if (!校验选中将领(out 将领表)) return;
         var 增援军情 = 加入军情队列(战斗系统对象.战场类型, 战斗系统对象.坐标x, 战斗系统对象.坐标y, TIME.getTime(), 将领表, true);
@@ -755,7 +830,7 @@ public class 选择出征将领 : MonoBehaviour
 		山贼信息对象.transform.GetChild(0).GetChild(1).GetComponent<Text>()
 			.text = 城池信息库类.名称 + "(" + 城池信息库类.获取规模名称() + "城" + 城池信息库类.坐标x.ToString() + "," + 城池信息库类.坐标y.ToString() + ")  国家:" + 城池信息库类.获取国家名字();
 		山贼信息对象.transform.GetChild(0).GetChild(2).GetComponent<Text>()
-			.text = "天赋:" + 城池信息库类.获取天赋类型名称() + "+" + 城池信息库类.天赋加成.ToString() + "%  封地:" + 城池信息库类.城池封地列表.Count.ToString() + "/" + 城池信息库类.获取封地上限().ToString();
+			.text = "天赋:" + 城池信息库类.获取天赋类型名称() + "+" + 城池信息库类.天赋加成.ToString() + "%  封地:" + Dwsg.Network.GameNetwork.GetCityFiefCount(全局变量.所有城池列表.IndexOf(城池信息库类)).ToString() + "/" + 城池信息库类.获取封地上限().ToString();
 		山贼信息对象.transform.GetChild(0).GetChild(3).GetComponent<Text>()
 			.text = "城主:" + 城池信息库类.获取城主名字();
 		山贼信息对象.transform.GetChild(2).GetChild(0).GetComponent<Text>()
@@ -820,7 +895,7 @@ public class 选择出征将领 : MonoBehaviour
 
 	private void 显示编队将领列表()
     {
-        第几个玩家 = 全局变量.本机身份;
+
         隐藏所有列表将领对象();
         已显示将领列表.Clear();
         出征标题原文.Clear();
@@ -1067,6 +1142,29 @@ public class 选择出征将领 : MonoBehaviour
 
     private void 选中将领批量补兵()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+		{
+			if (正在提交补兵 || 已选中将领列表.Count == 0) return;
+			Queue<string> 将领队列 = new Queue<string>();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后补兵"); return; }
+				将领队列.Enqueue(将领ID);
+			}
+			正在提交补兵 = true;
+			Action 补下一个 = null;
+			补下一个 = () => {
+				if (将领队列.Count == 0) { 正在提交补兵 = false; 显示编队将领列表(); return; }
+				Dwsg.Network.GameNetwork.SendCommand("generals.refillTroops", new Newtonsoft.Json.Linq.JObject { ["generalId"] = 将领队列.Dequeue() }, 结果 => {
+					if (结果.Code != Dwsg.Shared.GameCodes.Ok) 全局变量.提示类.显示信息(结果.Message);
+					补下一个();
+				});
+			};
+			补下一个();
+			return;
+		}
         var 玩家 = 军事缺口入口.当前玩家();
         if (玩家 == null) return;
         if (已选中将领列表.Count == 0) { 全局变量.提示类.显示信息("请先选择要补兵的将领。"); return; }

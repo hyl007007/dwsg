@@ -75,6 +75,7 @@ public class 封地界面脚本 : MonoBehaviour
         {
             var toggle = choices.GetChild(i).GetComponent<Toggle>();
             if (toggle == null || !toggle.isOn) continue;
+            if (Dwsg.Network.GameNetwork.Enabled) { 请求建筑操作("fief.construct", types[i]); return; }
             var result = FiefActions.Build(第几个玩家, 第几个封地, 已打开第几个建筑, types[i]);
             提示(result.Message);
             if (result.Success) { 显示封地指定建筑(已打开第几个建筑); 建造界面UI对象.gameObject.SetActive(false); }
@@ -86,6 +87,7 @@ public class 封地界面脚本 : MonoBehaviour
     public void 升级建筑()
     {
         if (!操作对象有效()) return;
+        if (Dwsg.Network.GameNetwork.Enabled) { 请求建筑操作("fief.upgrade", null); return; }
         var result = FiefActions.Upgrade(第几个玩家, 第几个封地, 已打开第几个建筑);
         提示(result.Message);
         if (!result.Success) return;
@@ -96,6 +98,7 @@ public class 封地界面脚本 : MonoBehaviour
     public void 拆除建筑()
     {
         if (!操作对象有效()) return;
+        if (Dwsg.Network.GameNetwork.Enabled) { 请求建筑操作("fief.demolish", null); return; }
         var result = FiefActions.Demolish(第几个玩家, 第几个封地, 已打开第几个建筑);
         提示(result.Message);
         if (!result.Success) return;
@@ -104,6 +107,29 @@ public class 封地界面脚本 : MonoBehaviour
             if (pane != null) pane.SetActive(false);
         打开时建筑 = null;
     }
+
+	private void 请求建筑操作(string 类型, int? 建筑类型)
+	{
+		ProductionClient.Execute(类型, 全局变量.所有玩家数据表[第几个玩家], 第几个封地, 已打开第几个建筑, 建筑类型, 结果 =>
+		{
+			if (this == null) return;
+			if (结果 == null || 结果.Code != Dwsg.Shared.GameCodes.Ok)
+			{
+				全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认建筑操作，请重试");
+				return;
+			}
+			if (类型 == "fief.upgrade") 全局变量.提示类.显示信息(结果.Message);
+			显示封地所有建筑();
+            if (类型 == "fief.demolish")
+            {
+                foreach (var pane in new[] { 大厅详情UI对象, 房屋详情UI对象, 农场详情UI对象, 书院详情UI对象, 兵营详情UI对象 })
+                    if (pane != null) pane.SetActive(false);
+                打开时建筑 = null;
+            }
+            else if (类型 == "fief.construct") 建造界面UI对象.gameObject.SetActive(false);
+            else 封地建筑打开操作(已打开第几个建筑);
+		});
+	}
 
 	public void 显示建造建筑信息()
     {
@@ -214,6 +240,7 @@ public class 封地界面脚本 : MonoBehaviour
 
     public void 显示封地所有建筑()
     {
+
         绑定固定建筑入口();
         var p = FiefActions.Player(第几个玩家);
         if (p != null && p.封地信息表.Count > 0 && (第几个封地 < 0 || 第几个封地 >= p.封地信息表.Count)) 第几个封地 = 0;

@@ -28,6 +28,8 @@ public class 调整数量脚本 : MonoBehaviour
     private 封地信息 打开时封地;
     private 建筑信息 打开时兵营;
     private string 打开时道具, 基础说明;
+    private Newtonsoft.Json.Linq.JObject 市场报价;
+    private int 显示次数;
 
     private void OnEnable()
     {
@@ -110,11 +112,13 @@ public class 调整数量脚本 : MonoBehaviour
         if (调整类型 == 1) return FiefActions.RecruitLimit(第几个玩家, 第几个封地, 第几个建筑, 兵种ID);
         if (调整类型 == 3) return 显示背包物品脚本对象 == null ? 0 : FiefActions.Whole(显示背包物品脚本对象.获取选中物品数量());
         if (调整类型 == 4) return FiefActions.HealLimit(第几个玩家, 第几个封地, 兵种ID);
-        if (调整类型 >= 5 && 调整类型 <= 8) return FiefActions.TradeLimit(第几个玩家, 调整类型);
+        if (调整类型 >= 5 && 调整类型 <= 8) return Dwsg.Network.GameNetwork.Enabled ? Dwsg.Economy.MarketClient.Maximum(市场报价, 调整类型) : FiefActions.TradeLimit(第几个玩家, 调整类型);
         return 0;
     }
     public void 显示说明文本()
     {
+        显示次数++;
+        市场报价 = Dwsg.Economy.MarketClient.GetQuote();
         第几个玩家 = 全局变量.本机身份;
         打开时玩家 = FiefActions.Player(第几个玩家);
         打开时封地 = 调整类型 == 1 || 调整类型 == 4 ? FiefActions.Fief(第几个玩家, 第几个封地) : null;
@@ -154,8 +158,9 @@ public class 调整数量脚本 : MonoBehaviour
         }
         else if (调整类型 >= 5 && 调整类型 <= 8)
         {
-            double cost = FiefActions.TradeCost(第几个玩家, 调整类型, 调整数量);
-            fee = "\n消耗" + (调整类型 == 5 || 调整类型 == 6 ? "黄金" : 调整类型 == 7 ? "铜钱" : "粮食") + (FiefActions.Finite(cost) ? cost.ToString("0") : "—") + "（不足1按1计）";
+            double rate = Dwsg.Shared.Economy.MarketRules.Rate(市场报价, 调整类型);
+            double cost = Dwsg.Network.GameNetwork.Enabled ? (rate > 0 ? Math.Floor((float)(调整数量 / rate)) : double.NaN) : FiefActions.TradeCost(第几个玩家, 调整类型, 调整数量);
+            fee = "\n消耗" + (调整类型 == 5 || 调整类型 == 6 ? "黄金" : 调整类型 == 7 ? "铜钱" : "粮食") + (FiefActions.Finite(cost) ? cost.ToString("0") : "—") + (Dwsg.Network.GameNetwork.Enabled ? "（扣费须大于0）" : "（不足1按1计）");
         }
         说明文本.text = 基础说明 + fee;
     }
@@ -167,6 +172,47 @@ public class 调整数量脚本 : MonoBehaviour
             (调整类型 == 1 && !ReferenceEquals(打开时兵营, FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑))))
         { 提示("角色或封地已变化，请重新选择操作。"); return; }
         if (!同步当前输入(true)) return;
+        if (调整类型 == 3 && (显示背包物品脚本对象 == null || 打开时道具 != 显示背包物品脚本对象.已选择道具名字.text))
+        { 提示("道具已变化，请重新选择。"); return; }
+        int 本次显示 = 显示次数;
+        Action<Dwsg.Shared.GameResult> 完成 = response =>
+        {
+            if (this == null || 本次显示 != 显示次数) return;
+            已提交 = false;
+            提示(response?.Message ?? "服务器未确认操作，请重试。");
+            if (response == null || response.Code != Dwsg.Shared.GameCodes.Ok) return;
+            if (调整类型 == 1 && 兵营脚本对象 != null) 兵营脚本对象.刷新显示();
+            else if (调整类型 == 4 && 封地信息界面UI脚本对象 != null) 封地信息界面UI脚本对象.显示伤兵列表();
+            else if (调整类型 >= 5 && 市场脚本对象 != null) 市场脚本对象.刷新显示();
+            else if (调整类型 == 3 && 显示背包物品脚本对象 != null) 显示背包物品脚本对象.刷新显示();
+            gameObject.SetActive(false);
+        };
+        if (调整类型 == 3 && Dwsg.Economy.MaterialPackClient.Supports(打开时道具))
+        {
+            已提交 = true; 显示背包物品脚本对象.使用材料包((int)调整数量, 完成); return;
+        }
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (调整类型 == 1)
+            {
+                已提交 = true;
+                ProductionClient.Recruit(打开时玩家, 第几个封地, 第几个建筑, 兵种ID, 调整数量, 完成);
+                return;
+            }
+            if (调整类型 == 4)
+            {
+                Dwsg.Generals.TroopTreatmentClientAdapter.Heal(第几个玩家, 第几个封地, 兵种ID, 调整数量, () => 完成(Dwsg.Shared.GameResult.Success()));
+                return;
+            }
+            if (调整类型 >= 5 && 调整类型 <= 8)
+            {
+                已提交 = true; Dwsg.Economy.MarketClient.Exchange(调整类型, 调整数量, 市场报价, 完成); return;
+            }
+            if (调整类型 == 3 && 打开时道具 == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName)
+            {
+                已提交 = true; 显示背包物品脚本对象.使用经验书(调整数量, 完成); return;
+            }
+        }
         CityResult result;
         if (调整类型 == 1) result = FiefActions.Recruit(第几个玩家, 第几个封地, 第几个建筑, 兵种ID, 调整数量);
         else if (调整类型 == 4) result = FiefActions.Heal(第几个玩家, 第几个封地, 兵种ID, 调整数量);

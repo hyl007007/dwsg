@@ -164,6 +164,18 @@ public class 显示国家列表 : MonoBehaviour
         {
             待确认国号 = 选中国号; 刷新选择(); 提示("换国将重置战功、归并基地、归还其他城池。\n再次点击“确认换国”继续；返回可取消。"); return;
         }
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            string 目标国家 = 选中国号;
+            NationClient.Join(目标国家, response =>
+            {
+                if (this == null || 打开时角色 != NationDataSource.Current.ActorId) return;
+                提示(response?.Message ?? "服务器未确认换国，请重试");
+                if (response == null || response.Code != Dwsg.Shared.GameCodes.Ok) { 待确认国号 = null; 刷新选择(); return; }
+                gameObject.SetActive(false); NationOriginalControls.ReturnToNation(this, 目标国家);
+            });
+            return;
+        }
         var 结果 = NationBasicActions.Current.Join(选中国号, 打开时角色); 提示(结果.Message);
         if (!结果.Success) { 待确认国号 = null; 刷新选择(); return; }
         gameObject.SetActive(false); NationOriginalControls.ReturnToNation(this, 选中国号);

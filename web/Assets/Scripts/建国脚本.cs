@@ -78,6 +78,20 @@ public class 建国脚本 : MonoBehaviour
     public void 确定建国()
     {
         if (国都城池信息 == null) { 提示("请先选择自己拥有的国都城池。"); return; }
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (打开时角色 != NationDataSource.Current.ActorId) { 提示("当前角色已变化，请重新打开建国界面。"); return; }
+            NationClient.Create(读取(国名输入对象, 国名对象), 读取(国号输入对象, 国号对象),
+                读取(宣言输入对象, 国家宣言对象), 国都城池信息, response =>
+                {
+                    if (this == null || 打开时角色 != NationDataSource.Current.ActorId) return;
+                    提示(response?.Message ?? "服务器未确认建国，请重试");
+                    if (response == null || response.Code != Dwsg.Shared.GameCodes.Ok) return;
+                    gameObject.SetActive(false); if (国家列表布局 != null) 国家列表布局.SetActive(false);
+                    NationOriginalControls.ReturnToNation(this, NationDataSource.Current.OwnNationCode);
+                });
+            return;
+        }
         var 结果 = NationBasicActions.Current.Found(读取(国名输入对象, 国名对象), 读取(国号输入对象, 国号对象),
             读取(宣言输入对象, 国家宣言对象), 国都城池信息.坐标x, 国都城池信息.坐标y, 打开时角色);
         提示(结果.Message); if (!结果.Success) return;

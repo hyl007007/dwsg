@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runtime/Dwsg.Runtime.csproj" />
+    <ProjectReference Include="../Persistence/Dwsg.Persistence.csproj" />
+    <ProjectReference Include="../Modules/Economy/Dwsg.Economy.csproj" />
+    <ProjectReference Include="../Modules/Generals/Dwsg.Generals.csproj" />
+    <ProjectReference Include="../Modules/Chat/Dwsg.Chat.csproj" />
+    <ProjectReference Include="../Modules/Combat/Dwsg.Combat.csproj" />
+  </ItemGroup>
+</Project>

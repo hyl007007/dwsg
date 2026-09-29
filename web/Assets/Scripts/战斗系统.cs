@@ -6,6 +6,10 @@ using Dwsg.Window3;
 
 public class 战斗系统 : MonoBehaviour
 {
+	public string 服务器战场ID;
+
+	public bool 服务器战场 => !string.IsNullOrEmpty(服务器战场ID);
+
 	public int 战场类型;
 
 	public int 坐标x;
@@ -218,6 +222,7 @@ public class 战斗系统 : MonoBehaviour
 
 	private void FixedUpdate()
 	{
+		if (服务器战场) return;
 		if (!开始检测战斗结果)
 		{
 			return;
@@ -318,35 +323,18 @@ public class 战斗系统 : MonoBehaviour
 		if (驻防战报 != null) 本次战报 = 驻防战报;
 		if (攻身份 == 全局变量.本机身份)
 		{
-            double num5 = 0.0;
-            double num6 = 0.0;
-            double num7 = 0.0;
-            double num8 = 0.0;
+            List<Dwsg.Shared.Combat.击杀兵种信息> 击杀列表 = new List<Dwsg.Shared.Combat.击杀兵种信息>();
             int count = 消灭敌军列表.Count;
             for (int i = 0; i < count; i++)
             {
                 兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(消灭敌军列表[i].ID);
-                num5 += 兵种属性库类.攻击力 * 0.05 * 消灭敌军列表[i].数量;
-                num6 += 兵种属性库类.攻击力 * 0.1 * 消灭敌军列表[i].数量;
-                num7 += 兵种属性库类.攻击力 * 0.3 * 消灭敌军列表[i].数量;
-                num8 += 兵种属性库类.攻击力 * 0.002 * 消灭敌军列表[i].数量;
+                击杀列表.Add(new Dwsg.Shared.Combat.击杀兵种信息 { 兵种ID = (int)消灭敌军列表[i].ID, 兵种攻击 = 兵种属性库类.攻击力, 数量 = 消灭敌军列表[i].数量 });
             }
-            double num9 = 全局变量.所有玩家数据表[全局变量.本机身份].获取指定状态加成("资源声望") / 100.0;
-            num5 *= 1.0 + num9;
-            num6 *= 1.0 + num9;
-            num7 *= 1.0 + num9;
-            if (num5 > 10000000.0)
-            {
-                num5 = 10000000.0;
-            }
-            if (num6 > 10000000.0)
-            {
-                num6 = 10000000.0;
-            }
-            if (num7 > 30000000.0)
-            {
-                num7 = 30000000.0;
-            }
+            Dwsg.Shared.Combat.战斗奖励 奖励 = Dwsg.Shared.Combat.战斗规则.计算奖励(击杀列表, 全局变量.所有玩家数据表[全局变量.本机身份].获取指定状态加成("资源声望"));
+            double num5 = 奖励.声望;
+            double num6 = 奖励.国库铜钱;
+            double num7 = 奖励.原提示粮食;
+            double num8 = 奖励.原提示黄金;
             var 君主 = 全局变量.所有玩家数据表[全局变量.本机身份].基础信息;
             double 原声望 = 君主.声望;
             君主.君主获得经验(Mathf.Floor((float)num5));

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Checks/**/*.cs" />
+    <Compile Include="../../../web/Assets/Scripts/全局大地图库.cs" Link="Original/全局大地图库.cs" />
+    <ProjectReference Include="../../../shared/Dwsg.Shared.csproj" />
+    <ProjectReference Include="../Generals/Dwsg.Generals.csproj" />
+    <ProjectReference Include="../Economy/Dwsg.Economy.csproj" />
+    <ProjectReference Include="../Chat/Dwsg.Chat.csproj" />
+  </ItemGroup>
+</Project>

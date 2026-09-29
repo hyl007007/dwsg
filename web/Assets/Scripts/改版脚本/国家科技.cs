@@ -70,6 +70,17 @@ public class 国家科技 : MonoBehaviour
 
     private void 提升科技(string 类型)
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (打开时国家 != NationDataSource.Current.OwnNationCode || 打开时角色 != NationDataSource.Current.ActorId) return;
+            NationClient.Research(类型 + "科技", result =>
+            {
+                if (this == null) return;
+                if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Message);
+                刷新显示信息();
+            });
+            return;
+        }
         var 结果 = NationBasicActions.Current.UpgradeTechnology(打开时国家 ?? NationDataSource.Current.OwnNationCode, 类型, 打开时角色);
         if (全局变量.提示类 != null) 全局变量.提示类.显示信息(结果.Message);
         刷新显示信息();

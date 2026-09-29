@@ -4,6 +4,9 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Dwsg.Network;
+using Dwsg.Shared;
+using Newtonsoft.Json.Linq;
 
 public class 登录脚本 : MonoBehaviour
 {
@@ -14,10 +17,16 @@ public class 登录脚本 : MonoBehaviour
     public Text user;
     public Text pwd;
     public string 服务器地址 = "http://127.0.0.1:18080/api.php?appid=1";
+    public string 游戏服务器地址 = "";
+    public string 联机世界 = "main";
     public static string 会话令牌 { get; private set; }
     public static int 心跳ID { get; private set; }
     private bool 正在登录;
     private string 客户端ID = Guid.NewGuid().ToString("N");
+    private void Awake()
+    {
+        GameNetwork.Configure(游戏服务器地址, Environment.GetEnvironmentVariable("DWSG_WORLD_ID") ?? 联机世界);
+    }
 
     private void Start()
     {
@@ -123,6 +132,18 @@ public class 登录脚本 : MonoBehaviour
                 }
                 会话令牌 = 结果.data.result.session_token;
                 心跳ID = 结果.data.result.tokenid;
+                if (GameNetwork.Enabled)
+                {
+                    var 凭据 = new JObject { ["user"] = 玩家账号, ["tokenId"] = 心跳ID, ["sessionToken"] = 会话令牌,
+                        ["clientId"] = 客户端ID, ["mac"] = SystemInfo.deviceUniqueIdentifier, ["ip"] = "", ["md5"] = "", ["version"] = "" };
+                    GameResult 联机结果 = null;
+                    yield return GameNetwork.Connect(凭据, value => 联机结果 = value);
+                    if (联机结果 == null || 联机结果.Code != GameCodes.Ok && 联机结果.Code != GameCodes.RoleRequired)
+                    {
+                        log.text = 联机结果?.Message ?? "连接游戏服务器失败，请稍后重试。";
+                        yield break;
+                    }
+                }
                 PlayerPrefs.SetString("name", 玩家账号);
                 全局变量.是否为登录 = true;
                 log.text = 提示;

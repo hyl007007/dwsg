@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+using Dwsg.Generals;
+using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -216,6 +218,19 @@ public class 更换装备脚本 : MonoBehaviour
         var 行 = 装备列表对象.transform.GetChild(第几个装备);
         if (ReferenceEquals(已选中装备, 装备) && 行.GetChild(0).gameObject.activeSelf)
         {
+            if (Dwsg.Network.GameNetwork.Enabled)
+            {
+                int inventoryIndex = GeneralLegacyAdapter.Equipment(玩家快照, 第几个部位).IndexOf(装备);
+                GeneralsClientAdapter.Execute(全局变量.本机身份, 将领快照.ID, "generals.equip",
+                    new JObject { ["equipmentSlot"] = 第几个部位, ["equipmentIndex"] = inventoryIndex, ["releaseTroops"] = 将领界面UI对象 != null && 将领界面UI对象.activeSelf }, () =>
+                    {
+                        if (this == null) return;
+                        gameObject.SetActive(false);
+                        var list = 将领界面UI对象 == null ? null : 将领界面UI对象.GetComponent<将领列表显示>();
+                        if (list != null) { list.刷新将领属性信息(); list.刷新列表信息(); }
+                    });
+                return;
+            }
             var 结果 = 将领流程规则.穿戴(玩家快照, 封地快照, 将领快照, 第几个部位, 装备);
             全局变量.提示类.显示信息(结果.说明);
             if (!结果.成功) return;

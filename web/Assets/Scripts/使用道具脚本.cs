@@ -110,6 +110,30 @@ public class 使用道具脚本 : MonoBehaviour
 		if (selected < 0) { 全局变量.提示类.显示信息("请先选择道具"); return; }
 		var item = 要显示的列表[selected];
 		if (!目标有效(item)) { 全局变量.提示类.显示信息("道具数量不足或使用目标已变化，请重新选择"); 刷新显示(); return; }
+		if (Dwsg.Network.GameNetwork.Enabled && item.类型 == "经验书")
+		{
+			Dwsg.Generals.GeneralsClientAdapter.UseExperienceBook(this, item.名字, 1, response =>
+			{
+				if (this == null) return;
+				if (response.Code == Dwsg.Shared.GameCodes.Ok && 将领列表对象 != null)
+				{
+					var list = 将领列表对象.GetComponent<将领列表显示>();
+					if (list != null) { list.刷新列表信息(); list.刷新将领属性信息(); }
+				}
+				刷新显示();
+			});
+			return;
+		}
+		if (Dwsg.Economy.MaterialPackClient.Supports(item.名字))
+		{
+			Dwsg.Economy.MaterialPackClient.Use(item.名字, 1, response =>
+			{
+				if (this == null) return;
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息(response.Message);
+				刷新显示();
+			});
+			return;
+		}
 		string result = ExistingWorldAdapter.CurrentPlayer.背包道具列表.使用道具(item.名字, 第几个封地, 第几个将领);
 		全局变量.提示类.显示信息(result == "使用失败" ? "使用失败，请检查使用条件" : "使用成功:\n" + result);
 		if (result != "使用失败")

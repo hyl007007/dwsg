@@ -369,12 +369,20 @@ public class 显示背包物品 : MonoBehaviour
 		return selection != null && selection.要显示的物品 != null && 要显示的物品列表.Contains(selection.要显示的物品) ? selection.要显示的物品.数量 : 0;
 	}
 
+    private static bool 可使用选中道具(string name)
+    {
+        return 全局道具库.可在背包开启(name) || Dwsg.Economy.MaterialPackClient.Supports(name) ||
+            (Dwsg.Network.GameNetwork.Enabled && name == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName);
+    }
+
 	public void 批量使用道具()
 	{
 		var selection = 当前选中详情();
 		var player = ExistingWorldAdapter.CurrentPlayer;
 		var item = selection == null ? null : selection.要显示的物品;
-		if (player == null || item == null || !全局道具库.可在背包开启(item.名字) || item.数量 < 1 || !要显示的物品列表.Contains(item)) return;
+		if (player == null || item == null || !可使用选中道具(item.名字) || item.数量 < 1 || !要显示的物品列表.Contains(item)) return;
+        if (Dwsg.Network.GameNetwork.Enabled && item.名字 == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName &&
+            !Dwsg.Generals.GeneralsClientAdapter.CaptureExperienceBookTarget(this, 全局变量.本机身份, 0, 0)) return;
 		调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
 		调整数量脚本对象.调整类型 = 3;
 		调整数量脚本对象.gameObject.SetActive(true);
@@ -390,10 +398,57 @@ public class 显示背包物品 : MonoBehaviour
 		var selection = 当前选中详情();
 		var player = ExistingWorldAdapter.CurrentPlayer;
 		if (player == null || selection == null || selection.要显示的物品 == null ||
-			!全局道具库.可在背包开启(selection.要显示的物品.名字) || !要显示的物品列表.Contains(selection.要显示的物品)) return;
+			!可使用选中道具(selection.要显示的物品.名字) || !要显示的物品列表.Contains(selection.要显示的物品)) return;
+        string selectedName = selection.要显示的物品.名字;
+        if (Dwsg.Network.GameNetwork.Enabled && selectedName == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName)
+        {
+            if (Dwsg.Generals.GeneralsClientAdapter.CaptureExperienceBookTarget(this, 全局变量.本机身份, 0, 0)) 使用经验书(1);
+            return;
+        }
+        if (Dwsg.Economy.MaterialPackClient.Supports(selectedName)) { 使用材料包(1); return; }
 		string result = player.背包道具列表.使用道具(selection.要显示的物品.名字, 0, 0);
 		全局变量.提示类.显示信息(result == "使用失败" ? "使用失败，请检查道具与使用条件" : "使用成功:\n" + result);
 		刷新显示();
+	}
+
+	public void 使用经验书(double 数量, System.Action<Dwsg.Shared.GameResult> 完成 = null)
+	{
+		int 选中;
+		if (!int.TryParse(已选中道具.text, out 选中)) 选中 = 0;
+		Dwsg.Generals.GeneralsClientAdapter.UseExperienceBook(this, 已选择道具名字.text, 数量, result =>
+		{
+			if (this == null) return;
+			if (result.Code == Dwsg.Shared.GameCodes.Ok)
+			{
+				刷新显示();
+				if (选中 >= 0 && 选中 < 物品列表对象.transform.childCount && 物品列表对象.transform.GetChild(选中).GetChild(9).gameObject.activeSelf)
+					物品列表对象.transform.GetChild(选中).GetChild(9).GetComponent<Toggle>().isOn = true;
+			}
+			完成?.Invoke(result);
+		});
+	}
+
+	public void 使用材料包(int 数量, System.Action<Dwsg.Shared.GameResult> 完成 = null)
+	{
+		if (Dwsg.Economy.MaterialPackClient.Pending)
+		{
+			if (全局变量.提示类 != null) 全局变量.提示类.显示信息("正在使用宝箱，请稍候");
+			return;
+		}
+		int 选中;
+		if (!int.TryParse(已选中道具.text, out 选中)) 选中 = 0;
+		Dwsg.Economy.MaterialPackClient.Use(已选择道具名字.text, 数量, result =>
+		{
+			if (this == null) return;
+			if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Code == Dwsg.Shared.GameCodes.Ok ? "使用成功:\n" + result.Message : result.Message);
+			if (result.Code == Dwsg.Shared.GameCodes.Ok)
+			{
+				刷新显示();
+				if (选中 >= 0 && 选中 < 物品列表对象.transform.childCount && 物品列表对象.transform.GetChild(选中).GetChild(9).gameObject.activeSelf)
+					物品列表对象.transform.GetChild(选中).GetChild(9).GetComponent<Toggle>().isOn = true;
+			}
+			完成?.Invoke(result);
+		});
 	}
 
 	public void 丢弃道具()

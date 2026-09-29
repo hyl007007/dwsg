@@ -294,6 +294,25 @@ public class 书院脚本 : MonoBehaviour
 
     public void 升级选中科技()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+		for (int i = 0; i < Dwsg.Shared.Economy.TechnologyRules.Count; i++)
+		{
+			if (!书院列表对象.transform.GetChild(i).GetChild(5).gameObject.activeSelf) continue;
+			int 请求玩家 = 第几个玩家, 请求封地 = 第几个封地, 请求建筑 = 第几个建筑;
+			TechnologyClient.Upgrade(请求玩家, 请求封地, 请求建筑, i, 结果 =>
+			{
+				if (this == null) return;
+				全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认科技升级，请重试");
+				if (结果 != null && 结果.Code == Dwsg.Shared.GameCodes.Ok && 第几个玩家 == 请求玩家 && 第几个封地 == 请求封地 && 第几个建筑 == 请求建筑)
+					显示科技列表();
+			});
+			return;
+		}
+		显示科技列表();
+
+            return;
+        }
         var building = FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑);
         if (building == null || !ReferenceEquals(building, 打开时书院)) { 全局变量.提示类.显示信息("书院已变化，请重新打开。"); return; }
         int selected = 选中科技();

@@ -197,6 +197,12 @@ public class 将领属性库类
 
 	public void 获取随机属性()
 	{
+		if (Dwsg.Shared.Generals.GeneralCreationRules.IsOrdinarySeries(系列))
+		{
+			Newtonsoft.Json.Linq.JObject randomized = Dwsg.Shared.Generals.GeneralCreationRules.RandomizeOrdinary(Newtonsoft.Json.Linq.JObject.FromObject(this), UnityEngine.Random.Range);
+			Newtonsoft.Json.JsonConvert.PopulateObject(randomized.ToString(Newtonsoft.Json.Formatting.None), this);
+			return;
+		}
 		if (系列 == "战将")
 		{
 			if (类型 == 1.0)
@@ -428,140 +434,6 @@ public class 将领属性库类
 					智力 = UnityEngine.Random.Range(78, 81);
 					统帅 = UnityEngine.Random.Range(85, 91);
 				}
-			}
-		}
-		else if (系列 == "普通")
-		{
-			类型 = UnityEngine.Random.Range(1, 5);
-			职业 = UnityEngine.Random.Range(1, 5);
-			成长 = UnityEngine.Random.Range(40, 60);
-			突围 = UnityEngine.Random.Range(60, 71);
-			if (类型 == 1.0)
-			{
-				统帅 = (智力 = (武力 = UnityEngine.Random.Range(70, 81)));
-			}
-			else if (类型 == 2.0)
-			{
-				武力 = UnityEngine.Random.Range(70, 81);
-				智力 = UnityEngine.Random.Range(60, 71);
-				统帅 = UnityEngine.Random.Range(60, 71);
-			}
-			else if (类型 == 3.0)
-			{
-				武力 = UnityEngine.Random.Range(60, 71);
-				智力 = UnityEngine.Random.Range(70, 81);
-				统帅 = UnityEngine.Random.Range(60, 71);
-			}
-			else if (类型 == 4.0)
-			{
-				武力 = UnityEngine.Random.Range(60, 71);
-				智力 = UnityEngine.Random.Range(60, 71);
-				统帅 = UnityEngine.Random.Range(70, 81);
-			}
-		}
-		else if (系列 == "良好")
-		{
-			类型 = UnityEngine.Random.Range(1, 5);
-			职业 = UnityEngine.Random.Range(1, 5);
-			成长 = UnityEngine.Random.Range(60, 70);
-			突围 = UnityEngine.Random.Range(70, 81);
-			if (类型 == 1.0)
-			{
-				统帅 = (智力 = (武力 = UnityEngine.Random.Range(70, 91)));
-			}
-			else if (类型 == 2.0)
-			{
-				武力 = UnityEngine.Random.Range(70, 81);
-				智力 = UnityEngine.Random.Range(60, 71);
-				统帅 = UnityEngine.Random.Range(60, 71);
-			}
-			else if (类型 == 3.0)
-			{
-				武力 = UnityEngine.Random.Range(60, 71);
-				智力 = UnityEngine.Random.Range(70, 81);
-				统帅 = UnityEngine.Random.Range(60, 71);
-			}
-			else if (类型 == 4.0)
-			{
-				武力 = UnityEngine.Random.Range(60, 71);
-				智力 = UnityEngine.Random.Range(60, 71);
-				统帅 = UnityEngine.Random.Range(70, 81);
-			}
-		}
-		else if (系列 == "优秀")
-		{
-			类型 = UnityEngine.Random.Range(1, 5);
-			职业 = UnityEngine.Random.Range(1, 5);
-			成长 = UnityEngine.Random.Range(70, 80);
-			突围 = UnityEngine.Random.Range(80, 89);
-			int num = 70;
-			if (成长 >= 85.0)
-			{
-				num = 90;
-			}
-			else if (成长 >= 80.0)
-			{
-				num = 85;
-			}
-			else if (成长 >= 75.0)
-			{
-				num = 80;
-			}
-			else if (成长 >= 70.0)
-			{
-				num = 75;
-			}
-			if (类型 == 1.0)
-			{
-				统帅 = (智力 = (武力 = UnityEngine.Random.Range(num, 96)));
-			}
-			else if (类型 == 2.0)
-			{
-				武力 = UnityEngine.Random.Range(num + 10, num + 20);
-				智力 = UnityEngine.Random.Range(num, num + 10);
-				统帅 = UnityEngine.Random.Range(num, num + 10);
-			}
-			else if (类型 == 3.0)
-			{
-				武力 = UnityEngine.Random.Range(num, num + 10);
-				智力 = UnityEngine.Random.Range(num + 10, num + 20);
-				统帅 = UnityEngine.Random.Range(num, num + 10);
-			}
-			else if (类型 == 4.0)
-			{
-				武力 = UnityEngine.Random.Range(num, num + 10);
-				智力 = UnityEngine.Random.Range(num, num + 10);
-				统帅 = UnityEngine.Random.Range(num + 10, num + 20);
-			}
-		}
-		else if (系列 == "卓越")
-		{
-			类型 = UnityEngine.Random.Range(1, 5);
-			职业 = UnityEngine.Random.Range(1, 5);
-			成长 = UnityEngine.Random.Range(80, 90);
-			突围 = 90.0;
-			int num2 = 80;
-			if (类型 == 1.0)
-			{
-				统帅 = (智力 = (武力 = UnityEngine.Random.Range(num2, num2 + 20)));
-			}
-			else if (类型 == 2.0)
-			{
-				武力 = UnityEngine.Random.Range(num2 + 10, num2 + 20);
-				智力 = UnityEngine.Random.Range(num2, num2 + 10);
-				统帅 = UnityEngine.Random.Range(num2, num2 + 10);
-			}
-			else if (类型 == 3.0)
-			{
-				武力 = UnityEngine.Random.Range(num2, num2 + 10);
-				智力 = UnityEngine.Random.Range(num2 + 10, num2 + 20);
-				统帅 = UnityEngine.Random.Range(num2, num2 + 10);
-			}
-			else if (类型 == 4.0)
-			{
-				武力 = UnityEngine.Random.Range(num2, num2 + 10);
-				智力 = UnityEngine.Random.Range(num2, num2 + 10);
-				统帅 = UnityEngine.Random.Range(num2 + 10, num2 + 20);
 			}
 		}
 		else

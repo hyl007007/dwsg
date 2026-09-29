@@ -79,6 +79,11 @@ public class 存档脚本 : MonoBehaviour
 
     private bool 可以操作()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (全局变量.提示类 != null) 全局变量.提示类.显示信息("联机进度由服务器自动保存，重新登录后恢复。");
+            return false;
+        }
         if (全局变量.当局赌场下注列表.Count == 0) return true;
         显示操作提示("请等待赌场结束");
         return false;
@@ -101,6 +106,7 @@ public class 存档脚本 : MonoBehaviour
                 全局变量.本机身份 < 0 || 数据.玩家列表.Count <= 全局变量.本机身份 ||
                 数据.玩家列表[全局变量.本机身份] == null || 数据.玩家列表[全局变量.本机身份].基础信息 == null)
                 return false;
+            TIME.TimeStampToDateTime(数据.存档时间);
             存档 = 数据;
             return true;
         }

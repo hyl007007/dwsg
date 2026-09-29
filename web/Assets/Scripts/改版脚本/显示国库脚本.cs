@@ -104,6 +104,24 @@ public class 显示国库脚本 : MonoBehaviour
 
     public void 领取俸禄()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            var 当前数据 = NationDataSource.Current;
+            var 当前概况 = transform.root.GetComponentInChildren<显示概况脚本>(true);
+            string 查看的国家 = 当前概况 == null ? 当前数据.OwnNationCode : 当前概况.当前查看国号;
+            if (打开时角色 != 当前数据.ActorId || 查看的国家 != 当前数据.OwnNationCode)
+            {
+                if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请返回自己所属的国家领取俸禄。");
+                return;
+            }
+            NationClient.ClaimSalary(result =>
+            {
+                if (this == null) return;
+                if (全局变量.提示类 != null) 全局变量.提示类.显示信息(result.Message);
+                获取国家国库();
+            });
+            return;
+        }
         var 数据 = NationDataSource.Current;
         var 概况 = transform.root.GetComponentInChildren<显示概况脚本>(true);
         var 结果 = 数据.ClaimSalary(概况 == null ? 数据.OwnNationCode : 概况.当前查看国号);
@@ -113,6 +131,7 @@ public class 显示国库脚本 : MonoBehaviour
 
     private void 刷新官职()
     {
+        if (Dwsg.Network.GameNetwork.Enabled) return;
         int 索引 = 全局变量.本机身份;
         if (索引 < 0 || 索引 >= 全局变量.所有玩家数据表.Count) return;
         var 玩家 = 全局变量.所有玩家数据表[索引]; if (玩家 == null || 玩家.基础信息 == null) return;

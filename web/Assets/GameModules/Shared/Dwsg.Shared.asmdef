@@ -1,0 +1,7 @@
+{
+    "name": "Dwsg.Shared",
+    "rootNamespace": "Dwsg.Shared",
+    "overrideReferences": true,
+    "precompiledReferences": ["Newtonsoft.Json.dll"],
+    "noEngineReferences": true
+}

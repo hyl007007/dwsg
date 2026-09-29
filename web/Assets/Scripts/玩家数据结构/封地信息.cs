@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using Dwsg.Shared;
+using Dwsg.Shared.Economy;
+using Newtonsoft.Json.Linq;
 
 namespace 玩家数据结构
 {
@@ -152,39 +155,33 @@ namespace 玩家数据结构
 
 		public bool 升级建筑(int 第几个建筑)
 		{
-			int num = 10;
-			int 等级 = 建筑信息表[0].等级;
-			if (ID == 1)
-			{
-				num = 15;
-			}
-			if (建筑信息表[第几个建筑].类型 >= 4)
-			{
-				num = 10;
-			}
-			if (建筑信息表[第几个建筑].等级 < num)
-			{
-				if (第几个建筑 == 0)
-				{
-					建筑信息表[第几个建筑].等级++;
-					return true;
-				}
-				if (建筑信息表[第几个建筑].等级 < 等级)
-				{
-					建筑信息表[第几个建筑].等级++;
-					return true;
-				}
-			}
-			return false;
+			var 数据 = 建筑规则数据();
+			return 应用建筑结果(BuildingRules.UpgradePlot(数据, 第几个建筑), 数据, 第几个建筑);
 		}
 
 		public void 建造建筑(int 第几个建筑, int 建筑类型)
 		{
-			if (建筑类型 != 1 || 获取书院等级() == -1)
-			{
-				建筑信息表[第几个建筑].类型 = 建筑类型;
-				建筑信息表[第几个建筑].等级 = 1;
-			}
+			var 数据 = 建筑规则数据();
+			应用建筑结果(BuildingRules.ConstructPlot(数据, 第几个建筑, 建筑类型), 数据, 第几个建筑);
+		}
+
+		public bool 拆除建筑(int 第几个建筑)
+		{
+			var 数据 = 建筑规则数据();
+			return 应用建筑结果(BuildingRules.DemolishPlot(数据, 第几个建筑), 数据, 第几个建筑);
+		}
+
+		private JObject 建筑规则数据()
+		{
+			return new JObject { ["ID"] = ID, ["建筑信息表"] = JArray.FromObject(建筑信息表) };
+		}
+
+		private bool 应用建筑结果(GameResult 结果, JObject 数据, int 第几个建筑)
+		{
+			if (结果.Code != GameCodes.Ok) return false;
+			建筑信息表[第几个建筑].类型 = 数据["建筑信息表"][第几个建筑].Value<int>("类型");
+			建筑信息表[第几个建筑].等级 = 数据["建筑信息表"][第几个建筑].Value<int>("等级");
+			return true;
 		}
 	}
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
+using Dwsg.Generals;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
@@ -67,6 +68,13 @@ public class 强化脚本 : MonoBehaviour
 
     public void 强化装备()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+		if (装备对象 == null || 装备对象.装备信息.名称 == "空") return;
+		GeneralsClientAdapter.EnhanceEquipment(装备对象, 1, 显示指定装备);
+
+            return;
+        }
         bool 成功;
         string 说明;
         尝试强化(out 成功, out 说明);
@@ -76,6 +84,13 @@ public class 强化脚本 : MonoBehaviour
 
     public void 批量强化()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+		if (装备对象 == null || 装备对象.装备信息.名称 == "空") return;
+		GeneralsClientAdapter.EnhanceEquipment(装备对象, 10, 显示指定装备);
+
+            return;
+        }
         int 次数 = 0, 成功数 = 0;
         string 说明 = "";
         for (int i = 0; i < 10; i++)

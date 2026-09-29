@@ -203,7 +203,7 @@ public class 城池信息显示脚本 : MonoBehaviour
 		单行摘要(城主显示, 当前城池.获取城主名字());
 		天赋显示.text = 全局变量.所有城池列表[第几个城池].获取天赋类型名称() + 全局变量.所有城池列表[第几个城池].天赋加成.ToString() + "%";
 		税率显示.text = 全局变量.所有城池列表[第几个城池].税率.ToString() + "%";
-		封地显示.text = 全局变量.所有城池列表[第几个城池].城池封地列表.Count.ToString() + "/" + 全局变量.所有城池列表[第几个城池].获取封地上限().ToString();
+		封地显示.text = Dwsg.Network.GameNetwork.GetCityFiefCount(第几个城池).ToString() + "/" + 全局变量.所有城池列表[第几个城池].获取封地上限().ToString();
 		驻防显示.text = CityLocalAdapter.Friendly(当前城池) ? (当前城池.城池驻防列表.Count + 当前城池.城池玩家驻防列表.Count) + "/" + 当前城池.获取驻防上限() : "未公开";
 		公告显示.text = string.IsNullOrEmpty(当前城池.公告) ? "本城尚未发布公告" : 当前城池.公告;
 		公告显示.supportRichText = false; 公告显示.horizontalOverflow = HorizontalWrapMode.Wrap; 公告显示.verticalOverflow = VerticalWrapMode.Truncate;
@@ -302,14 +302,17 @@ public class 城池信息显示脚本 : MonoBehaviour
 
     public void 开辟封地()
 	{
-		var 城池 = 当前城池; var 玩家 = CityLocalAdapter.Me;
-		if (城池 == null || 玩家 == null) { 城池提示("城池或角色不存在。"); return; }
-		if (!CityLocalAdapter.Friendly(城池)) { 城池提示("只可在自己或本国城池开辟封地。"); return; }
-		if (城池.正在交战) { 城池提示("交战中不可开辟封地。"); return; }
-		if (城池.是否有我的封地()) { 城池提示("本城已有你的封地。"); return; }
-		if (玩家.封地信息表.Count >= 10) { 城池提示("个人封地已达10座上限。"); return; }
-		if (!城池.新建封地(全局变量.本机身份)) { 城池提示("城池封地容量不足，未创建封地。"); return; }
-		城池提示("本地封地已开辟。"); 显示城池信息(全局变量.所有城池列表.IndexOf(城池));
+		int 请求城池 = 显示第几个城池;
+		TerritoryClient.CreateFief(全局变量.所有城池列表[请求城池], 结果 =>
+		{
+			if (this == null) return;
+			全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认开辟封地，请重试");
+			if (结果 != null && 结果.Code == Dwsg.Shared.GameCodes.Ok && 显示第几个城池 == 请求城池)
+			{
+				开辟封地按钮.SetActive(value: false);
+				进入封地按钮.SetActive(value: true);
+			}
+		});
     }
 
 	private bool 可以从当前封地出征()

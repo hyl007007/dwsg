@@ -36,6 +36,8 @@ public class 单将撤退脚本 : MonoBehaviour
 
     private bool 可撤退(将领功能 将)
     {
+        if (将 && 将.战斗系统脚本对象 && 将.战斗系统脚本对象.服务器战场)
+            return !将.正在退场 && 将.本将领信息 != null && 将.本将领信息.详细信息 != null && 可以撤退联机将领(将);
         if (!将 || 将.正在退场 || 将.本将领信息 == null || 将.本将领信息.详细信息 == null ||
             将.本将领信息.详细信息.状态 != 1 || 将.本将领信息.详细信息.身份 != 全局变量.本机身份 ||
             !将.战斗系统脚本对象 || 将.战斗系统脚本对象.战斗结束 ||
@@ -91,9 +93,27 @@ public class 单将撤退脚本 : MonoBehaviour
         }
     }
 
+    private bool 可以撤退联机将领(将领功能 将领)
+    {
+        return 将领.本将领信息.详细信息.身份 == 全局变量.本机身份
+            && Dwsg.Combat.CombatClient.CanWithdrawUnit(将领.战斗系统脚本对象.服务器战场ID,
+                Dwsg.Combat.CombatClient.GeneralId(将领.本将领信息.ID));
+    }
+
     public void 撤退选中将领()
     {
         var 将 = 被选中将领 ? 被选中将领.GetComponent<将领功能>() : null;
+        if (将 && 将.战斗系统脚本对象 && 将.战斗系统脚本对象.服务器战场)
+        {
+            if (!可撤退(将)) { 清除选择(); return; }
+            var 本次选择 = 被选中将领;
+            Dwsg.Combat.CombatClient.WithdrawGeneral(将.战斗系统脚本对象.服务器战场ID,
+                Dwsg.Combat.CombatClient.GeneralId(将.本将领信息.ID), result =>
+                {
+                    if (this != null && result != null && result.Code == Dwsg.Shared.GameCodes.Ok && 被选中将领 == 本次选择) 清除选择();
+                });
+            return;
+        }
         if (可撤退(将)) 将.退出战场(true);
         清除选择();
     }

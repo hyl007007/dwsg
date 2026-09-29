@@ -74,33 +74,17 @@ namespace 玩家数据结构
 
 		public double 攻速类科技(int 兵种)
 		{
-			double result = 0.0;
-			if (兵种 == 4)
-			{
-				result = 战车设计 * 3.0;
-			}
-			return result;
+			return Dwsg.Shared.Combat.CombatModifiers.SpeedTechnology(战车设计, 兵种);
 		}
 
 		public double 生命类科技()
 		{
-			return 药草研究 * 5.0;
+			return Dwsg.Shared.Combat.CombatModifiers.LifeTechnology(药草研究);
 		}
 
 		public double 防御类科技(int 职业)
 		{
-			double num = 0.0;
-			num = 甲胄制造 * 3.0;
-			switch (职业)
-			{
-			case 1:
-				num += 驾驭技巧 * 3.0;
-				break;
-			case 2:
-				num += 阵法技巧 * 5.0;
-				break;
-			}
-			return num;
+			return Dwsg.Shared.Combat.CombatModifiers.DefenseTechnology(甲胄制造, 驾驭技巧, 阵法技巧, 职业);
 		}
 
 		public double 统兵类科技()
@@ -110,18 +94,7 @@ namespace 玩家数据结构
 
 		public double 攻击类科技(int 职业)
 		{
-			double num = 0.0;
-			num = 铸铁技术 * 4.0;
-			switch (职业)
-			{
-			case 1:
-				num += 驾驭技巧 * 3.0;
-				break;
-			case 4:
-				num += 抛射技巧 * 6.0;
-				break;
-			}
-			return num;
+			return Dwsg.Shared.Combat.CombatModifiers.AttackTechnology(铸铁技术, 驾驭技巧, 抛射技巧, 职业);
 		}
 
 		public double 国家攻击科技加成(int 玩家)
