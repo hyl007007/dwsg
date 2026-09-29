@@ -20,6 +20,7 @@ namespace Dwsg.Shared.Economy
             if (value == null || (value.Type != JTokenType.Integer && value.Type != JTokenType.Float)) return false;
             try { number = value.Value<double>(); }
             catch (OverflowException) { return false; }
+            catch (InvalidCastException) { return false; }
             return !double.IsNaN(number) && !double.IsInfinity(number);
         }
 

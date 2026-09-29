@@ -147,6 +147,9 @@ internal static class ProductionChecks
             Check(runtime.Execute(actors[0], forged).Code == GameCodes.InvalidArgument && beforeRejected == Json(store.Load(world.WorldId).Data), "client cannot submit player ownership");
             var fraction = Construct(plot: 2); fraction.Payload["plot"] = 1.5;
             Check(runtime.Execute(actors[0], fraction).Code == GameCodes.InvalidArgument, "fractional plot rejected");
+            var oversized = Construct(plot: 2); oversized.Payload["plot"] = JToken.Parse("9223372036854775808");
+            Check(runtime.Execute(actors[0], oversized).Code == GameCodes.InvalidArgument && beforeRejected == Json(store.Load(world.WorldId).Data),
+                "oversized JSON integer plot rejected without world mutation");
             var manual = new GameCommand { WorldId = world.WorldId, RequestId = Guid.NewGuid().ToString("N"), Type = "world.production.tick" };
             Check(runtime.Execute(actors[0], manual).Code == GameCodes.Forbidden, "client cannot request resource production");
             var concurrent = Enumerable.Range(0, 2).Select(_ => Task.Run(() => runtime.Execute(actors[0], Construct(plot: 2)))).ToArray();

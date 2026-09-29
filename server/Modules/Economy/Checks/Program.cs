@@ -163,6 +163,9 @@ using (var store = new SqliteWorldStore(db))
     string before = store.Load(worldId).Data.ToString(Formatting.None);
     var forged = Command("将神魂"); forged.Payload["playerId"] = actors[1].PlayerId;
     Check(runtime.Execute(actors[0], forged).Code == GameCodes.InvalidArgument && before == store.Load(worldId).Data.ToString(Formatting.None), "forged payload cannot change another player");
+    var oversized = Command("将神魂"); oversized.Payload["quantity"] = JToken.Parse("9223372036854775808");
+    Check(runtime.Execute(actors[0], oversized).Code == GameCodes.InvalidArgument && before == store.Load(worldId).Data.ToString(Formatting.None),
+        "oversized JSON integer quantity rejects without persistent mutation");
     var wrong = new AuthenticatedActor(actors[0].AccountId, actors[1].PlayerId, worldId, "wrong");
     Check(runtime.Execute(wrong, Command("将神魂")).Code == GameCodes.Unauthenticated, "account and player ownership checked");
     Check(runtime.Execute(actors[0], Command("疾风符", "白银")).Code == GameCodes.Ok, "actual Runtime silver purchase");
