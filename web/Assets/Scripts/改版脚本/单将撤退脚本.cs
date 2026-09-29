@@ -1,10 +1,35 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 public class 单将撤退脚本 : MonoBehaviour
 {
     public Camera 摄像机;
     public GameObject 撤退布局;
     public GameObject 被选中将领;
+    private readonly List<RaycastResult> 界面命中 = new List<RaycastResult>();
+
+    private bool 点击操作界面()
+    {
+        var 事件系统 = EventSystem.current;
+        if (事件系统 == null) return false;
+        // 观战入口将相机挂到当前战斗地图根；战斗系统在该地图的 Tilemap 分支。
+        var 地图 = 摄像机 == null ? null : 摄像机.transform.parent;
+        var 战场 = 地图 == null ? null : 地图.GetComponentInChildren<战斗系统>();
+        if (战场 == null || !战场.正在观战 || !摄像机.isActiveAndEnabled) return true;
+        界面命中.Clear();
+        事件系统.RaycastAll(new PointerEventData(事件系统) { position = Input.mousePosition }, 界面命中);
+        foreach (var 命中 in 界面命中)
+        {
+            // 原战场的 ScrollRect 背景也接收射线，须保留它来拖动地图；它不应挡住选将。
+            // 战场外的窗口以及战场内的可操作控件仍阻止穿透。
+            if (命中.gameObject == null) continue;
+            if (!命中.gameObject.transform.IsChildOf(地图) ||
+                命中.gameObject.GetComponentInParent<Selectable>() != null) return true;
+        }
+        return false;
+    }
 
     private bool 可撤退(将领功能 将)
     {
@@ -31,7 +56,7 @@ public class 单将撤退脚本 : MonoBehaviour
         if (被选中将领 && !可撤退(被选中将领.GetComponent<将领功能>())) 清除选择();
         if (!Input.GetMouseButtonDown(0)) return;
         // 点击 UI 时不穿透到战场里选将领。
-        if (UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
+        if (点击操作界面()) return;
         清除选择();
         RaycastHit ray;
         if (摄像机 && Physics.Raycast(摄像机.ScreenPointToRay(Input.mousePosition), out ray))

@@ -37,7 +37,7 @@ public class 显示画册列表到界面 : MonoBehaviour
             if (子.childCount >= 3 && 子.GetComponent<Button>() != null) 名将对象.Add(子.gameObject);
         }
         var 样式 = new 军事界面样式(transform);
-        空状态 = 样式.文本(显示区域.parent, "画册空状态", "暂无名将画册，请先查询并购买。", Vector2.zero, Vector2.zero, 18);
+        空状态 = 样式.文本(显示区域.parent, "画册空状态", "暂无名将画册\n请先查询并购买", Vector2.zero, Vector2.zero, 18);
         军事界面样式.拉伸(空状态.rectTransform, 16);
         空状态.alignment = TextAnchor.MiddleCenter;
     }

@@ -135,8 +135,13 @@ public class 显示国家列表 : MonoBehaviour
             var 勾选 = 列表.GetChild(i).GetComponent<Toggle>();
             if (勾选 != null && 勾选.group != null) 组.Add(勾选.group);
         }
-        // 原组禁止取消最后一项；刷新须先静默清空，再恢复本次真实选择。
-        foreach (var 勾选组 in 组) 勾选组.SetAllTogglesOff(false);
+        // 初开允许空选择，避免 ToggleGroup 在 Start/OnEnable 自动补选一个不可见行。
+        // 用户选择后恢复单选约束，静默刷新不能触发换国选择回调。
+        foreach (var 勾选组 in 组)
+        {
+            勾选组.allowSwitchOff = string.IsNullOrEmpty(选中国号);
+            勾选组.SetAllTogglesOff(false);
+        }
         for (int i = 0; i < 列表.childCount; i++)
         {
             var 行 = 列表.GetChild(i); bool 选中 = i < 显示国号.Count && 显示国号[i] == 选中国号;

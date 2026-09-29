@@ -24,6 +24,7 @@ GameObject:
   - component: {fileID: 1790966115624132889}
   - component: {fileID: 1790966119113794007}
   - component: {fileID: 1790966117469627288}
+  - component: {fileID: 6999660035524261200}
   m_Layer: 0
   m_Name: "\u84DD\u8272\u5751\u4F4D"
   m_TagString:
@@ -119,3 +120,16 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!65 &6999660035524261200
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1790966115573800981}
+  m_Material: {fileID: 0}
+  m_IsTrigger: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Size: {x: 2.597571, y: 3.4801493, z: 2.8051732}
+  m_Center: {x: -0.026621759, y: 2.0300593, z: -1.3025867}

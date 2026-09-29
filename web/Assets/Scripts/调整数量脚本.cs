@@ -29,7 +29,26 @@ public class 调整数量脚本 : MonoBehaviour
     private 建筑信息 打开时兵营;
     private string 打开时道具, 基础说明;
 
-    private void OnEnable() { 已提交 = false; 设置数量(0); }
+    private void OnEnable()
+    {
+        原界面文字样式.单行输入(输入数量对象, 数量显示对象, TextAnchor.MiddleCenter, 17);
+        var input = 获取数量输入框();
+        if (input != null)
+        {
+            var label = input.transform.parent.Find("购买");
+            原界面文字样式.对齐单行标签(label == null ? null : label.GetComponent<Text>(), (RectTransform)input.transform);
+            input.onValueChanged.RemoveListener(输入数量变化);
+            input.onValueChanged.AddListener(输入数量变化);
+        }
+        已提交 = false;
+        设置数量(0);
+    }
+    private void OnDisable()
+    {
+        var input = 获取数量输入框();
+        if (input != null) input.onValueChanged.RemoveListener(输入数量变化);
+    }
+    private void 输入数量变化(string value) { 输入改变购买数量(); }
     private void 提示(string value) { if (全局变量.提示类 != null) 全局变量.提示类.显示信息(value); }
     private InputField 获取数量输入框()
     {
@@ -67,7 +86,15 @@ public class 调整数量脚本 : MonoBehaviour
         else
         {
             数量上限 = Math.Min(int.MaxValue, 获取当前上限());
-            if (number <= 数量上限) { 设置数量(number); return true; }
+            if (number <= 数量上限)
+            {
+                // 编辑期间只更新数量和费用，不重写输入，保留光标、选区和正在输入的内容。
+                调整数量 = number;
+                if (数量显示对象 != null) 数量显示对象.text = number.ToString(CultureInfo.InvariantCulture);
+                if (数量滑条对象 != null) 数量滑条对象.SetValueWithoutNotify(number);
+                更新费用说明();
+                return true;
+            }
             error = "数量超过当前可用上限：" + 数量上限.ToString("0") + "。";
         }
         // 保留用户正在编辑的原始输入，清空预览；确认时不能沿用上次有效数量。

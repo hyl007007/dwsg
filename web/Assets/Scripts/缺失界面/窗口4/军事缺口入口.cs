@@ -66,6 +66,25 @@ namespace 缺失界面.窗口4
             封地信息页 = 获取<封地信息界面UI脚本>();
             封地页 = 获取<封地界面脚本>();
             战斗页 = 获取<战斗界面UI脚本>();
+            var 画册根 = 根("画册界面UI");
+            var 画册 = 画册根 != null ? 画册根.GetComponent<画册脚本>() : null;
+            if (画册 != null)
+            {
+                画册.初始化原窗口();
+                foreach (var 场景根 in 根表.Values)
+                    foreach (var 按 in 场景根.GetComponentsInChildren<Button>(true))
+                    {
+                        if (按.transform.IsChildOf(画册.transform)) continue;
+                        for (int i = 0; i < 按.onClick.GetPersistentEventCount(); i++)
+                            if (按.onClick.GetPersistentTarget(i) == 画册.gameObject &&
+                                按.onClick.GetPersistentMethodName(i) == "SetActive")
+                            {
+                                // 保留拜访名将及其他原入口事件，随后恢复原查询页。
+                                接入(按, 画册.打开查询);
+                                break;
+                            }
+                    }
+            }
             动态页 = 军事详情面板.创建("君主军事动态详情", 样式);
             操作页 = 军事详情面板.创建("将领修炼恢复配兵", 样式);
             选择页 = 军事详情面板.创建("军事切换封地", 样式);
@@ -117,9 +136,32 @@ namespace 缺失界面.窗口4
                     if (战斗选择页 != null) 战斗选择页.gameObject.SetActive(false);
                 });
             }
-            var 出征状态 = 出征 != null ? 出征.GetComponentsInChildren<Text>(true) : new Text[0];
-            foreach (var 字 in 出征状态)
-                if (字.name == "出征封地显示") 字.text = 当前封地名字();
+            更新出征封地显示();
+        }
+
+        private void 更新出征封地显示()
+        {
+            var 出征根 = 根("出征界面UI (1)");
+            var 封地操作 = 出征根 != null ? 出征根.Find("封地操作") as RectTransform : null;
+            var 名称对象 = 封地操作 != null ? 封地操作.Find("出征封地显示") : null;
+            var 字 = 名称对象 != null ? 名称对象.GetComponent<Text>() : null;
+            if (字 == null) return;
+            var 标题 = 封地操作.Find("出征封地标题") as RectTransform;
+            var 区域 = 字.rectTransform;
+            var 左边界 = RectTransformUtility.CalculateRelativeRectTransformBounds(封地操作, 标题 != null ? 标题 : 区域);
+            float 间距 = 字.fontSize * .5f;
+            float 左留边 = (标题 != null ? 左边界.max.x + 间距 : 左边界.min.x) - 封地操作.rect.xMin;
+            var 下边 = 区域.offsetMin;
+            var 上边 = 区域.offsetMax;
+            区域.anchorMin = new Vector2(0, 区域.anchorMin.y);
+            区域.anchorMax = new Vector2(1, 区域.anchorMax.y);
+            区域.offsetMin = new Vector2(左留边, 下边.y);
+            区域.offsetMax = new Vector2(-间距, 上边.y);
+            字.horizontalOverflow = HorizontalWrapMode.Overflow;
+            // 原行框略小于该字体的行距，按字形显示，避免首行被整体截掉。
+            字.verticalOverflow = VerticalWrapMode.Overflow;
+            字.text = 当前封地名字();
+            军事界面样式.限定名称(字);
         }
 
         private Transform 根(string 名) { Transform 值; return 根表.TryGetValue(名, out 值) ? 值 : null; }
@@ -365,9 +407,7 @@ namespace 缺失界面.窗口4
                         int 号 = 角色 != null ? 角色.封地信息表.IndexOf(当前) : -1;
                         if (号 < 0) { 页.提示(军事结果.拒绝(军事错误.无封地, "封地已变更，请刷新列表。")); return; }
                         全局变量.第几个封地 = 号;
-                        var 出征根 = 根("出征界面UI (1)");
-                        var 标签 = 出征根 != null ? 出征根.Find("封地操作/出征封地显示") : null;
-                        if (标签 != null) 标签.GetComponent<Text>().text = 当前.封地名字;
+                        更新出征封地显示();
                         if (出征脚本 != null) 出征脚本.切换出征封地(号);
                         if (编队 != null) { 编队.显示第几个封地 = 号; 编队.重置刷新将领列表(); }
                         // 父页恢复后仅刷新数据；由统一导航处理返回。

@@ -44,7 +44,7 @@ namespace Dwsg.Window3
         internal readonly Font Font;
         internal readonly Window1Style NativeStyle;
         internal readonly Sprite ButtonSprite, CloseSprite, InfoSprite;
-        internal readonly RectTransform TitleDecor, FrameDecor, InfoDecor, BorderDecor;
+        internal readonly RectTransform TitleDecor, FrameDecor, InfoDecor, BorderDecor, CloseDecor;
         private readonly Sprite oldTitleText;
         internal readonly 所有城池界面脚本 Map;
         private readonly 主界面UI脚本 main;
@@ -63,6 +63,7 @@ namespace Dwsg.Window3
             var button = view.GetComponentsInChildren<Button>(true).FirstOrDefault(b => b.name == "修筑城池");
             ButtonSprite = button == null ? null : button.GetComponent<Image>().sprite;
             var close = TitleDecor == null ? null : TitleDecor.GetComponentsInChildren<Button>(true).FirstOrDefault(b => b.name == "关闭");
+            CloseDecor = close == null ? null : (RectTransform)close.transform;
             var closeImage = close == null ? null : close.GetComponent<Image>();
             CloseSprite = closeImage == null ? null : closeImage.sprite;
             Map = CityNavigation.Find<所有城池界面脚本>(m => m.城池信息界面UI == view.gameObject && m.滑动对象 != null);
@@ -71,6 +72,41 @@ namespace Dwsg.Window3
         private RectTransform DecorNamed(string name)
         {
             return View.GetComponentsInChildren<RectTransform>(true).FirstOrDefault(r => r.name == name);
+        }
+        private Rect BoundsInView(RectTransform source)
+        {
+            var corners = new Vector3[4]; source.GetWorldCorners(corners);
+            Vector2 min = View.transform.InverseTransformPoint(corners[0]), max = min;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                Vector2 point = View.transform.InverseTransformPoint(corners[i]);
+                min = Vector2.Min(min, point); max = Vector2.Max(max, point);
+            }
+            return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        }
+        internal void WindowDecor(RectTransform target, RectTransform title, RectTransform close)
+        {
+            if (FrameDecor == null || TitleDecor == null) return;
+            Rect frameBounds = BoundsInView(FrameDecor), titleBounds = BoundsInView(TitleDecor);
+            Rect bounds = Rect.MinMaxRect(Mathf.Min(frameBounds.xMin, titleBounds.xMin), Mathf.Min(frameBounds.yMin, titleBounds.yMin),
+                Mathf.Max(frameBounds.xMax, titleBounds.xMax), Mathf.Max(frameBounds.yMax, titleBounds.yMax));
+            if (bounds.width <= 0 || bounds.height <= 0) return;
+            Vector2 scale = new Vector2(target.rect.width / bounds.width, target.rect.height / bounds.height);
+            var skin = (RectTransform)new GameObject("原城池框架", typeof(RectTransform)).transform; skin.SetParent(target, false);
+            skin.SetAsFirstSibling(); skin.anchorMin = skin.anchorMax = new Vector2(.5f, .5f);
+            var nativeView = (RectTransform)View.transform; skin.pivot = nativeView.pivot; skin.sizeDelta = nativeView.rect.size;
+            skin.anchoredPosition = -Vector2.Scale(bounds.center, scale); skin.localScale = new Vector3(scale.x, scale.y, 1);
+            // Both roots belong to the native view. Keep that coordinate space so
+            // their anchors, sliced borders and title overlap share one transform.
+            CopyDecor(FrameDecor, skin); CopyDecor(TitleDecor, skin);
+            title.sizeDelta = Vector2.Scale(titleBounds.size, scale);
+            title.anchoredPosition = Vector2.Scale(titleBounds.center - bounds.center, scale);
+            if (CloseDecor != null)
+            {
+                Rect closeBounds = BoundsInView(CloseDecor);
+                close.sizeDelta = Vector2.Scale(closeBounds.size, scale);
+                close.anchoredPosition = Vector2.Scale(closeBounds.center - bounds.center, scale);
+            }
         }
         internal void Decor(RectTransform source, RectTransform target)
         {
@@ -201,12 +237,13 @@ namespace Dwsg.Window3
             var shade = Box("遮罩", transform, Vector2.zero, Vector2.zero); shade.anchorMin = Vector2.zero; shade.anchorMax = Vector2.one;
             Image(shade, null, new Color(0, 0, 0, .16f)).raycastTarget = true;
             var pane = Box("城池窗口", transform, new Vector2(720, 492), Vector2.zero);
-            Image(pane, null, Color.clear).raycastTarget = true; ui.Decor(ui.FrameDecor, pane);
+            Image(pane, null, Color.clear).raycastTarget = true;
             var title = Box("标题栏背景", pane, new Vector2(716, 43), new Vector2(0, 224));
-            Image(title, null, Color.clear); ui.Decor(ui.TitleDecor, title);
-            heading = Label("标题", pane, "城池内政", new Vector2(565, 38), new Vector2(0, 224), 21, TitleGold); heading.alignment = TextAnchor.MiddleCenter;
-            原界面文字样式.标题(heading);
+            Image(title, null, Color.clear);
             var closeRect = Box("关闭", pane, new Vector2(43, 38), new Vector2(330, 224));
+            ui.WindowDecor(pane, title, closeRect);
+            heading = Label("标题", pane, "城池内政", new Vector2(565, 38), title.anchoredPosition, 21, TitleGold); heading.alignment = TextAnchor.MiddleCenter;
+            原界面文字样式.标题(heading);
             var closeImage = Image(closeRect, ui.CloseSprite, Color.white); closeImage.type = UnityEngine.UI.Image.Type.Simple;
             closeImage.preserveAspect = true; closeImage.raycastTarget = true;
             var closeButton = closeRect.gameObject.AddComponent<Button>(); closeButton.targetGraphic = closeImage;

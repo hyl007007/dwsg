@@ -61,22 +61,8 @@ public class 建国脚本 : MonoBehaviour
     {
         if (输入 == null) return;
         var 编辑框 = 输入.GetComponentInParent<InputField>(); if (编辑框 == null) return;
-        编辑框.characterLimit = 上限; 输入.fontSize = 18; 输入.fontStyle = FontStyle.Normal; 输入.supportRichText = false;
-        // 原单行框小于字体行高；保留原字号，交给 InputField 和原遮罩处理可见范围。
-        输入.horizontalOverflow = HorizontalWrapMode.Overflow; 输入.verticalOverflow = VerticalWrapMode.Overflow;
-        输入.alignment = TextAnchor.MiddleLeft; 输入.alignByGeometry = true;
-        if (编辑框.placeholder != null)
-        {
-            // 输入内容复用原占位文本的左右留白，避免字形边缘贴着遮罩被裁切。
-            var 区域 = 输入.rectTransform; var 占位区域 = 编辑框.placeholder.rectTransform;
-            区域.anchorMin = new Vector2(占位区域.anchorMin.x, 区域.anchorMin.y);
-            区域.anchorMax = new Vector2(占位区域.anchorMax.x, 区域.anchorMax.y);
-            区域.offsetMin = new Vector2(占位区域.offsetMin.x, 区域.offsetMin.y);
-            区域.offsetMax = new Vector2(占位区域.offsetMax.x, 区域.offsetMax.y);
-        }
-        if (显示 != null && 显示 != 输入) { 输入.color = 显示.color; 显示.gameObject.SetActive(false); }
-        if (编辑框.GetComponent<RectMask2D>() == null) 编辑框.gameObject.AddComponent<RectMask2D>();
-        编辑框.ForceLabelUpdate();
+        编辑框.characterLimit = 上限;
+        原界面文字样式.单行输入(输入, 显示, TextAnchor.MiddleLeft, 18);
     }
 
     private static string 读取(Text 输入, Text 显示)

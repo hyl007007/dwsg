@@ -15,6 +15,7 @@ public class 将领改名脚本 : MonoBehaviour
 
     public void 准备改名(将领信息 将)
     {
+        原界面文字样式.单行输入(输入名字对象, 现将领名字, TextAnchor.MiddleLeft, 16);
         目标玩家 = 军事缺口入口.当前玩家();
         目标将领 = 将;
         目标封地 = null;
@@ -24,14 +25,19 @@ public class 将领改名脚本 : MonoBehaviour
         原将领名字.supportRichText = 现将领名字.supportRichText = false;
         原将领名字.text = 将 != null ? 将.将领属性.初始属性.名字 : "";
         现将领名字.text = "";
-        var 输入 = 输入名字对象.GetComponentInParent<InputField>();
-        if (输入 != null) 输入.SetTextWithoutNotify("");
+        var 输入 = 输入名字对象.GetComponentInParent<InputField>(true);
+        if (输入 != null)
+        {
+            var 标签 = transform.Find("新名字");
+            原界面文字样式.对齐单行标签(标签 == null ? null : 标签.GetComponent<Text>(), (RectTransform)输入.transform);
+            输入.SetTextWithoutNotify("");
+        }
         else 输入名字对象.text = "";
     }
 
     private string 读取输入()
     {
-        var 输入 = 输入名字对象.GetComponentInParent<InputField>();
+        var 输入 = 输入名字对象.GetComponentInParent<InputField>(true);
         return 输入 != null ? 输入.text : 输入名字对象.text;
     }
 

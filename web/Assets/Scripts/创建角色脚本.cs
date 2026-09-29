@@ -32,6 +32,12 @@ public class 创建角色脚本 : MonoBehaviour
         return 君主名输入结果 == null ? null : 君主名输入结果.GetComponentInParent<InputField>(true);
     }
 
+    private void OnEnable()
+    {
+        // 原输入框高度小于字体行高；使用已有单行输入样式保留编辑中的字形和光标。
+        原界面文字样式.单行输入(君主名输入结果, null, TextAnchor.MiddleLeft, 18);
+    }
+
     private string 读取君主名()
     {
         var 输入框 = 获取君主名输入框();

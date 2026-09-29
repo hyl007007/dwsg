@@ -141,12 +141,15 @@ public class 显示商城列表 : MonoBehaviour
 			var definition = 全局道具库.获取指定名字的道具(goods.道具名);
 			row.GetChild(1).gameObject.SetActive(definition != null);
 			row.GetChild(2).gameObject.SetActive(true);
-			row.GetChild(2).GetComponent<Text>().text = goods.道具名 + (definition == null ? "（暂不可售）" :
-				definition.分类 == "宝箱" && !全局道具库.可在背包开启(goods.道具名) ? "（暂不可购）" : "");
-			row.GetChild(3).gameObject.SetActive(definition != null);
-			row.GetChild(3).GetChild(0).gameObject.SetActive(goods.黄金售价 > 0);
-			row.GetChild(3).GetChild(0).GetChild(1).GetComponent<Text>().text = goods.黄金售价.ToString();
-			row.GetChild(3).GetChild(1).gameObject.SetActive(goods.白银售价 > 0);
+			row.GetChild(2).GetComponent<Text>().text = goods.道具名;
+			string unavailable = definition == null ? "未上架" :
+				definition.分类 == "宝箱" && !全局道具库.可在背包开启(goods.道具名) ? "不可购" : null;
+			// 名称与售卖状态分别使用原名称栏、价格栏，避免长后缀换行压住价格。
+			row.GetChild(3).gameObject.SetActive(true);
+			row.GetChild(3).GetChild(0).gameObject.SetActive(unavailable != null || goods.黄金售价 > 0);
+			row.GetChild(3).GetChild(0).GetChild(0).gameObject.SetActive(unavailable == null);
+			row.GetChild(3).GetChild(0).GetChild(1).GetComponent<Text>().text = unavailable ?? goods.黄金售价.ToString();
+			row.GetChild(3).GetChild(1).gameObject.SetActive(unavailable == null && goods.白银售价 > 0);
 			row.GetChild(3).GetChild(1).GetChild(1).GetComponent<Text>().text = goods.白银售价.ToString();
 			if (definition == null) continue;
 			icon.sprite = 全局道具库.获取道具头像(definition.头像);

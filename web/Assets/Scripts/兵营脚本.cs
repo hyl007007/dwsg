@@ -18,13 +18,22 @@ public class 兵营脚本 : MonoBehaviour
         var f = FiefActions.Fief(第几个玩家, 第几个封地);
         if (b == null || b.类型 < 4 || b.类型 > 7) { if (名字等级对象 != null) 名字等级对象.text = "请重新选择兵营"; return; }
         兵营类型 = b.类型;
-        if (标题列表对象 != null && 标题列表对象.transform.childCount > 兵营类型 - 4)
-            标题列表对象.transform.GetChild(兵营类型 - 4).GetComponent<Toggle>().SetIsOnWithoutNotify(true);
+        if (标题列表对象 != null)
+        {
+            var titles = 标题列表对象.transform;
+            for (int i = 0; i < titles.childCount; i++)
+            {
+                var title = titles.GetChild(i); bool selected = i == 兵营类型 - 4;
+                var toggle = title.GetComponent<Toggle>();
+                if (toggle != null) toggle.SetIsOnWithoutNotify(selected);
+                title.gameObject.SetActive(selected);
+            }
+        }
         var portraits = 兵营类型 == 4 ? 全局变量.骑兵营头像资源表 : 兵营类型 == 5 ? 全局变量.步兵营头像资源表 : 兵营类型 == 6 ? 全局变量.弓兵营头像资源表 : 全局变量.战车营头像资源表;
         int avatar = b.获取建筑头像索引();
         if (头像对象 != null && avatar < portraits.Length) 头像对象.sprite = portraits[avatar];
         名字等级对象.text = b.获取建筑等级文本();
-        var upgradeLabel = transform.Find("兵营信息布局/建筑效果");
+        var upgradeLabel = transform.Find("兵营信息布局/建筑名称");
         if (upgradeLabel != null)
         {
             var text = upgradeLabel.GetComponent<Text>();
@@ -56,6 +65,52 @@ public class 兵营脚本 : MonoBehaviour
             row.GetChild(10).GetComponent<Text>().text = u.攻击速度.ToString();
             row.GetChild(12).GetComponent<Text>().text = u.移动速度.ToString();
             row.GetChild(14).GetComponent<Text>().text = u.占用人口.ToString();
+        }
+        调整数值列();
+    }
+
+    private void 调整数值列()
+    {
+        var rows = Enumerable.Range(0, Mathf.Min(4, 兵种列表对象.transform.childCount))
+            .Select(i => 兵种列表对象.transform.GetChild(i)).Where(r => r.gameObject.activeSelf && r.childCount >= 17).ToArray();
+        // 六项属性共用原来的三列图标和数字。按实际字体的最长数值分配列宽，保持原左边缘和上下位置。
+        foreach (var row in rows)
+            foreach (int index in new[] { 4, 6, 8, 10, 12, 14 })
+            {
+                var text = row.GetChild(index).GetComponent<Text>();
+                text.horizontalOverflow = HorizontalWrapMode.Overflow;
+                text.verticalOverflow = VerticalWrapMode.Overflow;
+            }
+        for (int column = 0; column < 3; column++)
+        {
+            int[] fields = { 4 + column * 2, 10 + column * 2 };
+            float width = 0;
+            foreach (var row in rows)
+                foreach (int index in fields)
+                {
+                    var text = row.GetChild(index).GetComponent<Text>();
+                    width = Mathf.Max(width, text.rectTransform.rect.width, text.preferredWidth);
+                }
+            float shift = 0;
+            foreach (var row in rows)
+                foreach (int index in fields)
+                {
+                    var rect = (RectTransform)row.GetChild(index);
+                    var left = rect.localPosition.x + rect.rect.xMin;
+                    rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
+                    rect.localPosition += new Vector3(left - rect.localPosition.x - rect.rect.xMin, 0, 0);
+                    if (column == 2) continue;
+                    var icon = (RectTransform)row.GetChild(index - 1);
+                    var nextIcon = (RectTransform)row.GetChild(index + 1);
+                    float gap = Mathf.Max(0, left - icon.localPosition.x - icon.rect.xMax);
+                    shift = Mathf.Max(shift, left + width + gap - nextIcon.localPosition.x - nextIcon.rect.xMin);
+                }
+            // 后续两行整列共同让位，不单独挪某一个数字，也不改字号或行距。
+            if (shift <= 0) continue;
+            foreach (var row in rows)
+                for (int following = column + 1; following < 3; following++)
+                    foreach (int index in new[] { 3 + following * 2, 4 + following * 2, 9 + following * 2, 10 + following * 2 })
+                        row.GetChild(index).localPosition += new Vector3(shift, 0, 0);
         }
     }
     public void 招募选中兵种()

@@ -230,8 +230,10 @@ namespace Dwsg.Social
             input.textComponent = Text(image.transform, "", 8, 2, w - 16, h - 4, 17, Cyan);
             input.placeholder = Text(image.transform, placeholder, 8, 2, w - 16, h - 4, 16, Muted);
             input.textComponent.alignment = multiline ? TextAnchor.UpperLeft : TextAnchor.MiddleLeft;
+            input.textComponent.alignByGeometry = !multiline;
             input.textComponent.horizontalOverflow = multiline ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
             ((Text)input.placeholder).alignment = input.textComponent.alignment;
+            ((Text)input.placeholder).alignByGeometry = !multiline;
             input.customCaretColor = true; input.caretColor = Cyan;
             input.selectionColor = new Color(.145f, .4f, .353f, .6f);
             input.text = initial ?? "";
