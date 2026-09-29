@@ -222,4 +222,5 @@ using (var store = new SqliteWorldStore(db))
     Check(CombatEconomy.ApplyCombatRewards(state, actors[0].PlayerId, "test-battle", double.NaN, 0, 0).Code == GameCodes.InvalidArgument &&
         unchanged == state.Data.ToString(Formatting.None), "invalid combat reward leaves candidate unchanged");
 }
+checks += ProductionChecks.Run(seed, db + ".production");
 Console.WriteLine("ECONOMY_CHECKS_PASS " + checks);
