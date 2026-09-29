@@ -22,6 +22,8 @@ public static class 将领操作回归检查
 			全局兵种库.属性表 = new List<兵种属性库类>(); 全局兵种库.初始化兵种库();
 			全局变量.本机身份 = 0; 全局变量.第几个封地 = 0;
 			全局变量.将领状态图标资源表 = new Sprite[4];
+			全局变量.将领编队图标资源表 = Resources.LoadAll<Sprite>("将领编队图标");
+			Assert(全局变量.将领编队图标资源表.Length >= 5, "原编队图标资源未加载");
 			Scene scene = EditorSceneManager.OpenScene("Assets/Scenes/主场景.unity", OpenSceneMode.Single);
 			将领列表显示 list = Find<将领列表显示>(scene);
 			全局变量.提示类 = Find<提示移动>(scene);
@@ -52,7 +54,9 @@ public static class 将领操作回归检查
 			});
 			check("原卸装按钮保留装备实例与原配兵", () => {
 				将领信息 general = ready(0); 玩家数据 player = 全局变量.所有玩家数据表[0];
-				将领装备 gear = player.背包装备列表.武器装备列表[0]; list.全部卸载装备();
+				将领装备 gear = player.背包装备列表.武器装备列表[0];
+				general.将领属性.成长点数.等级 = gear.获取装备等级();
+				list.全部卸载装备();
 				Assert(ReferenceEquals(gear, player.背包装备列表.武器装备列表[0]) && gear.将领ID == -1 && general.将领配兵.数量 == 37, "原装备或配兵被更换");
 				list.全部穿戴装备(); Assert(gear.将领ID == general.ID, "原自动穿装入口未接通");
 			});
