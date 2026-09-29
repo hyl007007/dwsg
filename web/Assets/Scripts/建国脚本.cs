@@ -22,7 +22,32 @@ public class 建国脚本 : MonoBehaviour
         if (!NationBasicActions.Current.CanUseCapital(国都城池信息))
         { 国都城池信息 = null; if (国都对象 != null) 国都对象.text = "请选择国都"; }
         NationOriginalControls.Fit(国都对象);
+        配置表单对齐();
         配置备注();
+    }
+
+    private void 配置表单对齐()
+    {
+        var 列表 = transform.Find("国家信息布局列表"); if (列表 == null) return;
+        foreach (Transform 行 in 列表)
+        {
+            var 说明对象 = 行.Find("说明文本");
+            var 说明 = 说明对象 == null ? null : 说明对象.GetComponent<Text>();
+            if (说明 == null) continue;
+            说明.alignByGeometry = true;
+            var 输入区域 = 行.Find("InputField") as RectTransform;
+            if (输入区域 == null) continue;
+            // 沿用同一行标签的垂直锚点；输入框横向尺寸和原背景不变。
+            var 标签区域 = 说明.rectTransform;
+            输入区域.anchorMin = new Vector2(输入区域.anchorMin.x, 标签区域.anchorMin.y);
+            输入区域.anchorMax = new Vector2(输入区域.anchorMax.x, 标签区域.anchorMax.y);
+            输入区域.pivot = new Vector2(输入区域.pivot.x, 标签区域.pivot.y);
+            输入区域.anchoredPosition = new Vector2(输入区域.anchoredPosition.x, 标签区域.anchoredPosition.y);
+        }
+        var 资金对象 = 列表.Find("建国资金说明文本");
+        var 资金文字 = 资金对象 == null ? null : 资金对象.GetComponent<Text>();
+        if (资金文字 != null) 资金文字.alignByGeometry = true;
+        if (国都对象 != null) 国都对象.alignByGeometry = true;
     }
 
     private void 配置备注()
@@ -37,7 +62,18 @@ public class 建国脚本 : MonoBehaviour
         if (输入 == null) return;
         var 编辑框 = 输入.GetComponentInParent<InputField>(); if (编辑框 == null) return;
         编辑框.characterLimit = 上限; 输入.fontSize = 18; 输入.fontStyle = FontStyle.Normal; 输入.supportRichText = false;
-        输入.horizontalOverflow = HorizontalWrapMode.Overflow; 输入.verticalOverflow = VerticalWrapMode.Truncate;
+        // 原单行框小于字体行高；保留原字号，交给 InputField 和原遮罩处理可见范围。
+        输入.horizontalOverflow = HorizontalWrapMode.Overflow; 输入.verticalOverflow = VerticalWrapMode.Overflow;
+        输入.alignment = TextAnchor.MiddleLeft; 输入.alignByGeometry = true;
+        if (编辑框.placeholder != null)
+        {
+            // 输入内容复用原占位文本的左右留白，避免字形边缘贴着遮罩被裁切。
+            var 区域 = 输入.rectTransform; var 占位区域 = 编辑框.placeholder.rectTransform;
+            区域.anchorMin = new Vector2(占位区域.anchorMin.x, 区域.anchorMin.y);
+            区域.anchorMax = new Vector2(占位区域.anchorMax.x, 区域.anchorMax.y);
+            区域.offsetMin = new Vector2(占位区域.offsetMin.x, 区域.offsetMin.y);
+            区域.offsetMax = new Vector2(占位区域.offsetMax.x, 区域.offsetMax.y);
+        }
         if (显示 != null && 显示 != 输入) { 输入.color = 显示.color; 显示.gameObject.SetActive(false); }
         if (编辑框.GetComponent<RectMask2D>() == null) 编辑框.gameObject.AddComponent<RectMask2D>();
         编辑框.ForceLabelUpdate();
