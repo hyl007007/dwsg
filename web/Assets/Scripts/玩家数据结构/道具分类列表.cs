@@ -18,54 +18,21 @@ namespace 玩家数据结构
 
 		public int 获取添加道具所需格数(string 名字, int 数量)
 		{
-			List<道具信息> list = 获取道具分类列表(名字);
-			if (list == null) return 0;
-			int num = 获取指定道具最小数量的索引(list, 名字);
-			return num == -1 || list[num].数量 + (double)数量 > 999.0 ? 1 : 0;
+			return Dwsg.Shared.Economy.ItemStackRules.RequiredSlots(获取道具分类列表(名字), 名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量);
 		}
 
 		public void 添加道具(string 名字, int 数量)
 		{
-			List<道具信息> list = 获取道具分类列表(名字);
-			if (list == null)
-			{
-				return;
-			}
-			int num = 获取指定道具最小数量的索引(list, 名字);
-			if (num != -1)
-			{
-				if (list[num].数量 + (double)数量 > 999.0)
-				{
-					double num2 = 999.0 - list[num].数量;
-					list.Add(new 道具信息(名字, (double)数量 - num2));
-					list[num].数量 = 999.0;
-				}
-				else
-				{
-					list[num].数量 = list[num].数量 + (double)数量;
-				}
-			}
-			else
-			{
-				list.Add(new 道具信息(名字, 数量));
-			}
+			Dwsg.Shared.Economy.ItemStackRules.Add(获取道具分类列表(名字), 名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量, (道具, 个数) => 道具.数量 = 个数,
+				(道具名, 个数) => new 道具信息(道具名, 个数));
 		}
 
 		public bool 扣除道具(string 道具名字, int 数量)
 		{
-			if (数量 <= 0 || 获取指定道具数量(道具名字) < 数量) return false;
-			List<道具信息> 列表 = 获取道具分类列表(道具名字);
-			if (列表 == null) return false;
-			int 剩余 = 数量;
-			for (int i = 列表.Count - 1; i >= 0 && 剩余 > 0; i--)
-			{
-				if (列表[i].名字 != 道具名字) continue;
-				int 扣除 = System.Math.Min(剩余, (int)列表[i].数量);
-				列表[i].数量 -= 扣除;
-				剩余 -= 扣除;
-				if (列表[i].数量 <= 0) 列表.RemoveAt(i);
-			}
-			return 剩余 == 0;
+			return Dwsg.Shared.Economy.ItemStackRules.Subtract(获取道具分类列表(道具名字), 道具名字, 数量,
+				道具 => 道具.名字, 道具 => 道具.数量, (道具, 个数) => 道具.数量 = 个数);
 		}
 
 		public bool 删除道具(string 道具名字)
@@ -98,6 +65,7 @@ namespace 玩家数据结构
 
 		public string 使用道具(string 道具名字, int 第几个封地, int 第几个将领)
 		{
+			if (道具名字 == "新手礼包") return EconomyClient.UseStarterPack(全局变量.所有玩家数据表[全局变量.本机身份]);
 			string text = "使用失败";
 			List<道具信息> list = 获取道具分类列表(道具名字);
 			if (list != null)
@@ -124,18 +92,7 @@ namespace 玩家数据结构
 
 		public int 获取指定道具最小数量的索引(List<道具信息> 列表, string 道具名字)
 		{
-			double num = 2000.0;
-			int result = -1;
-			int count = 列表.Count;
-			for (int i = 0; i < count; i++)
-			{
-				if (列表[i].名字 == 道具名字 && 列表[i].数量 < num)
-				{
-					num = 列表[i].数量;
-					result = i;
-				}
-			}
-			return result;
+			return Dwsg.Shared.Economy.ItemStackRules.MinimumIndex(列表, 道具名字, 道具 => 道具.名字, 道具 => 道具.数量);
 		}
 
 		public int 获取指定道具的索引(List<道具信息> 列表, string 道具名字)

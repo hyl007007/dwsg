@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -10,6 +11,68 @@ using 玩家数据结构;
 
 public static class 服务器原世界导出
 {
+	public static void 验证经济规则()
+	{
+		if (!Application.isBatchMode || Application.isPlaying) throw new InvalidOperationException("仅在离屏编译副本执行");
+		if (Dwsg.Network.GameNetwork.Enabled) throw new InvalidOperationException("原单机按钮回归要求新离屏副本尚未连接服务器");
+		for (int 等级 = 0; 等级 <= 99; 等级++)
+		{
+			float 原经验 = Mathf.Round(0.000261685957f * Mathf.Pow(等级, 6f) - 0.0230197739f * Mathf.Pow(等级, 5f) + 0.794727564f * Mathf.Pow(等级, 4f) - 13.1911077f * Mathf.Pow(等级, 3f) + 126.095367f * Mathf.Pow(等级, 2f) - 168.6316f * 等级 + 523.2616f);
+			if (Dwsg.Shared.Economy.MonarchRules.RequiredExperience(等级) != 原经验)
+				throw new InvalidOperationException("君主等级原Mathf差分失败 " + 等级 + ": " + 原经验 + " vs " + Dwsg.Shared.Economy.MonarchRules.RequiredExperience(等级));
+		}
+		Debug.Log("ECONOMY_UNITY_THRESHOLDS_PASS 100");
+		商城容量回归检查.运行();
+		// Reuse the existing real Unity fixture and original catalogs; no second UI fixture or production rule.
+		var 检查类型 = typeof(商城容量回归检查);
+		var 隔离入口 = 检查类型.GetMethod("使用隔离数据", BindingFlags.Static | BindingFlags.NonPublic);
+		var 数据类型 = 检查类型.GetNestedType("购买检查数据", BindingFlags.NonPublic);
+		隔离入口.Invoke(null, new object[] { (Action)(() =>
+		{
+			foreach (bool 白银 in new[] { false, true })
+			{
+				string 名字 = 白银 ? "疾风符" : "将神魂";
+				using (var 数据 = (IDisposable)Activator.CreateInstance(数据类型, new object[] { 名字, 0, 300.0, 0, new int[0] }))
+				{
+					var 玩家 = (玩家数据)数据类型.GetField("玩家").GetValue(数据);
+					var 商品 = (商品属性类)数据类型.GetField("商品").GetValue(数据);
+					var 脚本 = (购买道具脚本)数据类型.GetField("脚本").GetValue(数据);
+					var 道具 = 玩家.背包道具列表.获取道具分类列表(名字);
+					道具.Add(new 道具信息(名字, 2));
+					道具.Add(new 道具信息(名字, 3));
+					double 原黄金 = 玩家.财产信息.黄金;
+					double 原白银 = 玩家.财产信息.白银;
+					int 原库存 = 商品.限购数量;
+					var 数量字段 = typeof(购买道具脚本).GetField("购买数量", BindingFlags.Instance | BindingFlags.NonPublic);
+					数量字段.SetValue(脚本, 4.0);
+					if (白银) 脚本.白银卖出(); else 脚本.黄金卖出();
+					double 单价 = 白银 ? 商品.白银售价 : 商品.黄金售价;
+					if (道具.Count != 1 || 道具[0].数量 != 1 || 玩家.财产信息.黄金 != 原黄金 + (白银 ? 0 : 单价 * 4) ||
+						玩家.财产信息.白银 != 原白银 + (白银 ? 单价 * 4 : 0) || 商品.限购数量 != 原库存)
+						throw new InvalidOperationException("原卖出按钮跨堆/原价/币种/库存回归失败");
+					string 原状态 = JsonConvert.SerializeObject(玩家);
+					数量字段.SetValue(脚本, 2.0);
+					if (白银) 脚本.白银卖出(); else 脚本.黄金卖出();
+					if (原状态 != JsonConvert.SerializeObject(玩家)) throw new InvalidOperationException("不足量卖出发生变更");
+					Debug.Log("ECONOMY_UNITY_SALE_PASS " + (白银 ? "白银" : "黄金"));
+				}
+			}
+			using (var 数据 = (IDisposable)Activator.CreateInstance(数据类型, new object[] { "将神魂", 0, 300.0, 0, new int[0] }))
+			{
+				var 玩家 = (玩家数据)数据类型.GetField("玩家").GetValue(数据);
+				玩家.背包道具列表.添加道具("新手礼包", 1);
+				double 铜 = 玩家.财产信息.铜钱, 粮 = 玩家.财产信息.粮食, 金 = 玩家.财产信息.黄金, 银 = 玩家.财产信息.白银;
+				if (玩家.背包道具列表.使用道具("新手礼包", 0, 0) == "使用失败" || 玩家.背包道具列表.获取指定道具数量("新手礼包") != 0 ||
+					玩家.财产信息.铜钱 != 铜 + 500000 || 玩家.财产信息.粮食 != 粮 + 1000000 || 玩家.财产信息.黄金 != 金 + 100000 || 玩家.财产信息.白银 != 银)
+					throw new InvalidOperationException("原新手礼包使用入口回归失败");
+				string 原状态 = JsonConvert.SerializeObject(玩家);
+				if (玩家.背包道具列表.使用道具("新手礼包", 0, 0) != "使用失败" || 原状态 != JsonConvert.SerializeObject(玩家))
+					throw new InvalidOperationException("原新手礼包不足时发生奖励");
+				Debug.Log("ECONOMY_UNITY_STARTER_PASS");
+			}
+		}) });
+	}
+
 	// 批处理编译副本：-executeMethod 服务器原世界导出.运行 -dwsgSeedOutput <audit内绝对路径>
 	public static void 运行()
 	{

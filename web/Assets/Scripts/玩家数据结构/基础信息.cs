@@ -40,28 +40,7 @@ namespace 玩家数据结构
 
 		public void 君主获得经验(double 获得的经验)
 		{
-			声望 += 获得的经验;
-			double num = 获取指定等级升级所需经验(99f);
-			if (声望 > num)
-			{
-				声望 = num - 1.0;
-			}
-			int num2 = 99;
-			while (true)
-			{
-				if (num2 > 0)
-				{
-					double num3 = 获取指定等级升级所需经验(num2 - 1);
-					if (声望 >= num3)
-					{
-						break;
-					}
-					num2--;
-					continue;
-				}
-				return;
-			}
-			等级 = num2;
+			Dwsg.Shared.Economy.MonarchRules.GrantExperience(获得的经验, ref 声望, ref 等级);
 		}
 
 		public float 获取当前等级经验条比例()
@@ -83,7 +62,7 @@ namespace 玩家数据结构
 
 		public double 获取指定等级升级所需经验(float 等级)
 		{
-			return Mathf.Round(0.000261685957f * Mathf.Pow(等级, 6f) - 0.0230197739f * Mathf.Pow(等级, 5f) + 0.794727564f * Mathf.Pow(等级, 4f) - 13.1911077f * Mathf.Pow(等级, 3f) + 126.095367f * Mathf.Pow(等级, 2f) - 168.6316f * 等级 + 523.2616f);
+			return Dwsg.Shared.Economy.MonarchRules.RequiredExperience(等级);
 		}
 
 		public double 统兵类称号加成()
@@ -142,162 +121,22 @@ namespace 玩家数据结构
 
 		public double 攻速类称号加成()
 		{
-			if (称号名 == "破军")
-			{
-				return 10.0;
-			}
-			if (称号名 == "地主")
-			{
-				return 10.0;
-			}
-			if (称号名 == "达人")
-			{
-				return 5.0;
-			}
-			if (称号名 == "飞将")
-			{
-				return 20.0;
-			}
-			if (称号名 == "天子")
-			{
-				return 10.0;
-			}
-			if (称号名 == "暴君")
-			{
-				return 10.0;
-			}
-			if (称号名 == "君王")
-			{
-				return 10.0;
-			}
-			if (称号名 == "帝王")
-			{
-				return 10.0;
-			}
-			return 0.0;
+			return Dwsg.Shared.Combat.CombatModifiers.TitleBonus(称号名, "攻速");
 		}
 
 		public double 生命类称号加成()
 		{
-			if (称号名 == "猛将")
-			{
-				return 10.0;
-			}
-			if (称号名 == "名士")
-			{
-				return 10.0;
-			}
-			if (称号名 == "达人")
-			{
-				return 5.0;
-			}
-			if (称号名 == "无双")
-			{
-				return 20.0;
-			}
-			if (称号名 == "天子")
-			{
-				return 10.0;
-			}
-			if (称号名 == "君王")
-			{
-				return 10.0;
-			}
-			if (称号名 == "帝王")
-			{
-				return 10.0;
-			}
-			return 0.0;
+			return Dwsg.Shared.Combat.CombatModifiers.TitleBonus(称号名, "生命");
 		}
 
 		public double 防御类称号加成()
 		{
-			if (称号名 == "学士")
-			{
-				return 5.0;
-			}
-			if (称号名 == "护军")
-			{
-				return 10.0;
-			}
-			if (称号名 == "劳模")
-			{
-				return 10.0;
-			}
-			if (称号名 == "达人")
-			{
-				return 5.0;
-			}
-			if (称号名 == "神工")
-			{
-				return 10.0;
-			}
-			if (称号名 == "霸主")
-			{
-				return 10.0;
-			}
-			if (称号名 == "天子")
-			{
-				return 10.0;
-			}
-			if (称号名 == "君王")
-			{
-				return 10.0;
-			}
-			if (称号名 == "帝王")
-			{
-				return 10.0;
-			}
-			return 0.0;
+			return Dwsg.Shared.Combat.CombatModifiers.TitleBonus(称号名, "防御");
 		}
 
 		public double 攻击类称号加成()
 		{
-			if (称号名 == "学士")
-			{
-				return 5.0;
-			}
-			if (称号名 == "先锋")
-			{
-				return 10.0;
-			}
-			if (称号名 == "财主")
-			{
-				return 10.0;
-			}
-			if (称号名 == "达人")
-			{
-				return 5.0;
-			}
-			if (称号名 == "宗师")
-			{
-				return 20.0;
-			}
-			if (称号名 == "神工")
-			{
-				return 10.0;
-			}
-			if (称号名 == "霸主")
-			{
-				return 10.0;
-			}
-			if (称号名 == "天子")
-			{
-				return 10.0;
-			}
-			if (称号名 == "暴君")
-			{
-				return 10.0;
-			}
-			if (称号名 == "君王")
-			{
-				return 10.0;
-			}
-			if (称号名 == "帝王")
-			{
-				return 10.0;
-			}
-			return 0.0;
+			return Dwsg.Shared.Combat.CombatModifiers.TitleBonus(称号名, "攻击");
 		}
 	}
 

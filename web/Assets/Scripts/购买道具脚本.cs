@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Shared;
+using Dwsg.Shared.Economy;
+using Newtonsoft.Json.Linq;
 
 public class 购买道具脚本 : MonoBehaviour
 {
@@ -68,8 +71,7 @@ public class 购买道具脚本 : MonoBehaviour
     private bool 获取交易数量(out int 数量)
     {
         数量 = 0;
-        if (double.IsNaN(购买数量) || double.IsInfinity(购买数量) ||
-            购买数量 < 1 || 购买数量 > 100 || 购买数量 != System.Math.Truncate(购买数量))
+        if (!ShopRules.ValidQuantity(购买数量))
         {
             全局变量.提示类.显示信息("请选择 1 到 100 个整数数量");
             return false;
@@ -82,64 +84,54 @@ public class 购买道具脚本 : MonoBehaviour
     {
         int 数量;
         if (!获取交易数量(out 数量)) return;
+        if (请求服务器交易("shop.purchase", 使用白银, 数量)) return;
         var 商品 = 全局商城库.获取指定名字的道具(道具名字);
-        if (商品 == null || 全局道具库.获取指定名字的道具(道具名字) == null) return;
-        double 单价 = 使用白银 ? 商品.白银售价 : 商品.黄金售价;
-        if (单价 <= 0 || double.IsNaN(单价) || double.IsInfinity(单价))
-        {
-            全局变量.提示类.显示信息("该商品不支持此货币");
-            return;
-        }
-        if (商品.限购数量 != -1 && 商品.限购数量 < 数量)
-        {
-            全局变量.提示类.显示信息("购买失败，超出购买限制");
-            return;
-        }
+        var 配置 = 全局道具库.获取指定名字的道具(道具名字);
+        if (商品 == null || 配置 == null) return;
         var 玩家 = 全局变量.所有玩家数据表[全局变量.本机身份];
-        double 金额 = 单价 * 数量;
-        double 余额 = 使用白银 ? 玩家.财产信息.白银 : 玩家.财产信息.黄金;
-        if (余额 < 金额 || double.IsNaN(余额))
+        var 结果 = EconomyClient.PurchaseOffline(玩家, 商品, 配置.分类, 使用白银 ? "白银" : "黄金", 数量);
+        全局变量.提示类.显示信息(结果.Message);
+        if (结果.Code == GameCodes.Ok) 刷新显示();
+    }
+
+    private bool 请求服务器交易(string 类型, bool 使用白银, int 数量)
+    {
+        if (Dwsg.Network.GameNetwork.Enabled)
         {
-            全局变量.提示类.显示信息("余额不足");
-            return;
+            var 快照 = Dwsg.Network.GameNetwork.CurrentSnapshot;
+            Dwsg.Network.GameNetwork.SendCommand(类型, new JObject
+            {
+                ["itemName"] = 道具名字,
+                ["currency"] = 使用白银 ? "白银" : "黄金",
+                ["quantity"] = 数量,
+                ["catalogVersion"] = 快照?.PublicWorld.Value<int?>("商城配置版本") ?? 1
+            }, 结果 =>
+            {
+                if (this == null) return;
+                全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认交易，请重试");
+                if (Dwsg.Network.GameNetwork.HasRole)
+                {
+                    刷新显示();
+                    刷新商城显示();
+                }
+            });
+            return true;
         }
-        int 新增格数 = 玩家.背包道具列表.获取添加道具所需格数(道具名字, 数量);
-        if (新增格数 > 0 && 玩家.获取背包物品数量() + 新增格数 > 玩家.基础信息.背包容量上限)
-        {
-            全局变量.提示类.显示信息("购买失败，背包容量不足");
-            return;
-        }
-        玩家.背包道具列表.添加道具(道具名字, 数量);
-        if (使用白银) 玩家.财产信息.白银 -= 金额;
-        else 玩家.财产信息.黄金 -= 金额;
-        if (商品.限购数量 != -1) 商品.限购数量 -= 数量;
-        全局变量.提示类.显示信息("购买成功!");
-        刷新显示();
+        return false;
     }
 
     private void 卖出(bool 使用白银)
     {
         int 数量;
         if (!获取交易数量(out 数量)) return;
+        if (请求服务器交易("shop.sell", 使用白银, 数量)) return;
         var 商品 = 全局商城库.获取指定名字的道具(道具名字);
-        if (商品 == null) return;
-        double 单价 = 使用白银 ? 商品.白银售价 : 商品.黄金售价;
-        if (单价 <= 0 || double.IsNaN(单价) || double.IsInfinity(单价))
-        {
-            全局变量.提示类.显示信息("该商品不支持此货币");
-            return;
-        }
+        var 配置 = 全局道具库.获取指定名字的道具(道具名字);
+        if (商品 == null || 配置 == null) return;
         var 玩家 = 全局变量.所有玩家数据表[全局变量.本机身份];
-        if (!玩家.背包道具列表.扣除道具(道具名字, 数量))
-        {
-            全局变量.提示类.显示信息("卖出失败，数量不足");
-            return;
-        }
-        double 金额 = 单价 * 数量;
-        if (使用白银) 玩家.财产信息.白银 += 金额;
-        else 玩家.财产信息.黄金 += 金额;
-        全局变量.提示类.显示信息("卖出" + 道具名字 + 数量 + "个成功，获得" + (使用白银 ? "白银" : "黄金") + 金额);
-        刷新显示();
+        var 结果 = EconomyClient.SellOffline(玩家, 商品, 配置.分类, 使用白银 ? "白银" : "黄金", 数量);
+        全局变量.提示类.显示信息(结果.Message);
+        if (结果.Code == GameCodes.Ok) 刷新显示();
     }
 
     public void 黄金购买() { 购买(false); }
