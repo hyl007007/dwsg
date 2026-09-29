@@ -255,7 +255,7 @@ public class 选择出征将领 : MonoBehaviour
 		山贼信息对象.transform.GetChild(0).GetChild(1).GetComponent<Text>()
 			.text = 城池信息库类.名称 + "(" + 城池信息库类.获取规模名称() + "城" + 城池信息库类.坐标x.ToString() + "," + 城池信息库类.坐标y.ToString() + ")  国家:" + 城池信息库类.获取国家名字();
 		山贼信息对象.transform.GetChild(0).GetChild(2).GetComponent<Text>()
-			.text = "天赋:" + 城池信息库类.获取天赋类型名称() + "+" + 城池信息库类.天赋加成.ToString() + "%  封地:" + 城池信息库类.城池封地列表.Count.ToString() + "/" + 城池信息库类.获取封地上限().ToString();
+			.text = "天赋:" + 城池信息库类.获取天赋类型名称() + "+" + 城池信息库类.天赋加成.ToString() + "%  封地:" + Dwsg.Network.GameNetwork.GetCityFiefCount(全局变量.所有城池列表.IndexOf(城池信息库类)).ToString() + "/" + 城池信息库类.获取封地上限().ToString();
 		山贼信息对象.transform.GetChild(0).GetChild(3).GetComponent<Text>()
 			.text = "城主:" + 城池信息库类.获取城主名字();
 		山贼信息对象.transform.GetChild(2).GetChild(0).GetComponent<Text>()
