@@ -123,7 +123,7 @@ namespace Dwsg.Network
             {
                 var list = (IList)(existing ?? Activator.CreateInstance(type));
                 var itemType = type.GetGenericArguments()[0];
-                var useIdentity = itemType.Name == "将领信息" || itemType.Name == "封地信息" || itemType.Name == "玩家数据" || itemType.Name == "山贼属性信息";
+                var useIdentity = itemType.Name == "将领信息" || itemType.Name == "封地信息" || itemType.Name == "玩家数据" || itemType.Name == "山贼属性信息" || itemType.Name == "国家信息库类";
                 var incomingKeys = new HashSet<string>(StringComparer.Ordinal);
                 if (useIdentity)
                     foreach (var item in array)
@@ -168,6 +168,8 @@ namespace Dwsg.Network
         private static string Identity(JToken value, Type type)
         {
             var obj = value as JObject;
+            if (type.Name == "国家信息库类")
+                return obj?["国号"]?.Type == JTokenType.String && !string.IsNullOrEmpty(obj.Value<string>("国号")) ? obj.Value<string>("国号") : null;
             if (type.Name == "山贼属性信息" && obj?["坐标x"] != null && obj["坐标y"] != null)
                 return obj.Value<int>("坐标x").ToString(CultureInfo.InvariantCulture) + ":" + obj.Value<int>("坐标y").ToString(CultureInfo.InvariantCulture);
             var key = obj?["ID"] ?? obj?["基础信息"]?["ID"];
@@ -177,6 +179,8 @@ namespace Dwsg.Network
         private static string Identity(object value, Type type)
         {
             if (value == null) return null;
+            if (type.Name == "国家信息库类")
+                return type.GetField("国号").GetValue(value) as string;
             if (type.Name == "山贼属性信息")
                 return Convert.ToInt32(type.GetField("坐标x").GetValue(value)).ToString(CultureInfo.InvariantCulture) + ":" +
                     Convert.ToInt32(type.GetField("坐标y").GetValue(value)).ToString(CultureInfo.InvariantCulture);
