@@ -32,5 +32,7 @@ public static class 原界面文字样式
         shadow.effectColor = Color.black;
         shadow.effectDistance = new Vector2(-1, -1);
         shadow.useGraphicAlpha = true;
+        if (text.GetComponent<按钮字形垂直居中>() == null)
+            text.gameObject.AddComponent<按钮字形垂直居中>();
     }
 }
