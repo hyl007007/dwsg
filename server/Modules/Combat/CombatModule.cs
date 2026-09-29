@@ -310,7 +310,7 @@ namespace Dwsg.Server.Modules.Combat
         private static string NpcPlayerId(WorldState world)
         {
             return ((JObject)world.EntityMappings["players"]).Properties().Single(entry =>
-                world.RequirePlayer(entry.Name)["基础信息"].Value<string>("名字") == "山贼").Name;
+                entry.Value.Value<int>() == 1).Name;
         }
         private static BanditBattle Load(WorldState world, string id) { return world.Data["战斗运行"]?[id]?.ToObject<BanditBattle>(); }
         private static void Save(WorldState world, BanditBattle battle)

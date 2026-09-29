@@ -25,7 +25,7 @@ var bindings = new List<RoleBinding>();
 var originalRandom = new CombatRandom(123456789);
 for (int account = 0; account < 2; account++)
 {
-    Check(LegacyWorldModule.CreatePlayer(world, "战斗君主" + account, "汉", now, out int index).Code == GameCodes.Ok, "actual original player creation " + account);
+    Check(LegacyWorldModule.CreatePlayer(world, account == 1 ? "山贼" : "战斗君主" + account, "汉", now, out int index).Code == GameCodes.Ok, "actual original player creation including NPC nickname collision " + account);
     string id = Guid.NewGuid().ToString("N"); players[id] = index;
     var player = world.RequirePlayer(id);
     var fief = (JObject)player["封地信息表"][0];
@@ -84,6 +84,7 @@ var started = runtime.Execute(actors[0], dispatch);
 Check(started.Code == GameCodes.Ok, "real Runtime dispatch commits");
 string battleId = started.Data.Value<string>("battleId");
 BanditBattle march = Battle(battleId);
+Check(store.Load(world.WorldId).ResolvePlayerIndex(march.NpcPlayerId) == 1, "bandit identity uses original NPC mapping despite same player nickname");
 Check(march.Phase == "marching" && march.ArrivalUtcMs == now + 10000 && march.Frame == 0, "original ten second march");
 Check(march.Attackers.Count == 5 && store.Load(world.WorldId).EntityMappings["generalOccupancy"].Count() == 5, "all five generals persist as occupied");
 long revision = store.Load(world.WorldId).Revision;
