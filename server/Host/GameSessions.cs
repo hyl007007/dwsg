@@ -153,7 +153,11 @@ public sealed class GameSessions
     }
     private JObject SnapshotReply(GameSession session, GameResult result, long sinceRevision, long afterSequence)
     {
+        long sequenceLimit;
+        lock (session.StreamGate) sequenceLimit = session.Sequence;
         var snapshot = Runtime.Snapshot(session.Actor, projection);
+        var visibleMessages = new HashSet<string>((snapshot.PublicWorld["chatMessages"] as JArray ?? new JArray())
+            .OfType<JObject>().Select(message => message.Value<string>("messageId")), StringComparer.Ordinal);
         lock (session.StreamGate)
         {
             var wire = snapshot;
@@ -165,8 +169,11 @@ public sealed class GameSessions
             var response = Reply(result, wire);
             response["snapshotDelta"] = delta;
             if (delta) response["baseRevision"] = sinceRevision;
-            response["events"] = new JArray(session.Events.Where(e => e.Value<long>("sequence") > afterSequence).Select(e => e.DeepClone()));
-            response["sequence"] = session.Sequence;
+            response["events"] = new JArray(session.Events.Where(e => e.Value<long>("sequence") > afterSequence && e.Value<long>("sequence") <= sequenceLimit &&
+                (e["event"].Value<string>("type") != "chat.message" || visibleMessages.Contains(e["event"]["data"]?.Value<string>("messageId"))))
+                .Select(e => e.DeepClone()));
+            // Events published during snapshot construction remain unacknowledged until the next reply.
+            response["sequence"] = sequenceLimit;
             response["sessionExpiresUtcMs"] = Interlocked.Read(ref session.ExpiresUtcMs);
             response["eventsReset"] = session.Events.Count > 0 && afterSequence < session.Events.Peek().Value<long>("sequence") - 1;
             session.LastSnapshot = snapshot;
