@@ -144,6 +144,23 @@ internal static class TechnologyChecks
             afterGeneral["将领属性"]["最终属性"]["统兵"] = beforeGeneral["将领属性"]["最终属性"]["统兵"].DeepClone();
             Check(JToken.DeepEquals(beforeGeneral, afterGeneral) && active.EntityMappings["generalOccupancy"][generalId].Value<string>("armyId") == "actual-leadership-army",
                 "leadership upgrade grants no free stamina and alters no troop state formation equipment or army binding");
+            var abnormal = active.Clone();
+            abnormal.Revision = 0;
+            abnormal.RequirePlayer(owner)["封地信息表"][0]["将领信息表"][0]["将领属性"]["初始属性"]["武力"] = 1501.0;
+            Check(GeneralAttributeRules.Recalculate((JObject)abnormal.RequirePlayer(owner).DeepClone(), utc / 1000),
+                "real recruited occupied general triggers the original abnormal-attribute boundary");
+            using (var invalidStore = new SqliteWorldStore(database + ".badattributes"))
+            {
+                invalidStore.ImportWorld(abnormal, bindings);
+                var invalidRuntime = new WorldRuntime(invalidStore, a => invalidStore.ResolveRole(a.WorldId, a.AccountId)?.PlayerId == a.PlayerId);
+                invalidRuntime.Register(new TechnologyModule());
+                var beforeInvalid = invalidStore.Load(world.WorldId);
+                var rejected = invalidRuntime.Execute(actor, Command("统帅能力", 1));
+                var afterInvalid = invalidStore.Load(world.WorldId);
+                Check(rejected.Code == GameCodes.Unavailable && beforeInvalid.Revision == afterInvalid.Revision &&
+                    Json(beforeInvalid.Data) == Json(afterInvalid.Data) && Json(beforeInvalid.EntityMappings) == Json(afterInvalid.EntityMappings),
+                    "actual Runtime SQLite rejects abnormal derived attributes without spending changing research or altering the occupied army");
+            }
         }
         Console.WriteLine("TECHNOLOGY_CHECKS_PASS " + checks);
     }

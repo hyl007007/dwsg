@@ -47,7 +47,8 @@ namespace Dwsg.Server.World
                     // Canonical recalculation also resets stamina. Derive on a copy and take only
                     // the technology-dependent capacity, preserving every troop and army state.
                     var derived = (JObject)upgraded.DeepClone();
-                    GeneralAttributeRules.Recalculate(derived, context.ServerUtcMs / 1000);
+                    if (GeneralAttributeRules.Recalculate(derived, context.ServerUtcMs / 1000))
+                        return GameResult.Reject(GameCodes.Unavailable, "原将领属性异常，科技升级未扣费");
                     for (int f = 0; f < upgraded["封地信息表"].Count(); f++)
                         for (int g = 0; g < upgraded["封地信息表"][f]["将领信息表"].Count(); g++)
                             upgraded["封地信息表"][f]["将领信息表"][g]["将领属性"]["最终属性"]["统兵"] =
