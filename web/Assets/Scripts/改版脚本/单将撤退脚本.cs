@@ -5,48 +5,50 @@ public class 单将撤退脚本 : MonoBehaviour
     public Camera 摄像机;
     public GameObject 撤退布局;
     public GameObject 被选中将领;
-    void Start()
-    {
 
+    private bool 可撤退(将领功能 将)
+    {
+        if (!将 || 将.正在退场 || 将.本将领信息 == null || 将.本将领信息.详细信息 == null ||
+            将.本将领信息.详细信息.状态 != 1 || 将.本将领信息.详细信息.身份 != 全局变量.本机身份 ||
+            !将.战斗系统脚本对象 || 将.战斗系统脚本对象.战斗结束 ||
+            全局变量.所有玩家数据表 == null || 全局变量.本机身份 < 0 ||
+            全局变量.本机身份 >= 全局变量.所有玩家数据表.Count) return false;
+        var 主 = 全局变量.所有玩家数据表[全局变量.本机身份];
+        if (主 == null || 主.封地信息表 == null) return false;
+        foreach (var 地 in 主.封地信息表)
+            if (地 != null && 地.将领信息表 != null && 地.将领信息表.Contains(将.本将领信息)) return true;
+        return false;
     }
 
-    // Update is called once per frame
+    private void 清除选择()
+    {
+        if (撤退布局) 撤退布局.SetActive(false);
+        被选中将领 = null;
+    }
+
     void Update()
     {
+        if (被选中将领 && !可撤退(被选中将领.GetComponent<将领功能>())) 清除选择();
+        if (!Input.GetMouseButtonDown(0)) return;
+        // 点击 UI 时不穿透到战场里选将领。
+        if (UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
+        清除选择();
         RaycastHit ray;
-        if (Input.GetMouseButtonDown(0))
+        if (摄像机 && Physics.Raycast(摄像机.ScreenPointToRay(Input.mousePosition), out ray))
         {
-            //点在 UI 上（比如聊天面板、输入框）时不要穿透到战场里选将领
-            if (UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+            var 将 = ray.transform.GetComponentInChildren<将领功能>();
+            if (可撤退(将))
             {
-                return;
+                被选中将领 = 将.gameObject;
+                if (撤退布局) 撤退布局.SetActive(true);
             }
-            if (Physics.Raycast(摄像机.ScreenPointToRay(Input.mousePosition), out ray))
-            {
-                if (ray.transform.GetComponentInChildren<将领功能>())
-                {
-                    被选中将领 = ray.transform.GetComponentInChildren<将领功能>().gameObject;
-                    if (被选中将领.GetComponent<将领功能>().战斗系统脚本对象.攻身份==全局变量.本机身份)
-                    {
-                        撤退布局.SetActive(true);
-                    }
-                    
-                }
-            }   
         }
     }
 
     public void 撤退选中将领()
     {
-        if (被选中将领 != null)
-        {
-            被选中将领.GetComponent<将领功能>().战斗系统脚本对象.攻方兵力 -= 被选中将领.GetComponent<将领功能>().本将领信息.将领配兵.数量;
-            被选中将领.GetComponent<将领功能>().设置死亡状态();
-            Destroy(被选中将领, 0.5f);
-            被选中将领.GetComponent<将领功能>().本将领信息.详细信息.状态 = 0.0;
-            撤退布局.SetActive(false);
-            被选中将领 = null;
-        }
-
+        var 将 = 被选中将领 ? 被选中将领.GetComponent<将领功能>() : null;
+        if (可撤退(将)) 将.退出战场(true);
+        清除选择();
     }
 }

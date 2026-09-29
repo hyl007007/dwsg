@@ -24,9 +24,11 @@ namespace Dwsg.Social
         }
         private Vector2 lastResolution;
         private Rect lastSafeArea;
+        private Rect lastKeyboardArea;
+        private static Rect KeyboardArea { get { return TouchScreenKeyboard.visible ? TouchScreenKeyboard.area : Rect.zero; } }
         private void Update()
         {
-            if (lastResolution.x != UnityEngine.Screen.width || lastResolution.y != UnityEngine.Screen.height || lastSafeArea != UnityEngine.Screen.safeArea)
+            if (lastResolution.x != UnityEngine.Screen.width || lastResolution.y != UnityEngine.Screen.height || lastSafeArea != UnityEngine.Screen.safeArea || lastKeyboardArea != KeyboardArea)
                 FitToSafeArea();
         }
         private void FitToSafeArea()
@@ -35,11 +37,19 @@ namespace Dwsg.Social
             float width = UnityEngine.Screen.width, height = UnityEngine.Screen.height;
             Rect safe = UnityEngine.Screen.safeArea;
             if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, width, height);
+            Rect keyboard = KeyboardArea;
+            if (keyboard.height > 0 && keyboard.yMax > safe.yMin && keyboard.yMin < safe.yMax)
+            {
+                // 移动键盘占据下方时，把整个原面板放进剩余区域，保存/发送仍可点击。
+                float bottom = Mathf.Clamp(keyboard.yMax, safe.yMin, safe.yMax);
+                safe = Rect.MinMaxRect(safe.xMin, bottom, safe.xMax, safe.yMax);
+            }
             float factor = height / 540f;
             float scale = Mathf.Min(1f, (safe.width / factor - 16) / 700, (safe.height / factor - 12) / 476);
             Frame.localScale = Vector3.one * Mathf.Max(.1f, scale);
             Frame.anchoredPosition = (safe.center - new Vector2(width / 2, height / 2)) / factor;
             lastResolution = new Vector2(width, height); lastSafeArea = UnityEngine.Screen.safeArea;
+            lastKeyboardArea = keyboard;
         }
         private void OnDisable()
         {
@@ -52,30 +62,34 @@ namespace Dwsg.Social
         internal void Refresh()
         {
             if (!gameObject.activeInHierarchy || Render == null) return;
+            if (Status != null) Status.text = "";
             SocialUi.Clear(Body); RenderCount++; Render(this);
             TruncateTitle();
         }
         private void TruncateTitle()
+        { TruncateSingleLine(Title); }
+        // 使用当前字体的实际宽度截取摘要，保留字号、颜色和完整正文数据。
+        internal static void TruncateSingleLine(Text text)
         {
-            if (Title == null) return;
-            Title.resizeTextForBestFit = false;
-            Title.horizontalOverflow = HorizontalWrapMode.Overflow;
-            float availableWidth = Mathf.Max(0, Title.rectTransform.rect.width - 8);
-            string fullTitle = Title.text ?? string.Empty;
-            if (Title.preferredWidth <= availableWidth) return;
+            if (text == null) return;
+            text.resizeTextForBestFit = false;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            float availableWidth = Mathf.Max(0, text.rectTransform.rect.width - 8);
+            string fullText = text.text ?? string.Empty;
+            if (text.preferredWidth <= availableWidth) return;
             const string ellipsis = "…";
-            Title.text = ellipsis;
-            if (Title.preferredWidth > availableWidth) { Title.text = string.Empty; return; }
-            var boundaries = StringInfo.ParseCombiningCharacters(fullTitle);
+            text.text = ellipsis;
+            if (text.preferredWidth > availableWidth) { text.text = string.Empty; return; }
+            var boundaries = StringInfo.ParseCombiningCharacters(fullText);
             int low = 0, high = boundaries.Length - 1;
             while (low < high)
             {
                 int count = (low + high + 1) / 2;
-                Title.text = fullTitle.Substring(0, boundaries[count]) + ellipsis;
-                if (Title.preferredWidth <= availableWidth) low = count;
+                text.text = fullText.Substring(0, boundaries[count]) + ellipsis;
+                if (text.preferredWidth <= availableWidth) low = count;
                 else high = count - 1;
             }
-            Title.text = fullTitle.Substring(0, boundaries[low]) + ellipsis;
+            text.text = fullText.Substring(0, boundaries[low]) + ellipsis;
         }
         internal void Feedback(SocialResult result)
         {

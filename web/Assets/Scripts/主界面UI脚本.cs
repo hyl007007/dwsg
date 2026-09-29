@@ -29,6 +29,14 @@ public class 主界面UI脚本 : MonoBehaviour
 		全局变量.战斗界面UI对象 = 战斗界面UI对象;
 		全局变量.大地图布局对象 = 大地图布局对象;
 		全局变量.封地布局对象 = 封地布局对象;
+		foreach (var 根对象 in gameObject.scene.GetRootGameObjects())
+		{
+			if (根对象.name != "游戏设置界面") continue;
+			var 设置 = 根对象.GetComponent<游戏设置状态>();
+			if (设置 == null) 设置 = 根对象.AddComponent<游戏设置状态>();
+			设置.初始化(this);
+			break;
+		}
 	}
 
 	public void 加载大地图场景()

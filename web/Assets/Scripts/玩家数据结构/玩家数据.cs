@@ -214,6 +214,8 @@ namespace 玩家数据结构
 
 		public double 获取指定状态加成(string 要获取的状态)
 		{
+			double 政务加成 = 要获取的状态 == "攻击" || 要获取的状态 == "防御"
+				? Dwsg.Window1.SixMinistriesModule.BuffPercent(this, 要获取的状态) : 0.0;
 			int count = 道具状态表.Count;
 			for (int i = 0; i < count; i++)
 			{
@@ -221,12 +223,12 @@ namespace 玩家数据结构
 				{
 					if (道具状态表[i].获取状态剩余时间() > 0)
 					{
-						return 道具状态表[i].加成;
+						return 道具状态表[i].加成 + 政务加成;
 					}
-					return 0.0;
+					return 政务加成;
 				}
 			}
-			return 0.0;
+			return 政务加成;
 		}
 
 		public string 获取已佩戴称号()

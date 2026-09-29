@@ -1,190 +1,69 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using 缺失界面.窗口2;
 
 public class 国家科技 : MonoBehaviour
 {
     public Text 攻击科技等级对象;
-
     public Text 防御科技等级对象;
-
     public Text 资源科技等级对象;
-
-    private 国家信息库类 国家信息库类;
-
     public GameObject 概况脚本;
+    private int 打开时角色 = -1;
+    private string 打开时国家;
+    private Text 消耗说明;
+
+    private void OnEnable()
+    {
+        打开时角色 = NationDataSource.Current.ActorId;
+        var 概况 = 概况脚本 == null ? null : 概况脚本.GetComponent<显示概况脚本>();
+        打开时国家 = 概况 == null ? NationDataSource.Current.OwnNationCode : 概况.当前查看国号;
+        刷新显示信息();
+    }
 
     public void 刷新显示信息()
     {
-
-        国家信息库类 = 全局方法类.获取指定名字的国家(全局变量.所有玩家数据表[0].基础信息.国家);
-        国家信息库类.刷新科技信息();
-        攻击科技等级对象.text = (int)国家信息库类.攻击科技 > 0 ? 国家信息库类.攻击科技.ToString() : "0";
-        防御科技等级对象.text = (int)国家信息库类.攻击科技 > 0 ? 国家信息库类.防御科技.ToString() : "0";
-        资源科技等级对象.text = (int)国家信息库类.攻击科技 > 0 ? 国家信息库类.资源科技.ToString() : "0";
-        概况脚本.transform.GetComponent<显示概况脚本>().刷新显示();
-
+        var 数据 = NationBasicActions.Current;
+        var 国家 = 数据.FindNation(打开时国家 ?? NationDataSource.Current.OwnNationCode);
+        设置(攻击科技等级对象, 国家 == null ? "无国家" : NationDataSource.Number(国家.攻击科技));
+        设置(防御科技等级对象, 国家 == null ? "无国家" : NationDataSource.Number(国家.防御科技));
+        设置(资源科技等级对象, 国家 == null ? "无国家" : NationDataSource.Number(国家.资源科技));
+        if (消耗说明 == null)
+        {
+            消耗说明 = NationOriginalControls.Text(transform, "升级消耗", "", 攻击科技等级对象, 15, -120, 400, 62);
+            foreach (var 名称 in new[] { "攻击", "防御", "资源" })
+            {
+                var 行 = transform.Find(名称) as RectTransform; if (行 == null) continue;
+                行.anchoredPosition = new Vector2(17, 名称 == "攻击" ? 88 : 名称 == "防御" ? 18 : -52);
+                行.sizeDelta = new Vector2(410, 65);
+                foreach (Transform 子项 in 行) if (子项.GetComponent<Text>() != null)
+                    ((RectTransform)子项).sizeDelta = new Vector2(((RectTransform)子项).sizeDelta.x, 58);
+            }
+        }
+        var 消耗 = 数据.TechnologyCost(国家 == null ? "" : 国家.国号);
+        消耗说明.text = 国家 == null ? "加入国家后可升级科技。" : 消耗 == null ? "科技数据异常，请返回刷新。" : "每次提升1级，当前消耗：\n" + 消耗.Description;
+        foreach (var 按钮 in GetComponentsInChildren<Button>(true))
+            if (按钮.transform.parent.name == "攻击" || 按钮.transform.parent.name == "防御" || 按钮.transform.parent.name == "资源")
+                按钮.interactable = 国家 != null && 国家.国号 == NationDataSource.Current.OwnNationCode && 打开时角色 == NationDataSource.Current.ActorId && 消耗 != null;
+        var 概况 = 概况脚本 == null ? null : 概况脚本.GetComponent<显示概况脚本>();
+        if (概况 != null) 概况.刷新显示();
     }
 
-    public void 升级攻击科技()
+    public void 升级攻击科技() { 提升科技("攻击"); }
+    public void 升级防御科技() { 提升科技("防御"); }
+    public void 升级资源科技() { 提升科技("资源"); }
+
+    private void 提升科技(string 类型)
     {
-        提升科技("攻击");
+        var 结果 = NationBasicActions.Current.UpgradeTechnology(打开时国家 ?? NationDataSource.Current.OwnNationCode, 类型, 打开时角色);
+        if (全局变量.提示类 != null) 全局变量.提示类.显示信息(结果.Message);
         刷新显示信息();
     }
 
-    public void 升级防御科技()
+    private static void 设置(Text 文本, string 内容)
     {
-        提升科技("防御");
-        刷新显示信息();
+        if (文本 == null) return;
+        文本.text = 内容; 文本.supportRichText = false; 文本.horizontalOverflow = HorizontalWrapMode.Wrap;
+        文本.verticalOverflow = VerticalWrapMode.Truncate; 文本.resizeTextForBestFit = true;
+        文本.resizeTextMinSize = 14; 文本.resizeTextMaxSize = Mathf.Max(14, 文本.fontSize);
     }
-
-    public void 升级资源科技()
-    {
-        提升科技("资源");
-        刷新显示信息();
-    }
-
-    private void 提升科技(string 科技类型)
-    {
-        List<double> 科技消耗资源 = new List<double>();
-        科技消耗资源 = 获取科技消耗资源();
-        for (int i = 0; i < 科技消耗资源.Count; i++)
-        {
-            if (全局变量.所有玩家数据表[0].财产信息.黄金 < 科技消耗资源[0])
-            {
-                全局变量.提示类.显示信息($"升级失败黄金不足\n需要黄金{科技消耗资源[0]}");
-                return;
-            }
-            if (全局变量.所有玩家数据表[0].财产信息.粮食 < 科技消耗资源[1])
-            {
-                全局变量.提示类.显示信息($"升级失败粮食不足\n需要粮食{科技消耗资源[1]}");
-                return;
-            }
-            if (全局变量.所有玩家数据表[0].财产信息.铜钱 < 科技消耗资源[2])
-            {
-                全局变量.提示类.显示信息($"升级失败铜钱不足\n需要铜钱{科技消耗资源[2]}");
-                return;
-            }
-        }
-
-        switch (科技类型)
-        {
-            case "攻击":
-                全局变量.所有玩家数据表[0].财产信息.黄金 = 全局变量.所有玩家数据表[0].财产信息.黄金 - (double)Mathf.Floor((float)科技消耗资源[0]);
-                全局变量.所有玩家数据表[0].财产信息.粮食 = 全局变量.所有玩家数据表[0].财产信息.粮食 - (double)Mathf.Floor((float)科技消耗资源[1]);
-                全局变量.所有玩家数据表[0].财产信息.铜钱 = 全局变量.所有玩家数据表[0].财产信息.铜钱 - (double)Mathf.Floor((float)科技消耗资源[2]);
-                全局变量.提示类.显示信息("黄金-" + Mathf.Floor((float)科技消耗资源[0]).ToString() + "\r\n粮食-" + Mathf.Floor((float)科技消耗资源[1]).ToString() + "\r\n铜钱-" + Mathf.Floor((float)科技消耗资源[2]).ToString());
-                国家信息库类.攻击科技 += 1;
-                break;
-            case "防御":
-                全局变量.所有玩家数据表[0].财产信息.黄金 = 全局变量.所有玩家数据表[0].财产信息.黄金 - (double)Mathf.Floor((float)科技消耗资源[0]);
-                全局变量.所有玩家数据表[0].财产信息.粮食 = 全局变量.所有玩家数据表[0].财产信息.粮食 - (double)Mathf.Floor((float)科技消耗资源[1]);
-                全局变量.所有玩家数据表[0].财产信息.铜钱 = 全局变量.所有玩家数据表[0].财产信息.铜钱 - (double)Mathf.Floor((float)科技消耗资源[2]);
-                全局变量.提示类.显示信息("黄金-" + Mathf.Floor((float)科技消耗资源[0]).ToString() + "\r\n粮食-" + Mathf.Floor((float)科技消耗资源[1]).ToString() + "\r\n铜钱-" + Mathf.Floor((float)科技消耗资源[2]).ToString());
-                国家信息库类.防御科技 += 1;
-                break;
-            case "资源":
-                全局变量.所有玩家数据表[0].财产信息.黄金 = 全局变量.所有玩家数据表[0].财产信息.黄金 - (double)Mathf.Floor((float)科技消耗资源[0]);
-                全局变量.所有玩家数据表[0].财产信息.粮食 = 全局变量.所有玩家数据表[0].财产信息.粮食 - (double)Mathf.Floor((float)科技消耗资源[1]);
-                全局变量.所有玩家数据表[0].财产信息.铜钱 = 全局变量.所有玩家数据表[0].财产信息.铜钱 - (double)Mathf.Floor((float)科技消耗资源[2]);
-                全局变量.提示类.显示信息("黄金-" + Mathf.Floor((float)科技消耗资源[0]).ToString() + "\r\n粮食-" + Mathf.Floor((float)科技消耗资源[1]).ToString() + "\r\n铜钱-" + Mathf.Floor((float)科技消耗资源[2]).ToString());
-                国家信息库类.资源科技 += 1;
-                break;
-        }
-    }
-
-    private List<double> 获取科技消耗资源()
-    {
-        国家信息库类 = 全局方法类.获取指定名字的国家(全局变量.所有玩家数据表[0].基础信息.国家);
-        int 科技等级 = (int)国家信息库类.科技等级;
-        print("当前国家科技" + 科技等级);
-
-        List<double> 消耗资源 = new List<double>();
-
-        if (科技等级 == 0)
-        {
-            消耗资源.Add(5000);
-            // 粮食
-            消耗资源.Add(10000);
-            // 铜钱
-            消耗资源.Add(10000);
-        }
-
-        if (科技等级 <= 20 && 科技等级 > 0)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 5000);
-            // 粮食
-            消耗资源.Add(科技等级 * 10000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 10000);
-        }
-        if (科技等级 > 20 && 科技等级 <= 30)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 10000);
-            // 粮食
-            消耗资源.Add(科技等级 * 15000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 15000);
-
-        }
-        if (科技等级 > 30 && 科技等级 <= 50)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 15000);
-            // 粮食
-            消耗资源.Add(科技等级 * 20000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 20000);
-        }
-        if (科技等级 > 50 && 科技等级 <= 70)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 20000);
-            // 粮食
-            消耗资源.Add(科技等级 * 30000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 30000);
-        }
-        if (科技等级 > 70 && 科技等级 <= 80)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 30000);
-            // 粮食
-            消耗资源.Add(科技等级 * 50000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 50000);
-        }
-        if (科技等级 > 80 && 科技等级 <= 90)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 50000);
-            // 粮食
-            消耗资源.Add(科技等级 * 80000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 80000);
-        }
-        if (科技等级 > 90 && 科技等级 <= 100)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 50000);
-            // 粮食
-            消耗资源.Add(科技等级 * 90000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 90000);
-        }
-        if (科技等级 > 100)
-        {
-            // 黄金
-            消耗资源.Add(科技等级 * 200000);
-            // 粮食
-            消耗资源.Add(科技等级 * 200000);
-            // 铜钱
-            消耗资源.Add(科技等级 * 200000);
-        }
-
-        return 消耗资源;
-    }
-
 }

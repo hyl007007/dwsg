@@ -30,7 +30,7 @@ namespace Dwsg.Social
         private readonly SocialLocalStore store;
         public string CurrentPlayerId { get; private set; }
         public bool IsConnected { get { return false; } }
-        public string ConnectionStatus { get { return "离线 · 申请仅在本机记录，私聊未发送"; } }
+        public string ConnectionStatus { get { return "离线 · 联机消息尚未连接"; } }
         public event Action Changed { add { store.Changed += value; } remove { store.Changed -= value; } }
         private SocialStateDto S { get { return store.State; } }
 
@@ -38,7 +38,7 @@ namespace Dwsg.Social
             : this(new SocialLocalStore(self, worldKey), self.Id) { }
         public LocalSocialAdapter(SocialLocalStore localStore, string sessionPlayerId)
         {
-            if (localStore == null || !localStore.State.Players.Any(p => p.Id == sessionPlayerId))
+            if (localStore == null || !localStore.State.Players.Any(p => p.Id == sessionPlayerId && !p.IsNpc))
                 throw new ArgumentException("会话必须绑定已登记的本地身份");
             store = localStore;
             CurrentPlayerId = sessionPlayerId;
@@ -47,6 +47,21 @@ namespace Dwsg.Social
         { return JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(value)); }
         public SocialStateDto Snapshot() { return Copy(S); }
         public string ExportJson() { return JsonConvert.SerializeObject(S); }
+        // 由本世界的角色选择器传入真实资料；NPC 标记不会授予好友或联机权限。
+        public SocialResult RegisterWorldRole(SocialPlayerDto role)
+        {
+            if (role == null || !role.IsNpc || !ValidId(role.Id) || !role.Id.StartsWith("local-", StringComparison.Ordinal) ||
+                !ValidName(role.Name, 20) || !ValidText(role.Country, 24) || role.Level < 1 || role.Level > 999 || role.Portrait < 0)
+                return SocialResult.Fail("invalid", "角色资料已失效，请重新选择");
+            if (CurrentPlayerId != S.OwnerId || role.Id == CurrentPlayerId) return Denied();
+            var existing = Player(role.Id);
+            if (existing == null && S.Players.Count >= ContactLimit) return Capacity(true);
+            if (existing != null && !existing.IsNpc) return SocialResult.Fail("duplicate", "此角色编号已有手动联系人，请先移除再选择");
+            var copy = Copy(role); copy.Verified = false;
+            if (existing != null) S.Players.Remove(existing);
+            S.Players.Add(copy);
+            return Done(existing == null ? "已添加联系人" : "角色资料已更新", role.Id);
+        }
         // 本机名片读取现有世界角色资料；不据此核验任何联系人身份。
         public SocialResult UpdateLocalPlayer(SocialPlayerDto profile)
         {
@@ -100,6 +115,8 @@ namespace Dwsg.Social
         { return text != null && !text.Any(c => char.IsControl(c) || c == '<' || c == '>'); }
         private static bool ValidText(string text, int max)
         { return text != null && text.Length <= max && Clean(text); }
+        private static bool ValidNotice(string text)
+        { return text != null && text.Length <= 120 && !text.Any(c => (char.IsControl(c) && c != '\n' && c != '\r') || c == '<' || c == '>'); }
         private static string Id() { return Guid.NewGuid().ToString("N"); }
         private static long Now() { return DateTimeOffset.UtcNow.ToUnixTimeSeconds(); }
         private SocialPlayerDto Player(string id) { return S.Players.FirstOrDefault(p => p.Id == id); }
@@ -116,7 +133,7 @@ namespace Dwsg.Social
             if (respectBlock && Blocked(CurrentPlayerId, target)) return SocialResult.Fail("blocked", "双方存在黑名单关系，操作被拒绝");
             return null;
         }
-        private SocialResult Capacity(bool full) { return full ? SocialResult.Fail("capacity", "本地记录已达上限") : null; }
+        private SocialResult Capacity(bool full) { return full ? SocialResult.Fail("capacity", "记录已达上限") : null; }
         private SocialResult Denied() { return SocialResult.Fail("permission", "当前角色无权执行此操作"); }
         private SocialResult Missing() { return SocialResult.Fail("missing", "记录不存在或已失效，请返回刷新"); }
         private SocialResult Done(string message, string id = null)
@@ -132,10 +149,17 @@ namespace Dwsg.Social
                 case SocialCommandKind.RegisterContact:
                     if (!ValidId(c.Target) || !ValidName(c.Name, 20)) return SocialResult.Fail("invalid", "ID 限 1–48 位字母/数字/_/-；称呼限 1–20 字且不能含尖括号");
                     if (c.Target == CurrentPlayerId) return SocialResult.Fail("self", "不能登记自己为联系人");
+                    if (c.Target.StartsWith("local-", StringComparison.Ordinal)) return SocialResult.Fail("npc", "本世界角色请从角色列表选择");
                     if (Player(c.Target) != null) return SocialResult.Fail("duplicate", "此 ID 已登记，请查看名片");
                     if (S.Players.Count >= ContactLimit) return Capacity(true);
                     S.Players.Add(new SocialPlayerDto { Id = c.Target, Name = c.Name });
-                    return Done("已登记离线联系人，身份尚未核验", c.Target);
+                    return Done("已添加联系人", c.Target);
+                case SocialCommandKind.RemoveContact: return RemoveContact(c.Target);
+                case SocialCommandKind.RenameContact:
+                    var renameProblem = TargetProblem(c.Target, false); if (renameProblem != null) return renameProblem;
+                    if (CurrentPlayerId != S.OwnerId || Player(c.Target).IsNpc) return Denied();
+                    if (!ValidName(c.Name, 20)) return SocialResult.Fail("invalid", "称呼限 1–20 字，不能含换行或尖括号");
+                    Player(c.Target).Name = c.Name; return Done("称呼已保存");
                 case SocialCommandKind.RequestFriend: return RequestFriend(c);
                 case SocialCommandKind.AnswerFriend: return AnswerFriend(c);
                 case SocialCommandKind.CancelFriend:
@@ -156,24 +180,29 @@ namespace Dwsg.Social
                     S.Friends.RemoveAll(x => (x.A == CurrentPlayerId && x.B == c.Target) || (x.B == CurrentPlayerId && x.A == c.Target));
                     foreach (var f in S.FriendRequests.Where(x => x.State == RequestState.Pending && Pair(x.From, x.To, CurrentPlayerId, c.Target))) f.State = RequestState.Cancelled;
                     foreach (var i in S.Invitations.Where(x => x.State == RequestState.Pending && Pair(x.From, x.To, CurrentPlayerId, c.Target))) i.State = RequestState.Cancelled;
-                    return Done("已拉黑，好友关系与双方待确认邀请已取消");
+                    return Done(Player(c.Target).IsNpc ? "已屏蔽" : "已屏蔽，好友关系与待确认邀请已取消");
                 case SocialCommandKind.Unblock:
                     if (S.Blocks.RemoveAll(x => x.Owner == CurrentPlayerId && x.Target == c.Target) == 0) return Missing();
-                    return Done("已移出黑名单，需重新申请好友");
+                    return Done(Player(c.Target).IsNpc ? "已取消屏蔽" : "已取消屏蔽，需重新申请好友");
                 case SocialCommandKind.SendPrivate:
                     var sp = TargetProblem(c.Target); if (sp != null) return sp;
+                    if (Player(c.Target).IsNpc) return SocialResult.Fail("npc", "NPC 不提供私聊，可查看相关播报");
                     if (!ValidText(c.Text, 200) || string.IsNullOrWhiteSpace(c.Text)) return SocialResult.Fail("invalid", "私聊限 1–200 字且不能含换行/尖括号");
-                    return SocialResult.Fail("offline", "离线，消息未发送；请保存草稿，联网后再手动发送");
+                    return SocialResult.Fail("offline", "消息未发送，可先保存草稿");
                 case SocialCommandKind.SaveDraft:
                     var dp = TargetProblem(c.Target, false); if (dp != null) return dp;
+                    if (Player(c.Target).IsNpc) return SocialResult.Fail("npc", "NPC 不提供私聊，可查看相关播报");
                     if (!ValidText(c.Text, 200)) return SocialResult.Fail("invalid", "草稿最多 200 字且不能含换行/尖括号");
                     var draft = S.Drafts.FirstOrDefault(x => x.Owner == CurrentPlayerId && x.Target == c.Target);
                     if (draft == null)
                     {
+                        if (string.IsNullOrEmpty(c.Text)) return SocialResult.Local("草稿已清空");
                         if (S.Drafts.Count >= HistoryLimit) return Capacity(true);
                         draft = new PrivateDraftDto { Owner = CurrentPlayerId, Target = c.Target }; S.Drafts.Add(draft);
                     }
-                    draft.Text = c.Text; return Done("草稿已保留，未发送");
+                    if (string.IsNullOrEmpty(c.Text)) S.Drafts.Remove(draft);
+                    else draft.Text = c.Text;
+                    return Done(string.IsNullOrEmpty(c.Text) ? "草稿已清空" : "草稿已保存");
                 case SocialCommandKind.CreateGuild: return CreateGuild(c);
                 case SocialCommandKind.ApplyGuild: return ApplyGuild(c);
                 case SocialCommandKind.AnswerGuild: return AnswerGuild(c);
@@ -188,8 +217,8 @@ namespace Dwsg.Social
                 case SocialCommandKind.UpdateGuild:
                     var ug = S.Guilds.FirstOrDefault(x => x.Id == c.Entity); if (ug == null) return Missing();
                     if (ug.Leader != CurrentPlayerId) return Denied();
-                    if (!ValidText(c.Text, 120)) return SocialResult.Fail("invalid", "公告最多 120 字且不能含换行/尖括号");
-                    ug.Notice = c.Text; return Done("军团公告已更新");
+                    if (!ValidNotice(c.Text)) return SocialResult.Fail("invalid", "公告最多 120 字，不能含尖括号");
+                    ug.Notice = c.Text.Replace("\r\n", "\n").Replace('\r', '\n'); return Done("军团公告已保存");
                 case SocialCommandKind.DissolveGuild:
                     var dg = S.Guilds.FirstOrDefault(x => x.Id == c.Entity); if (dg == null) return Missing();
                     if (dg.Leader != CurrentPlayerId) return Denied();
@@ -215,17 +244,35 @@ namespace Dwsg.Social
                 default: return SocialResult.Fail("unsupported", "此命令尚未支持");
             }
         }
+
+        private SocialResult RemoveContact(string target)
+        {
+            var problem = TargetProblem(target, false); if (problem != null) return problem;
+            if (CurrentPlayerId != S.OwnerId || target == S.OwnerId) return Denied();
+            if (S.Friends.Any(x => x.A == target || x.B == target) || S.Mentors.Any(x => x.Mentor == target || x.Apprentice == target) ||
+                S.Guilds.Any(x => x.Members.Contains(target)) || S.Brotherhoods.Any(x => x.Members.Contains(target)))
+                return SocialResult.Fail("relation", "请先解除该联系人的好友、师徒或团体关系，再移除");
+            S.FriendRequests.RemoveAll(x => x.From == target || x.To == target);
+            S.Invitations.RemoveAll(x => x.From == target || x.To == target || x.Mentor == target || x.Apprentice == target);
+            S.GuildApplications.RemoveAll(x => x.Applicant == target);
+            S.Blocks.RemoveAll(x => x.Owner == target || x.Target == target);
+            S.Drafts.RemoveAll(x => x.Owner == target || x.Target == target);
+            S.Messages.RemoveAll(x => x.From == target || x.To == target);
+            S.Players.RemoveAll(x => x.Id == target);
+            return Done("联系人及关联草稿、历史记录已移除");
+        }
         private static bool Pair(string a, string b, string c, string d) { return (a == c && b == d) || (a == d && b == c); }
         private SocialResult RequestFriend(SocialCommand c)
         {
             var p = TargetProblem(c.Target); if (p != null) return p;
+            if (Player(c.Target).IsNpc) return SocialResult.Fail("npc", "NPC 可添加为联系人，但不参与好友确认");
             if (!ValidText(c.Text, 60)) return SocialResult.Fail("invalid", "申请附言最多 60 字");
             if (Friends(CurrentPlayerId, c.Target)) return SocialResult.Fail("duplicate", "已经是好友");
             if (S.FriendRequests.Any(x => x.State == RequestState.Pending && Pair(x.From, x.To, CurrentPlayerId, c.Target)))
                 return SocialResult.Fail("duplicate", "双方已有待确认申请，请处理原申请");
             if (S.FriendRequests.Count >= HistoryLimit) return Capacity(true);
             var f = new FriendRequestDto { Id = Id(), From = CurrentPlayerId, To = c.Target, Note = c.Text, CreatedUtc = Now() };
-            S.FriendRequests.Add(f); return Done("好友申请已记录，尚未送达对方", f.Id);
+            S.FriendRequests.Add(f); return Done("好友申请已保存，未发送", f.Id);
         }
         private SocialResult AnswerFriend(SocialCommand c)
         {
@@ -244,14 +291,14 @@ namespace Dwsg.Social
         }
         private SocialResult CreateGuild(SocialCommand c)
         {
-            if (!ValidName(c.Name, 12) || !ValidText(c.Text, 120)) return SocialResult.Fail("invalid", "军团名限 1–12 字，公告最多 120 字");
+            if (!ValidName(c.Name, 12) || !ValidNotice(c.Text)) return SocialResult.Fail("invalid", "军团名限 1–12 字，公告最多 120 字");
             if (GuildFor(CurrentPlayerId) != null) return SocialResult.Fail("membership", "请先退出当前军团");
             if (S.Guilds.Any(x => string.Equals(x.Name, c.Name, StringComparison.OrdinalIgnoreCase))) return SocialResult.Fail("duplicate", "已有同名军团");
             if (S.Guilds.Count >= ContactLimit) return Capacity(true);
-            var g = new GuildDto { Id = Id(), Name = c.Name, Notice = c.Text, Leader = CurrentPlayerId };
+            var g = new GuildDto { Id = Id(), Name = c.Name, Notice = c.Text.Replace("\r\n", "\n").Replace('\r', '\n'), Leader = CurrentPlayerId };
             g.Members.Add(CurrentPlayerId); S.Guilds.Add(g);
             CancelGuildApplications(CurrentPlayerId);
-            return Done("本地军团已建立；未创建服务器军团", g.Id);
+            return Done("军团记录已建立", g.Id);
         }
         private void CancelGuildApplications(string player)
         { foreach (var a in S.GuildApplications.Where(x => x.Applicant == player && x.State == RequestState.Pending)) a.State = RequestState.Cancelled; }
@@ -260,12 +307,12 @@ namespace Dwsg.Social
             var g = S.Guilds.FirstOrDefault(x => x.Id == c.Entity); if (g == null) return Missing();
             if (GuildFor(CurrentPlayerId) != null) return SocialResult.Fail("membership", "已有军团，不能重复入团");
             if (Blocked(CurrentPlayerId, g.Leader)) return SocialResult.Fail("blocked", "与团长存在黑名单关系");
-            if (g.Members.Count >= MemberLimit) return SocialResult.Fail("capacity", "军团已满（本地规则：5 人）");
+            if (g.Members.Count >= MemberLimit) return SocialResult.Fail("capacity", "军团已满，最多 5 人");
             if (!ValidText(c.Text, 60)) return SocialResult.Fail("invalid", "申请附言最多 60 字");
             if (S.GuildApplications.Any(x => x.Guild == g.Id && x.Applicant == CurrentPlayerId && x.State == RequestState.Pending)) return SocialResult.Fail("duplicate", "已提交入团申请");
             if (S.GuildApplications.Count >= HistoryLimit) return Capacity(true);
             var a = new GuildApplicationDto { Id = Id(), Guild = g.Id, Applicant = CurrentPlayerId, Note = c.Text, CreatedUtc = Now() };
-            S.GuildApplications.Add(a); return Done("入团申请已记录，尚未送达团长", a.Id);
+            S.GuildApplications.Add(a); return Done("入团申请已保存，未发送", a.Id);
         }
         private SocialResult AnswerGuild(SocialCommand c)
         {
@@ -303,9 +350,9 @@ namespace Dwsg.Social
         {
             if (Player(mentor) == null || Player(apprentice) == null || mentor == apprentice) return SocialResult.Fail("invalid", "师徒身份无效");
             if (Blocked(mentor, apprentice)) return SocialResult.Fail("blocked", "师徒双方存在黑名单关系");
-            if (Player(mentor).Level <= Player(apprentice).Level) return SocialResult.Fail("level", "本地规则：师父等级必须高于徒弟");
+            if (Player(mentor).Level <= Player(apprentice).Level) return SocialResult.Fail("level", "师父等级必须高于徒弟");
             if (S.Mentors.Any(x => x.Apprentice == apprentice)) return SocialResult.Fail("membership", "徒弟已有师父");
-            if (S.Mentors.Count(x => x.Mentor == mentor) >= ApprenticeLimit) return SocialResult.Fail("capacity", "本地规则：每位师父最多 3 位徒弟");
+            if (S.Mentors.Count(x => x.Mentor == mentor) >= ApprenticeLimit) return SocialResult.Fail("capacity", "每位师父最多 3 位徒弟");
             // 等级可能在存档恢复后改变，额外检查有向环。
             string cursor = mentor;
             for (int i = 0; i <= S.Mentors.Count; i++)
@@ -327,7 +374,7 @@ namespace Dwsg.Social
             {
                 if (g == null || g.Id != group) return SocialResult.Fail("stale", "原结拜关系已变更");
                 if (g.Leader != inviter) return Denied();
-                if (g.Members.Count >= MemberLimit) return SocialResult.Fail("capacity", "本地规则：结拜最多 5 人");
+                if (g.Members.Count >= MemberLimit) return SocialResult.Fail("capacity", "结拜最多 5 人");
                 if (g.Members.Any(m => Blocked(m, target))) return SocialResult.Fail("blocked", "对方与结拜成员存在黑名单关系");
             }
             return null;
@@ -335,7 +382,8 @@ namespace Dwsg.Social
         private SocialResult Invite(SocialCommand c)
         {
             var p = TargetProblem(c.Target); if (p != null) return p;
-            if (!Friends(CurrentPlayerId, c.Target)) return SocialResult.Fail("friend", "本地规则：请先成为好友");
+            if (Player(c.Target).IsNpc) return SocialResult.Fail("npc", "NPC 不参与师徒或结拜确认");
+            if (!Friends(CurrentPlayerId, c.Target)) return SocialResult.Fail("friend", "请先成为好友");
             var kind = c.Kind == SocialCommandKind.InviteBrother ? RelationKind.Brotherhood : RelationKind.Mentor;
             if (S.Invitations.Any(x => x.Kind == kind && x.State == RequestState.Pending && Pair(x.From, x.To, CurrentPlayerId, c.Target))) return SocialResult.Fail("duplicate", "双方已有待确认关系邀请");
             if (S.Invitations.Count >= HistoryLimit) return Capacity(true);
@@ -354,7 +402,7 @@ namespace Dwsg.Social
                 p = BrotherProblem(CurrentPlayerId, c.Target, inv.Group);
             }
             if (p != null) return p;
-            S.Invitations.Add(inv); return Done("关系邀请已记录，尚未送达对方", inv.Id);
+            S.Invitations.Add(inv); return Done("关系邀请已保存，未发送", inv.Id);
         }
         private SocialResult AnswerRelation(SocialCommand c)
         {
@@ -424,7 +472,8 @@ namespace Dwsg.Social
             if (s == null || s.Version != 1 || string.IsNullOrEmpty(s.WorldKey) || s.WorldKey.Length > 128 || !ValidId(s.OwnerId)) return "社交存档版本/身份无效";
             if (s.Players == null || s.Friends == null || s.Blocks == null || s.FriendRequests == null || s.Guilds == null || s.GuildApplications == null || s.Invitations == null || s.Mentors == null || s.Brotherhoods == null || s.Drafts == null || s.Messages == null) return "社交存档缺少列表";
             if (s.Players.Count > ContactLimit || s.Guilds.Count > ContactLimit || s.Brotherhoods.Count > ContactLimit || new[] { s.Friends.Count, s.Blocks.Count, s.FriendRequests.Count, s.GuildApplications.Count, s.Invitations.Count, s.Mentors.Count, s.Drafts.Count, s.Messages.Count }.Any(n => n > HistoryLimit)) return "社交存档超过容量上限";
-            if (s.Players.Any(p => p == null || !ValidId(p.Id) || !ValidName(p.Name, 20) || p.Level < 1 || p.Level > 999 || !ValidText(p.Country, 24))) return "联系人资料无效";
+            if (s.Players.Any(p => p == null || !ValidId(p.Id) || !ValidName(p.Name, 20) || p.Level < 1 || p.Level > 999 || !ValidText(p.Country, 24) || p.Portrait < 0 || (p.IsNpc && !p.Id.StartsWith("local-", StringComparison.Ordinal)))) return "联系人资料无效";
+            if (s.Players.Any(p => p.Id == s.OwnerId && p.IsNpc)) return "本机角色不能是 NPC";
             var players = new HashSet<string>(s.Players.Select(p => p.Id));
             if (players.Count != s.Players.Count || !players.Contains(s.OwnerId)) return "联系人身份重复或缺少本机身份";
             Func<string, string, bool> pair = (a, b) => a != b && players.Contains(a) && players.Contains(b);
@@ -437,7 +486,7 @@ namespace Dwsg.Social
             var membership = new HashSet<string>();
             foreach (var g in s.Guilds)
             {
-                if (g == null || !ValidId(g.Id) || !ValidName(g.Name, 12) || !ValidText(g.Notice, 120) || g.Members == null || g.Members.Count < 1 || g.Members.Count > MemberLimit || !g.Members.Contains(g.Leader)) return "军团结构无效";
+                if (g == null || !ValidId(g.Id) || !ValidName(g.Name, 12) || !ValidNotice(g.Notice) || g.Members == null || g.Members.Count < 1 || g.Members.Count > MemberLimit || !g.Members.Contains(g.Leader)) return "军团结构无效";
                 foreach (var m in g.Members) if (!exists(m) || !membership.Add(m)) return "军团成员重复或身份缺失";
             }
             if (s.Guilds.Select(g => g.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != s.Guilds.Count) return "军团名重复";
@@ -469,6 +518,14 @@ namespace Dwsg.Social
             if (s.FriendRequests.Where(x => x.State == RequestState.Pending).Select(x => string.CompareOrdinal(x.From, x.To) < 0 ? x.From + ":" + x.To : x.To + ":" + x.From).GroupBy(x => x).Any(g => g.Count() > 1)) return "待确认好友申请重复";
             if (s.GuildApplications.Where(x => x.State == RequestState.Pending).Select(x => x.Guild + ":" + x.Applicant).GroupBy(x => x).Any(g => g.Count() > 1)) return "待确认军团申请重复";
             if (s.Invitations.Where(x => x.State == RequestState.Pending).Select(x => x.Kind + ":" + (string.CompareOrdinal(x.From, x.To) < 0 ? x.From + ":" + x.To : x.To + ":" + x.From)).GroupBy(x => x).Any(g => g.Count() > 1)) return "待确认关系邀请重复";
+            var npcIds = new HashSet<string>(s.Players.Where(p => p.IsNpc).Select(p => p.Id));
+            var participants = s.Friends.SelectMany(x => new[] { x.A, x.B })
+                .Concat(s.FriendRequests.SelectMany(x => new[] { x.From, x.To }))
+                .Concat(s.Guilds.SelectMany(x => x.Members)).Concat(s.GuildApplications.Select(x => x.Applicant))
+                .Concat(s.Mentors.SelectMany(x => new[] { x.Mentor, x.Apprentice }))
+                .Concat(s.Brotherhoods.SelectMany(x => x.Members)).Concat(s.Invitations.SelectMany(x => new[] { x.From, x.To }))
+                .Concat(s.Drafts.SelectMany(x => new[] { x.Owner, x.Target })).Concat(s.Messages.SelectMany(x => new[] { x.From, x.To }));
+            if (participants.Any(npcIds.Contains)) return "NPC 不能参与玩家关系或私聊";
             return null;
         }
     }

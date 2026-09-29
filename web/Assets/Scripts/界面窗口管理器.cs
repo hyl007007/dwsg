@@ -57,13 +57,15 @@ public sealed class 界面窗口管理器 : MonoBehaviour
         主界面 = 主界面对象;
         foreach (GameObject 根对象 in 场景.GetRootGameObjects())
         {
-            Canvas 画布 = 根对象.GetComponent<Canvas>();
-            // 主场景的 2–9 层是功能窗口；地图、战场和 10 层提示独立运行。
-            if (画布 == null || 画布.renderMode != RenderMode.ScreenSpaceOverlay ||
-                画布.sortingOrder < 2 || 画布.sortingOrder >= 10 || 根对象.name == "战斗结束结算界面") continue;
-            var 窗口 = 根对象.AddComponent<界面互斥窗口>();
-            窗口.管理器 = this;
-            窗口列表.Add(窗口);
+            // 原有封地、建筑、市场和招募画布挂在无 Canvas 的分组下，也是独立功能窗口。
+            foreach (Canvas 画布 in 根对象.GetComponentsInChildren<Canvas>(true))
+            {
+                if (!是独立功能画布(画布)) continue;
+                var 窗口 = 画布.GetComponent<界面互斥窗口>();
+                if (窗口 == null) 窗口 = 画布.gameObject.AddComponent<界面互斥窗口>();
+                窗口.管理器 = this;
+                窗口列表.Add(窗口);
+            }
         }
         foreach (GameObject 根对象 in 场景.GetRootGameObjects())
         {
@@ -80,6 +82,14 @@ public sealed class 界面窗口管理器 : MonoBehaviour
             if (窗口.gameObject.activeInHierarchy) 打开窗口(窗口);
     }
 
+    private static bool 是独立功能画布(Canvas 画布)
+    {
+        if (画布 == null || 画布.renderMode != RenderMode.ScreenSpaceOverlay ||
+            画布.sortingOrder < 2 || 画布.sortingOrder >= 10) return false;
+        // 同一窗口中的嵌套 Canvas 仍由所属窗口管理，不能关闭它的父对象。
+        return 画布.transform.parent == null || 画布.transform.parent.GetComponentInParent<Canvas>(true) == null;
+    }
+
     private void 绑定点击来源(GameObject 对象)
     {
         var 来源 = 对象.GetComponent<界面点击来源>();
@@ -91,11 +101,10 @@ public sealed class 界面窗口管理器 : MonoBehaviour
     // 运行时搭建的界面不会参与场景初始扫描，完成搭建后通过此入口接入互斥与返回路径。
     public static bool 注册运行时窗口(GameObject 对象)
     {
-        if (对象 == null || 对象.transform.parent != null ||
+        if (对象 == null ||
             对象.scene != SceneManager.GetActiveScene()) return false;
         Canvas 画布 = 对象.GetComponent<Canvas>();
-        if (画布 == null || 画布.renderMode != RenderMode.ScreenSpaceOverlay ||
-            画布.sortingOrder < 2 || 画布.sortingOrder >= 10) return false;
+        if (!是独立功能画布(画布)) return false;
         var 管理器 = 获取当前场景管理器();
         if (管理器 == null) return false;
         var 窗口 = 对象.GetComponent<界面互斥窗口>();

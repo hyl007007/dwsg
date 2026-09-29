@@ -97,16 +97,41 @@ namespace 缺失界面.窗口4
 
         public static void 限定文本(Text 字)
         {
-            if (字 == null || 字.GetComponentInParent<InputField>() != null) return;
-            // 保持固定字号和控件宽度；长名称/描述在分配区域内省略，详情仍可查看。
-            string 原文 = 字.text;
-            int 长度 = 原文.Length;
-            while (长度 > 0 && 字.preferredHeight > 字.rectTransform.rect.height + 0.5f)
+            限定内容(字, false);
+        }
+
+        public static void 限定名称(Text 字)
+        {
+            限定内容(字, true);
+        }
+
+        private static void 限定内容(Text 字, bool 单行)
+        {
+            if (字 == null || 字.font == null || 字.GetComponentInParent<InputField>() != null) return;
+            float 宽 = 字.rectTransform.rect.width, 高 = 字.rectTransform.rect.height;
+            if (宽 <= 0 || 高 <= 0 || string.IsNullOrEmpty(字.text)) return;
+            string 原文 = 单行 ? 字.text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ') : 字.text;
+            var 设置 = 字.GetGenerationSettings(new Vector2(宽, 0));
+            设置.resizeTextForBestFit = false;
+            设置.horizontalOverflow = 单行 ? HorizontalWrapMode.Overflow : HorizontalWrapMode.Wrap;
+            设置.verticalOverflow = VerticalWrapMode.Overflow;
+            var 测量 = 字.cachedTextGeneratorForLayout;
+            // Names occupy one line: the font's baseline height must not erase
+            // an otherwise fitting name. Multiline copy keeps its allocated height.
+            Func<string, bool> 可容纳 = 内容 => 单行 ?
+                测量.GetPreferredWidth(内容, 设置) / 字.pixelsPerUnit <= 宽 + .5f :
+                测量.GetPreferredHeight(内容, 设置) / 字.pixelsPerUnit <= 高 + .5f;
+            if (可容纳(原文)) { 字.text = 原文; return; }
+            var 边界 = System.Globalization.StringInfo.ParseCombiningCharacters(原文);
+            int 左 = 0, 右 = 边界.Length;
+            while (左 < 右)
             {
-                长度--;
-                if (长度 > 0 && char.IsHighSurrogate(原文[长度 - 1])) 长度--;
-                字.text = 原文.Substring(0, 长度) + "…";
+                int 中 = (左 + 右 + 1) / 2;
+                int 终点 = 中 < 边界.Length ? 边界[中] : 原文.Length;
+                if (可容纳(原文.Substring(0, 终点) + "…")) 左 = 中;
+                else 右 = 中 - 1;
             }
+            字.text = 原文.Substring(0, 左 < 边界.Length ? 边界[左] : 原文.Length) + "…";
         }
 
         public Button 按钮(Transform 父级, string 内容, Vector2 尺寸, Vector2 位置, Action 点击)
@@ -317,6 +342,16 @@ namespace 缺失界面.窗口4
             var 标 = 样式.文本(行, "名称", 名称, new Vector2(宽, 24), new Vector2(左 + 宽 / 2, 24), 16);
             标.color = 样式.金色;
             样式.文本(行, "详情", 说明, new Vector2(宽, 52), new Vector2(左 + 宽 / 2, -13), 13);
+            var 按 = 样式.按钮(行, 动作, new Vector2(100, 34), new Vector2(238, 0), 点击);
+            按.interactable = 可用;
+            return 按;
+        }
+        public Button 数据行(string 名称, string 数值, string 动作, Action 点击, bool 可用 = true)
+        {
+            var 行 = 创建行(名称, 48);
+            var 名 = 样式.文本(行, "名称", 名称, new Vector2(172, 32), new Vector2(-204, 0), 16);
+            名.color = 样式.金色;
+            样式.文本(行, "数据", 数值, new Vector2(282, 32), new Vector2(22, 0), 16);
             var 按 = 样式.按钮(行, 动作, new Vector2(100, 34), new Vector2(238, 0), 点击);
             按.interactable = 可用;
             return 按;

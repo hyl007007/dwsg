@@ -79,7 +79,7 @@ namespace Dwsg.Window1
             for (int i = 0; i < current.Length; i++)
             {
                 if (!WorldProgress.Number(current[i]) || current[i] + add[i] > Reward.ResourceLimit)
-                { error = labels[i] + "超过奖励入账上限（本地规则：20亿），本次未发放"; return false; }
+                { error = labels[i] + "领取后将超过20亿上限，请先使用部分资源"; return false; }
             }
 
             var bag = p.背包道具列表;
@@ -213,14 +213,14 @@ namespace Dwsg.Window1
             adapter.TryRead(out progress, out error);
             var entries = new List<LocalNotice>
             {
-                new LocalNotice { Id = "builtin.offline", Title = "当前世界与通信状态", Pinned = true,
-                    Body = "当前为本地世界，任务与成就由本机数据计算。\n\n未连接游戏邮件服务，没有真人跨设备来信；收件箱只展示本地适配接口实际投递的信件。\n\n本地任务规则与奖励不代表官方手游的精确数值。" },
+                new LocalNotice { Id = "builtin.offline", Title = "通信状态", Pinned = true,
+                    Body = "当前处于离线状态，跨设备来信暂不可用。" },
                 new LocalNotice { Id = "builtin.progress", Title = "封地政务 · " + (land == null ? "未选择封地" : land.封地名字),
                     Body = progress == null ? error : "君主：" + p.基础信息.名字 + "\n所属国家：" + p.基础信息.国家 + "\n当前封地：" + (land == null ? "未选择" : land.封地名字) +
                     "\n\n麾下建筑 " + progress.Buildings.ToString("0") + " 座，建筑等级合计 " + progress.BuildingLevels.ToString("0") +
                     "\n将领 " + progress.Generals.ToString("0") + " 名，最高等级 " + progress.GeneralLevel.ToString("0") +
-                    "\n可用军队 " + progress.Troops.ToString("0") + "，累计战功 " + progress.Merit.ToString("0") + "\n\n以上为当前世界实际数据，非玩家发布的在线公告。" },
-                new LocalNotice { Id = "builtin.rules", Title = "任务、奖励与日常规则", Body = "成长任务与成就在观察到条件达成后保留进度，每项奖励仅领取一次。\n\n日常任务按本机日期刷新；首次观察当天世界时建立基线，再计算建筑、科技、将领等级和战功的净增加。首次打开不会把过去的增长算作今日完成。回拨日期不重置奖励。\n\n铜钱、粮食、白银和黄金的奖励入账上限各为20亿；道具每堆最多999，沿用现有背包容量。不足时整份奖励不发放，也不消耗领取机会。\n\n" + (HasPersistentWorldId ? "任务、告示与邮件跟随当前世界存档。读档会恢复到保存时的进度。" : "本次会话保留任务、告示与邮件状态，尚未接入当前世界存档。") }
+                    "\n可用军队 " + progress.Troops.ToString("0") + "，累计战功 " + progress.Merit.ToString("0") },
+                new LocalNotice { Id = "builtin.rules", Title = "任务与奖励须知", Body = "完成成长任务与成就后，达成记录会保留，每项奖励可领取一次。\n\n日常任务每日刷新。从当天首次载入游戏时的进度开始计算，之后建筑、科技、将领总等级和战功的净增加计入今日任务。已经达成的进度会保留，调整日期不会让已领取的奖励重复发放。\n\n领取奖励后，各项资源余额不能超过20亿；道具每堆最多999个。空间或余额上限不足时，整份奖励暂不发放。先整理背包或使用资源，再来领取，领取机会会保留。\n\n" + (HasPersistentWorldId ? "保存游戏时，任务、告示与邮件进度一并保存。读档后恢复到保存时的状态。" : "任务、告示与邮件记录仅在本次游戏中保留，离开游戏后不会保留。") }
             };
             entries.AddRange(state.Notices.Select(n => n.Copy()));
             return entries.OrderByDescending(n => n.Pinned).ThenByDescending(n => n.PublishedUtcTicks).ToList();

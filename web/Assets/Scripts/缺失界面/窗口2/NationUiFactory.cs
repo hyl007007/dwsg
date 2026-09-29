@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Window1;
 
 namespace 缺失界面.窗口2
 {
@@ -10,13 +11,21 @@ namespace 缺失界面.窗口2
         internal readonly Vector2 ButtonSize;
         private readonly Button buttonTemplate;
         private readonly Sprite buttonSprite;
+        private readonly Transform rowDecoration;
+        private readonly Color bodyColor;
+        private readonly Window1Style scrollStyle;
         internal static readonly Color Ink = new Color(.94f, .94f, .77f);
         internal static readonly Color Gold = new Color(1f, .88f, .36f);
         internal static readonly Color Muted = new Color(.70f, .85f, .79f);
 
         internal NationUiFactory(Transform source)
         {
+            scrollStyle = Window1Style.FromScene(source.gameObject.scene);
             foreach (Text text in source.GetComponentsInChildren<Text>(true)) if (text.font != null) { Font = text.font; break; }
+            var body = source.Find("概况布局/信息列表布局/国名/显示");
+            bodyColor = body != null && body.GetComponent<Text>() != null ? body.GetComponent<Text>().color : Ink;
+            foreach (GameObject root in source.gameObject.scene.GetRootGameObjects())
+                if (root.name == "国家列表布局") rowDecoration = root.transform.Find("列表布局/显示区域/列表/国家1/通用透黑背景");
             var button = source.Find("概况布局/征调兵马");
             if (button == null) button = source.Find("界面操作/返回");
             if (button != null && button.GetComponent<Image>() != null) buttonSprite = button.GetComponent<Image>().sprite;
@@ -62,13 +71,13 @@ namespace 缺失界面.窗口2
             return rect;
         }
 
-        internal Text Text(string name, Transform parent, string value, int size = 16, Color? color = null)
+        internal Text Text(string name, Transform parent, string value, int size = 18, Color? color = null)
         {
             var rect = Rect(name, parent); var text = rect.gameObject.AddComponent<Text>();
-            text.font = Font; text.fontSize = size; text.color = color ?? Ink; text.text = value;
+            text.font = Font; text.fontSize = size; text.color = color ?? bodyColor; text.text = value;
             text.supportRichText = false; text.raycastTarget = false; text.alignment = TextAnchor.MiddleLeft;
             text.horizontalOverflow = HorizontalWrapMode.Wrap; text.verticalOverflow = VerticalWrapMode.Truncate;
-            text.lineSpacing = 1.1f; return text;
+            text.lineSpacing = 1; return text;
         }
 
         internal Button Button(string name, Transform parent, string label, UnityEngine.Events.UnityAction action)
@@ -109,58 +118,97 @@ namespace 缺失界面.窗口2
             button.onClick.AddListener(action); 界面窗口管理器.注册运行时按钮(button); return button;
         }
 
-        internal RectTransform Scroll(Transform parent)
+        internal RectTransform Scroll(Transform parent, out ScrollRect scroll)
         {
-            var rect = Rect("可滚动详情", parent); Place(rect, new Vector2(0, .15f), new Vector2(1, .81f), new Vector2(2, 0), new Vector2(-2, 0));
+            var rect = Rect("可滚动详情", parent); Place(rect, new Vector2(0, .16f), new Vector2(1, .87f), new Vector2(2, 0), new Vector2(-2, 0));
             var background = rect.gameObject.AddComponent<Image>(); background.color = new Color(0, 0, 0, .06f);
-            var scroll = rect.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false; scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll = rect.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false; scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 28; scroll.inertia = true;
-            var viewport = Rect("裁切区域", rect); Place(viewport, Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-12, 0));
+            var viewport = Rect("裁切区域", rect); Place(viewport, Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-20, 0));
             viewport.gameObject.AddComponent<RectMask2D>();
             var content = Rect("详情列表", viewport); content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one;
             content.pivot = new Vector2(.5f, 1); content.anchoredPosition = Vector2.zero; content.sizeDelta = Vector2.zero;
-            var layout = content.gameObject.AddComponent<VerticalLayoutGroup>(); layout.spacing = 7; layout.padding = new RectOffset(4, 4, 2, 8);
+            var layout = content.gameObject.AddComponent<VerticalLayoutGroup>(); layout.spacing = 3; layout.padding = new RectOffset(4, 4, 2, 6);
             layout.childControlWidth = true; layout.childControlHeight = true; layout.childForceExpandWidth = true; layout.childForceExpandHeight = false;
             content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scroll.viewport = viewport; scroll.content = content;
-            var barRect = Rect("滚动条", rect); Place(barRect, new Vector2(1, 0), Vector2.one, new Vector2(-8, 0), Vector2.zero);
-            barRect.gameObject.AddComponent<Image>().color = new Color(.03f, .12f, .1f, .8f);
-            var bar = barRect.gameObject.AddComponent<Scrollbar>(); bar.direction = Scrollbar.Direction.BottomToTop;
-            var handle = Rect("滑块", barRect); Place(handle, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            handle.sizeDelta = Vector2.zero; handle.localScale = Vector3.one;
-            var handleImage = handle.gameObject.AddComponent<Image>(); handleImage.color = new Color(.58f, .66f, .38f);
-            bar.handleRect = handle; bar.targetGraphic = handleImage; scroll.verticalScrollbar = bar;
+            scroll.verticalScrollbar = scrollStyle.VerticalScrollbar(rect);
+            scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
             return content;
         }
 
-        internal RectTransform Row(Transform parent, float height = 50)
+        internal RectTransform Row(Transform parent, float height = 42)
         {
-            var rect = Rect("信息行", parent); rect.gameObject.AddComponent<LayoutElement>().preferredHeight = height;
+            var rect = Rect("信息行", parent); var element = rect.gameObject.AddComponent<LayoutElement>();
+            // 明确覆盖 HorizontalLayoutGroup 的最小高度，不能沿用首次尚未分配宽度的文字高度。
+            element.minHeight = element.preferredHeight = height; element.flexibleHeight = 0;
             var layout = rect.gameObject.AddComponent<HorizontalLayoutGroup>(); layout.spacing = 12; layout.childAlignment = TextAnchor.MiddleLeft;
             layout.childControlHeight = true; layout.childControlWidth = true; layout.childForceExpandHeight = false; layout.childForceExpandWidth = false;
             return rect;
         }
 
+        internal static void MeasureContent(RectTransform content)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            foreach (Transform child in content)
+            {
+                var paragraph = child.GetComponent<Text>();
+                var paragraphLayout = child.GetComponent<LayoutElement>();
+                if (paragraph != null && paragraphLayout != null) paragraphLayout.preferredHeight = Mathf.Ceil(paragraph.preferredHeight + 4);
+                if (child.GetComponent<HorizontalLayoutGroup>() == null) continue;
+                var element = child.GetComponent<LayoutElement>(); if (element == null) continue;
+                float height = Mathf.Max(0, element.minHeight);
+                foreach (Transform item in child)
+                {
+                    var itemLayout = item.GetComponent<LayoutElement>();
+                    if (itemLayout != null && itemLayout.ignoreLayout) continue;
+                    var text = item.GetComponent<Text>();
+                    if (text != null)
+                    {
+                        // 行内文字也要获得完整高度；只放大外层行，HorizontalLayoutGroup 仍会把文字取整裁短。
+                        if (itemLayout == null) itemLayout = item.gameObject.AddComponent<LayoutElement>();
+                        float textHeight = Mathf.Ceil(text.preferredHeight + 2);
+                        itemLayout.minHeight = itemLayout.preferredHeight = textHeight;
+                        itemLayout.flexibleHeight = 0;
+                        height = Mathf.Max(height, textHeight + 4);
+                    }
+                    else height = Mathf.Max(height, LayoutUtility.GetMinHeight((RectTransform)item));
+                }
+                // 从本次文字测量重新赋值；不能用上次 preferredHeight 做下限，否则行只增不减。
+                element.preferredHeight = Mathf.Ceil(height);
+            }
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        }
+
+        internal void ListBackground(RectTransform row)
+        {
+            var background = Decoration(rowDecoration, row); if (background == null) return;
+            background.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            Place(background, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero); background.SetAsFirstSibling();
+        }
+
         internal void RowText(Transform row, string value, Color? color = null)
         {
-            var text = Text("内容", row, value, 16, color); var layout = text.gameObject.AddComponent<LayoutElement>(); layout.flexibleWidth = 1; layout.minWidth = 80;
+            var text = Text("内容", row, value, 18, color); var layout = text.gameObject.AddComponent<LayoutElement>(); layout.flexibleWidth = 1; layout.minWidth = 80;
         }
 
         internal void Paragraph(Transform parent, string value, Color? color = null)
         {
-            var text = Text("说明", parent, value, 16, color);
+            var text = Text("说明", parent, value, 18, color);
             text.alignment = TextAnchor.UpperLeft;
             text.gameObject.AddComponent<LayoutElement>().preferredHeight = 30;
         }
 
         internal InputField Input(Transform parent, string value, int limit, UnityEngine.Events.UnityAction<string> change)
         {
-            var rect = Rect("正文输入", parent); rect.gameObject.AddComponent<LayoutElement>().preferredHeight = 142;
+            var rect = Rect("正文输入", parent); var inputLayout = rect.gameObject.AddComponent<LayoutElement>();
+            // InputField 的布局优先级也是1；长正文会覆盖同级的142高度，必须由容器显式固定输入区域。
+            inputLayout.layoutPriority = 2; inputLayout.minHeight = inputLayout.preferredHeight = 142; inputLayout.flexibleHeight = 0;
             var image = rect.gameObject.AddComponent<Image>(); image.color = new Color(.035f, .13f, .105f);
             rect.gameObject.AddComponent<RectMask2D>();
             var field = rect.gameObject.AddComponent<InputField>(); field.targetGraphic = image;
             field.lineType = InputField.LineType.MultiLineNewline; field.characterLimit = limit;
-            var text = Text("编辑内容", rect, "", 16); text.alignment = TextAnchor.UpperLeft;
+            var text = Text("编辑内容", rect, "", 18); text.alignment = TextAnchor.UpperLeft;
             Place(text.rectTransform, Vector2.zero, Vector2.one, new Vector2(10, 10), new Vector2(-10, -10));
             field.textComponent = text; field.text = value; field.onValueChanged.AddListener(change); return field;
         }

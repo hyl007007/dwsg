@@ -9,7 +9,8 @@ namespace Dwsg.Social
         SaveDraft, SendPrivate, CreateGuild, ApplyGuild, AnswerGuild, CancelGuild, LeaveGuild,
         KickGuild, TransferGuild, UpdateGuild, DissolveGuild,
         InviteMentor, InviteApprentice, InviteBrother, AnswerRelation, CancelRelation,
-        LeaveMentor, LeaveBrother, KickBrother, TransferBrother
+        LeaveMentor, LeaveBrother, KickBrother, TransferBrother,
+        RemoveContact, RenameContact
     }
     public enum RequestState { Pending, Accepted, Declined, Cancelled }
     public enum RelationKind { Mentor, Brotherhood }
@@ -23,6 +24,8 @@ namespace Dwsg.Social
         public string Country = "未核验";
         // 手动联系人只用于本地关系记录，绝不能当作服务器身份或在线玩家。
         public bool Verified;
+        public bool IsNpc;
+        public int Portrait;
     }
     [Serializable] public sealed class FriendDto { public string A; public string B; }
     [Serializable] public sealed class BlockDto { public string Owner; public string Target; }
@@ -65,7 +68,7 @@ namespace Dwsg.Social
         public string Id; public string From; public string To; public string Text;
         public MessageDelivery Delivery; public long CreatedUtc;
     }
-    // 本模块随世界槽位保存的独立 DTO。没有城池、货币、NPC 或另一份世界数据库。
+    // 随世界槽位保存联系人与关系；NPC 资料仅是选中角色的快照，不复制世界数据库。
     [Serializable] public sealed class SocialStateDto
     {
         public int Version = 1;
@@ -102,7 +105,7 @@ namespace Dwsg.Social
         public static SocialResult Fail(string code, string message)
         { return new SocialResult { Code = code, Message = message }; }
         public static SocialResult Local(string message, string id = null)
-        { return new SocialResult { Succeeded = true, Code = "local", Message = message + "（仅本地记录）", EntityId = id }; }
+        { return new SocialResult { Succeeded = true, Code = "local", Message = message, EntityId = id }; }
     }
     // M02 实现此接口，以认证角色 ID 提供快照/命令结果，并在主线程触发 Changed。
     // 网络适配器不得信任本地 DTO 的 Verified 或关系结果；必须由服务器鉴权。

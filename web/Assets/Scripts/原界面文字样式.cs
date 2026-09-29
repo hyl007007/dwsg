@@ -32,6 +32,14 @@ public static class 原界面文字样式
         shadow.effectColor = Color.black;
         shadow.effectDistance = new Vector2(-1, -1);
         shadow.useGraphicAlpha = true;
+        居中按钮文字(text);
+    }
+
+    // 复用原按钮时只修正字形基线，不覆盖原字色、字重和阴影。
+    public static void 居中按钮文字(Text text)
+    {
+        if (text == null || (text.alignment != TextAnchor.MiddleCenter &&
+            text.alignment != TextAnchor.MiddleLeft && text.alignment != TextAnchor.MiddleRight)) return;
         if (text.GetComponent<按钮字形垂直居中>() == null)
             text.gameObject.AddComponent<按钮字形垂直居中>();
     }

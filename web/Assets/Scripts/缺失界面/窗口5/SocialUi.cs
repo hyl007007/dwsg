@@ -221,14 +221,19 @@ namespace Dwsg.Social
             界面窗口管理器.注册运行时按钮(button);
             return button;
         }
-        internal InputField Input(Transform parent, string placeholder, float x, float y, float w, float h, int limit, string initial = "")
+        internal InputField Input(Transform parent, string placeholder, float x, float y, float w, float h, int limit, string initial = "", bool multiline = false)
         {
             var image = Image(parent, "输入框", x, y, w, h, null, new Color(.015f, .055f, .045f), true);
             Border(image.transform, w, h);
             var input = image.gameObject.AddComponent<InputField>();
-            input.targetGraphic = image; input.lineType = InputField.LineType.SingleLine; input.characterLimit = limit;
+            input.targetGraphic = image; input.lineType = multiline ? InputField.LineType.MultiLineNewline : InputField.LineType.SingleLine; input.characterLimit = limit;
             input.textComponent = Text(image.transform, "", 8, 2, w - 16, h - 4, 17, Cyan);
             input.placeholder = Text(image.transform, placeholder, 8, 2, w - 16, h - 4, 16, Muted);
+            input.textComponent.alignment = multiline ? TextAnchor.UpperLeft : TextAnchor.MiddleLeft;
+            input.textComponent.horizontalOverflow = multiline ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
+            ((Text)input.placeholder).alignment = input.textComponent.alignment;
+            input.customCaretColor = true; input.caretColor = Cyan;
+            input.selectionColor = new Color(.145f, .4f, .353f, .6f);
             input.text = initial ?? "";
             return input;
         }
@@ -257,7 +262,7 @@ namespace Dwsg.Social
             var scroll = viewport.gameObject.AddComponent<ScrollRect>(); scroll.viewport = viewport; scroll.content = content;
             scroll.horizontal = false; scroll.vertical = true; scroll.scrollSensitivity = 28;
             scroll.movementType = ScrollRect.MovementType.Clamped;
-            return new SocialList(this, content, w);
+            return new SocialList(this, content, w, scroll);
         }
         internal static void Clear(Transform parent)
         {
@@ -269,8 +274,9 @@ namespace Dwsg.Social
     {
         private readonly SocialUi ui;
         internal readonly RectTransform Content;
+        internal readonly ScrollRect Scroll;
         private readonly float width;
-        internal SocialList(SocialUi skin, RectTransform content, float w) { ui = skin; Content = content; width = w; }
+        internal SocialList(SocialUi skin, RectTransform content, float w, ScrollRect scroll) { ui = skin; Content = content; width = w; Scroll = scroll; }
         internal RectTransform Row(string title, string detail, float h = 64, float textWidth = 380)
         {
             var row = ui.Node(Content, "条目", 0, 0, width, h);

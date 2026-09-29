@@ -69,6 +69,33 @@ namespace Dwsg.Window3
         private CityResult ImportValidated(string json, string worldKey)
         {
             if (string.IsNullOrEmpty(json) || json.Length > 1000000) return CityResult.Fail("城池附加存档为空或过大。");
+            CityModuleDto candidate;
+            var result = DecodeValidated(json, worldKey, out candidate);
+            if (!result.Success) return result;
+            AttachValidated(candidate);
+            return CityResult.Ok("城池附加状态已恢复。");
+        }
+        // 统一槽位事务先解码全部扩展，再绑定；失败不替换Local或启动修筑协程。
+        public CityResult TryDecode(string json, string worldKey, out CityModuleDto candidate)
+        {
+            candidate = null;
+            if (string.IsNullOrEmpty(worldKey) || worldKey.Length > 128) return CityResult.Fail("世界标识无效。");
+            if (string.IsNullOrEmpty(json))
+            {
+                candidate = new CityModuleDto { WorldKey = worldKey };
+                return CityResult.Ok("旧档城池附加状态已准备。");
+            }
+            return DecodeValidated(json, worldKey, out candidate);
+        }
+        public void AttachValidated(CityModuleDto candidate)
+        {
+            if (candidate == null) throw new ArgumentNullException("candidate");
+            Reset(); state = candidate; CityRepairClock.Watch(this);
+        }
+        private CityResult DecodeValidated(string json, string worldKey, out CityModuleDto candidate)
+        {
+            candidate = null;
+            if (string.IsNullOrEmpty(json) || json.Length > 1000000) return CityResult.Fail("城池附加存档为空或过大。");
             try
             {
                 var dto = JsonConvert.DeserializeObject<CityModuleDto>(json, new JsonSerializerSettings { MaxDepth = 16, TypeNameHandling = TypeNameHandling.None });
@@ -90,7 +117,7 @@ namespace Dwsg.Window3
                     dto.Candidates.Any(c => c == null || PlayerId(c.PlayerId) == null || City(c.X, c.Y) == null || string.IsNullOrEmpty(c.Nation)) ||
                     dto.Candidates.GroupBy(c => c.PlayerId + ":" + c.X + ":" + c.Y).Any(g => g.Count() > 1) ||
                     dto.RecentRequests.Any(r => string.IsNullOrEmpty(r) || r.Length > 80)) return CityResult.Fail("城池附加存档校验失败，未改动当前状态。");
-                Reset(); state = dto; CityRepairClock.Watch(this); return CityResult.Ok("城池附加状态已恢复。");
+                candidate = dto; return CityResult.Ok("城池附加状态校验通过。");
             }
             catch (JsonException) { return CityResult.Fail("城池附加存档格式错误。"); }
         }
@@ -131,7 +158,7 @@ namespace Dwsg.Window3
         {
             EnsureWorld(); Settle(); var c = City(x, y);
             var q = new CityRepairQuote { X = x, Y = y, Kind = kind };
-            if (c == null || Me == null) { q.Error = "城池或本地角色不存在。"; return q; }
+            if (c == null || Me == null) { q.Error = "城池或角色不存在。"; return q; }
             q.Owner = c.城主; q.Nation = c.国家; q.PlayerId = Me.基础信息.ID;
             if (!Enum.IsDefined(typeof(CityRepairKind), kind)) q.Error = "未知修筑类型。";
             else if (!Friendly(c)) q.Error = "只可修筑自己或本国城池。";
@@ -160,12 +187,12 @@ namespace Dwsg.Window3
             Me.财产信息.铜钱 -= fresh.Copper; Me.财产信息.粮食 -= fresh.Food;
             state.Repairs.Add(order); Remember(request);
             CityRepairClock.Watch(this);
-            return CityResult.Ok("本地修筑已开始，30秒后完成；归属变化或交战会取消并退费。");
+            return CityResult.Ok("修筑已开始，30秒后完成。");
         }
         public string TaxPermission(int x, int y, CityTaxKind kind)
         {
             EnsureWorld(); var c = City(x, y); var p = Me;
-            if (c == null || p == null) return "城池或本地角色不存在。";
+            if (c == null || p == null) return "城池或角色不存在。";
             if (c.正在交战) return "交战中不可征收。";
             if (kind == CityTaxKind.Lord) { if (c.城主 != 全局变量.本机身份) return "只有本城城主可征收。"; }
             else if (kind == CityTaxKind.Nation)
@@ -200,7 +227,7 @@ namespace Dwsg.Window3
             var tax = state.Taxes.FirstOrDefault(t => t.X == x && t.Y == y && t.Kind == kind);
             if (tax == null) { tax = new CityTaxRecord { X = x, Y = y, Kind = kind }; state.Taxes.Add(tax); }
             tax.LastUtc = UtcNow(); Remember(request);
-            return CityResult.Ok("已在本地" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "记账：铜" + copper.ToString("N0") + " / 粮" + food.ToString("N0") + "。");
+            return CityResult.Ok("已收入" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "：铜钱" + copper.ToString("N0") + " / 粮" + food.ToString("N0") + "。");
         }
         private static bool HasFief(城池信息库类 c, 玩家数据 p)
         {
@@ -209,13 +236,13 @@ namespace Dwsg.Window3
         public string CandidatePermission(int x, int y)
         {
             EnsureWorld(); var c = City(x, y); var p = Me;
-            if (c == null || p == null) return "城池或本地角色不存在。";
+            if (c == null || p == null) return "城池或角色不存在。";
             if (c.规模 == 4) return "都城由国王治理，不参与城主竞选。";
             if (c.正在交战) return "交战中不可竞选。";
             if (string.IsNullOrEmpty(c.国家) || 全局方法类.获取指定名字的国家(c.国家) == null) return "无主城没有城主竞选，请通过攻占取得归属。";
             if (c.国家 != p.基础信息.国家 || !HasFief(c, p)) return "竞选须为本国成员，并在本城拥有封地。";
             if (c.城主 == 全局变量.本机身份) return "你已是本城城主。";
-            if (state.Candidates.Any(a => a.X == x && a.Y == y && a.PlayerId == p.基础信息.ID && a.Nation == c.国家)) return "已登记本地候选，等待国王任命。";
+            if (state.Candidates.Any(a => a.X == x && a.Y == y && a.PlayerId == p.基础信息.ID && a.Nation == c.国家)) return "已登记候选，等待国王任命。";
             return null;
         }
         public CityResult Apply(int x, int y, string request)
@@ -224,7 +251,7 @@ namespace Dwsg.Window3
             if (error != null) return CityResult.Fail(error);
             state.Candidates.RemoveAll(a => a.X == x && a.Y == y && a.PlayerId == Me.基础信息.ID);
             state.Candidates.Add(new CityCandidate { X = x, Y = y, PlayerId = Me.基础信息.ID, Nation = City(x, y).国家 }); Remember(request);
-            return CityResult.Ok("已登记本地候选，不收费用；由本国国王在政务页任命。未连接投票服务器。");
+            return CityResult.Ok("已登记候选，等待本国国王任命。");
         }
         public List<CityCandidate> Candidates(int x, int y) { EnsureWorld(); return state.Candidates.Where(c => c.X == x && c.Y == y).ToList(); }
         public CityResult Appoint(int x, int y, int playerId, string request)
@@ -237,7 +264,7 @@ namespace Dwsg.Window3
             if (c.正在交战 || c.规模 == 4) return CityResult.Fail("交战城池或都城不可任命。");
             if (p == null || p.基础信息.国家 != c.国家 || !HasFief(c, p) || !state.Candidates.Any(a => a.X == x && a.Y == y && a.PlayerId == playerId && a.Nation == c.国家)) return CityResult.Fail("候选人已失去资格，请重新登记。");
             c.城主 = 全局变量.所有玩家数据表.IndexOf(p); state.Candidates.RemoveAll(a => a.X == x && a.Y == y); Remember(request);
-            return CityResult.Ok("本地城主已任命为" + p.基础信息.名字 + "。");
+            return CityResult.Ok("城主已任命为" + p.基础信息.名字 + "。");
         }
         public List<CityBookmark> Bookmarks()
         {
@@ -254,7 +281,7 @@ namespace Dwsg.Window3
                 state.Bookmarks.Add(new CityBookmark { PlayerId = Me.基础信息.ID, X = x, Y = y });
             }
             else if (!add) state.Bookmarks.RemoveAll(b => b.PlayerId == Me.基础信息.ID && b.X == x && b.Y == y);
-            return CityResult.Ok(add ? exists ? "本城已在收藏册中。" : "城池已加入本地收藏册。" : "已取消收藏。");
+            return CityResult.Ok(add ? exists ? "本城已在收藏册中。" : "城池已加入收藏册。" : "已取消收藏。");
         }
         public CityScoutReport Scout(int x, int y)
         {
@@ -272,11 +299,11 @@ namespace Dwsg.Window3
             {
                 if (idx == null) continue;
                 var p = Player(idx.第几个玩家); var found = p == null ? null : p.获取指定ID标识的将领索引(idx.将领ID标识);
-                var general = found != null && found.第几个封地 >= 0 && found.第几个将领 >= 0 ? p.封地信息表[found.第几个封地].将领信息表[found.第几个将领] : null;
+                var general = found != null && found.第几个封地 >= 0 && found.第几个封地 < p.封地信息表.Count && found.第几个将领 >= 0 && found.第几个将领 < p.封地信息表[found.第几个封地].将领信息表.Count ? p.封地信息表[found.第几个封地].将领信息表[found.第几个将领] : null;
                 if (general != null) rows.Add(GeneralRow(general) + "  · " + p.基础信息.名字);
                 else rows.Add("驻防记录 #" + idx.将领ID标识 + " · 将领已离开或记录失效");
             }
-            foreach (var general in c.城池玩家驻防列表) if (general != null) rows.Add(GeneralRow(general) + "  · 本地参战记录");
+            foreach (var general in c.城池玩家驻防列表) if (general != null) rows.Add(GeneralRow(general) + "  · 参战部队");
             return rows;
         }
         private static string GeneralRow(将领信息 g)

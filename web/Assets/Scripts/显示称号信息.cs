@@ -23,6 +23,8 @@ public class 显示称号信息 : MonoBehaviour
 	{
 		第几个玩家 = 全局变量.本机身份;
 		int count = 全局变量.所有玩家数据表[第几个玩家].称号信息表.Count;
+		总页数 = Mathf.Max(1, Mathf.CeilToInt(count / 12f));
+		显示第几页 = Mathf.Clamp(显示第几页, 1, (int)总页数);
 		int num = (显示第几页 - 1) * 12;
 		for (int i = 0; i < 12; i++)
 		{
@@ -80,12 +82,21 @@ public class 显示称号信息 : MonoBehaviour
 				}
 			}
 			称号达成.text = "称号达成:" + num3.ToString() + "/" + count.ToString();
-			总页数 = Mathf.Ceil((float)count / 12f);
 			页数显示.text = 显示第几页.ToString() + "/" + 总页数.ToString();
 		}
 
 		public void 点击激活称号(int 第几个称号)
 		{
+			第几个玩家 = 全局变量.本机身份;
+			var 称号表 = 全局变量.所有玩家数据表[第几个玩家].称号信息表;
+			int 选中索引 = (显示第几页 - 1) * 12 + 第几个称号;
+			if (第几个称号 < 0 || 第几个称号 >= 12 || 选中索引 < 0 || 选中索引 >= 称号表.Count) return;
+			if (称号表[选中索引].状态 == 0)
+			{
+				全局变量.提示类.显示信息("尚未获得此称号。");
+				return;
+			}
+			if (称号表[选中索引].状态 == 2) return;
 			if (上次切换时间 > 0)
 			{
 				long num = TIME.getTime() - 上次切换时间;

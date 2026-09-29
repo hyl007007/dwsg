@@ -394,6 +394,7 @@ public class 战斗速度设置 : MonoBehaviour
 		{
 			Text 文字组件 = 建文本(物体.transform, "文字", 文字, 字号, 金色字, 尺寸, Vector2.zero, TextAnchor.MiddleCenter, true, 居中锚点);
 			加描边(文字组件, 描边色, 1.4f);
+			原界面文字样式.居中按钮文字(文字组件);
 		}
 		return 按钮;
 	}

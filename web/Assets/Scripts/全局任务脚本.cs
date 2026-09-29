@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using Dwsg.Window3;
 
 public class 全局任务脚本 : MonoBehaviour
 {
@@ -64,6 +65,7 @@ public class 全局任务脚本 : MonoBehaviour
     {
         UnityEngine.Debug.Log("任务初始化");
         附近山贼.生成山贼数据列表();
+        资源点规则.本地.战斗接入完成 = true;
         StartCoroutine(检测军情列表());
         StartCoroutine(刷新大地图列表());
         StartCoroutine(刷新基础信息());
@@ -86,12 +88,14 @@ public class 全局任务脚本 : MonoBehaviour
 
     private IEnumerator 赌场()
     {
+        赌场状态显示.初始化(赌场结果显示);
         while (true)
         {
             if (全局变量.当局赌场下注列表.Count > 0 && 全局变量.赌场是否开始 == false)
             {
                 全局变量.赌场是否开始 = true;
                 赌场结果显示.text = "";
+                赌场状态显示.开始本局(10);
                 int 骰子1 = UnityEngine.Random.Range(1, 7);
                 yield return new WaitForSeconds(5);
                 int 骰子2 = UnityEngine.Random.Range(1, 7);
@@ -139,7 +143,9 @@ public class 全局任务脚本 : MonoBehaviour
                 }
                 全局变量.赌场是否开始 = false;
                 全局变量.当局赌场下注列表.Clear();
+                赌场状态显示.结束本局(骰子1, 骰子2, 骰子3);
             }
+            赌场状态显示.等待检查(60);
             yield return new WaitForSeconds(60);
         }
     }
@@ -156,6 +162,7 @@ public class 全局任务脚本 : MonoBehaviour
                     {
                         赌场结果 += $"压小获得了{全局变量.当局赌场下注列表[i].下注金额 * 1.2}\n";
                         全局变量.所有玩家数据表[全局变量.本机身份].财产信息.黄金 += 全局变量.当局赌场下注列表[i].下注金额 * 1.2;
+                        赌场状态显示.记录返还(0, 全局变量.当局赌场下注列表[i].下注金额 * 1.2);
                         全局变量.当局赌场下注列表.RemoveAt(i);
                     }
                 }
@@ -167,6 +174,7 @@ public class 全局任务脚本 : MonoBehaviour
                     {
                         赌场结果 += $"压大获得了{全局变量.当局赌场下注列表[i].下注金额 * 1.2}\n";
                         全局变量.所有玩家数据表[全局变量.本机身份].财产信息.黄金 += 全局变量.当局赌场下注列表[i].下注金额 * 1.2;
+                        赌场状态显示.记录返还(1, 全局变量.当局赌场下注列表[i].下注金额 * 1.2);
                         全局变量.当局赌场下注列表.RemoveAt(i);
                     }
                 }
@@ -178,6 +186,7 @@ public class 全局任务脚本 : MonoBehaviour
                     {
                         赌场结果 += $"压豹子获得了{全局变量.当局赌场下注列表[i].下注金额 * 1.5}\n";
                         全局变量.所有玩家数据表[全局变量.本机身份].财产信息.黄金 += 全局变量.当局赌场下注列表[i].下注金额 * 1.5;
+                        赌场状态显示.记录返还(2, 全局变量.当局赌场下注列表[i].下注金额 * 1.5);
                         全局变量.当局赌场下注列表.RemoveAt(i);
                     }
                 }
@@ -627,12 +636,70 @@ public class 全局任务脚本 : MonoBehaviour
         }
     }
 
+    private 战斗系统 查找有效战场(军情信息 军情)
+    {
+        foreach (Transform 战场 in 战斗地图列表.transform)
+        {
+            var 系统 = 战场.GetChild(0).GetChild(0).GetChild(0).GetChild(0).GetChild(0).GetComponent<战斗系统>();
+            if (系统 != null && !系统.战斗结束 && 军情.坐标x == 系统.坐标x &&
+                军情.坐标y == 系统.坐标y && 军情.战场类型 == 系统.战场类型)
+                return 系统;
+        }
+        return null;
+    }
+
+    private void 释放失效援军(军情信息 军情)
+    {
+        bool 本机援军 = false;
+        foreach (var 将领 in 军情.队列将领列表)
+        {
+            if (将领 == null || 将领.详细信息 == null) continue;
+            if (将领.详细信息.身份 == 全局变量.本机身份) 本机援军 = true;
+            if (将领.详细信息.状态 == 1) 将领.详细信息.状态 = 0;
+        }
+        if (本机援军)
+        {
+            const string 内容 = "目标战场已结束，援军已返回待命。";
+            if (全局变量.提示类 != null) 全局变量.提示类.显示信息(内容);
+            else UnityEngine.Debug.LogWarning(内容);
+        }
+    }
+
+    private string 上次资源调度错误;
+
+    private void 推进资源军情(long 现在)
+    {
+        List<资源点军情信息> 到达;
+        var 结果 = 资源点规则.本地.推进(现在, out 到达);
+        // 世界快照尚未安装时由加载事务负责初始化，不能在调度器另建世界。
+        if (!结果.Success) return;
+        foreach (var 情 in 到达)
+        {
+            战斗系统 场;
+            var 开始 = 资源点战斗适配.尝试开始(资源点规则.本地, 情,
+                战斗地图列表 != null ? 战斗地图列表.transform : null, 现在, out 场);
+            if (开始.Success)
+            {
+                场.登记参战军情(情);
+                上次资源调度错误 = null;
+            }
+            else if (上次资源调度错误 != 开始.Message)
+            {
+                上次资源调度错误 = 开始.Message;
+                UnityEngine.Debug.LogWarning("资源部队等待真实战场：" + 开始.Message);
+            }
+        }
+    }
+
     private IEnumerator 检测军情列表()
     {
         while (true)
         {
+            推进资源军情(TIME.getTime());
             for (int i = 0; i < 全局变量.军情列表.Count; i++)
             {
+                if (资源点战斗适配.是资源军情(全局变量.军情列表[i])) continue;
+                if (缺失界面.窗口4.和平驻防规则.是驻防军情(全局变量.军情列表[i])) continue;
                 if (全局变量.军情列表[i].身份 == 0)
                 {
                     long time = TIME.getTime();
@@ -644,22 +711,8 @@ public class 全局任务脚本 : MonoBehaviour
                     {
                         continue;
                     }
-                    bool flag = true;
-                    int num27 = 0;
-
-                    foreach (object obj in 战斗地图列表.transform)
-                    {
-                        Transform transform = (Transform)obj;
-                        战斗系统脚本对象 = transform.GetChild(0).GetChild(0).GetChild(0)
-                            .GetChild(0)
-                            .GetChild(0)
-                            .GetComponent<战斗系统>();
-                        if (全局变量.军情列表[i].坐标x == 战斗系统脚本对象.坐标x && 全局变量.军情列表[i].坐标y == 战斗系统脚本对象.坐标y && 全局变量.军情列表[i].战场类型 == 战斗系统脚本对象.战场类型)
-                        {
-                            flag = false;
-                        }
-                        num27++;
-                    }
+                    战斗系统脚本对象 = 查找有效战场(全局变量.军情列表[i]);
+                    bool flag = 战斗系统脚本对象 == null;
                     if (flag && !全局变量.军情列表[i].已进入战场)
                     {
                         if (全局变量.军情列表[i].战场类型 == 0)
@@ -702,8 +755,13 @@ public class 全局任务脚本 : MonoBehaviour
                         else if (全局变量.军情列表[i].战场类型 == 1)
                         {
                             城池信息库类 城池信息库类 = 所有城池界面脚本.根据坐标获取指定城池(坐标x, 坐标y);
+                            var 当前军情 = 全局变量.军情列表[i];
+                            var 玩家守军 = 缺失界面.窗口4.和平驻防规则.获取守军(城池信息库类, time);
+                            // 推进可能移除已返程的驻防任务，继续操作当前出征对象。
+                            i = 全局变量.军情列表.IndexOf(当前军情);
                             城池信息库类.正在交战 = true;
-                            List<将领信息> list2 = new List<将领信息>();
+                            List<将领信息> list2 = new List<将领信息>(玩家守军);
+                            战斗系统脚本对象.登记玩家守军(城池信息库类, 玩家守军);
 
                             if (城池信息库类.规模 == 0)
                             {
@@ -824,6 +882,7 @@ public class 全局任务脚本 : MonoBehaviour
                     {
                         全局变量.军情列表[i].已进入战场 = true;
                         战斗系统脚本对象.攻方要渲染的编队将领列表.Add(全局变量.军情列表[i].队列将领列表);
+                        战斗系统脚本对象.登记参战军情(全局变量.军情列表[i]);
                     }
                 }
             }
@@ -837,6 +896,8 @@ public class 全局任务脚本 : MonoBehaviour
         {
             for (int i = 0; i < 全局变量.军情列表.Count; i++)
             {
+                if (资源点战斗适配.是资源军情(全局变量.军情列表[i])) continue;
+                if (缺失界面.窗口4.和平驻防规则.是驻防军情(全局变量.军情列表[i])) continue;
                 if (全局变量.军情列表[i].身份 != 0)
                 {
                     long time = TIME.getTime();
@@ -845,18 +906,14 @@ public class 全局任务脚本 : MonoBehaviour
                     if (全局变量.军情列表[i].到达时间 > time)
                         continue;
 
-                    bool flag = true;
-                    foreach (object obj in 战斗地图列表.transform)
+                    战斗系统脚本对象 = 查找有效战场(全局变量.军情列表[i]);
+                    bool flag = 战斗系统脚本对象 == null;
+                    if (全局变量.军情列表[i].身份 == 78 && flag)
                     {
-                        Transform transform = (Transform)obj;
-                        战斗系统脚本对象 = transform.GetChild(0).GetChild(0).GetChild(0)
-                            .GetChild(0)
-                            .GetChild(0)
-                            .GetComponent<战斗系统>();
-                        if (全局变量.军情列表[i].坐标x == 战斗系统脚本对象.坐标x && 全局变量.军情列表[i].坐标y == 战斗系统脚本对象.坐标y && 全局变量.军情列表[i].战场类型 == 战斗系统脚本对象.战场类型)
-                        {
-                            flag = false;
-                        }
+                        释放失效援军(全局变量.军情列表[i]);
+                        全局变量.军情列表.RemoveAt(i);
+                        i--;
+                        continue;
                     }
                     // 初始化驻防信息
                     if (flag && !全局变量.军情列表[i].已进入战场)
@@ -883,8 +940,12 @@ public class 全局任务脚本 : MonoBehaviour
                             攻城方身份 = (int)全局变量.军情列表[i].队列将领列表[0].详细信息.身份;
                         }
                         战斗系统脚本对象.攻身份 = 攻城方身份;
+                        var 当前军情 = 全局变量.军情列表[i];
+                        var 玩家守军 = 缺失界面.窗口4.和平驻防规则.获取守军(城池, time);
+                        i = 全局变量.军情列表.IndexOf(当前军情);
                         城池.正在交战 = true;
-                        List<将领信息> list2 = new List<将领信息>();
+                        List<将领信息> list2 = new List<将领信息>(玩家守军);
+                        战斗系统脚本对象.登记玩家守军(城池, 玩家守军);
                         if (城池.规模 == 1)
                         {
                             int num25 = UnityEngine.Random.Range(30, 40);
@@ -927,11 +988,6 @@ public class 全局任务脚本 : MonoBehaviour
 
                         int num20 = UnityEngine.Random.Range(0, 101);
 
-                        for (int kk = 0; kk < 城池.城池玩家驻防列表.Count; kk++)
-                        {
-                            list2.Add(城池.城池玩家驻防列表[kk]);
-                        }
-
                         int count3 = list2.Count;
                         int num17 = (int)Mathf.Floor(count3 / 5);
                         int num16 = 0;
@@ -954,45 +1010,11 @@ public class 全局任务脚本 : MonoBehaviour
                     if (!全局变量.军情列表[i].已进入战场)
                     {
                         if (全局变量.军情列表[i].身份 == 78)
-                        {
-                            if (!flag)
-                            {
-                                foreach (object obj in 战斗地图列表.transform)
-                                {
-                                    Transform transform = (Transform)obj;
-                                    战斗系统脚本对象 = transform.GetChild(0).GetChild(0).GetChild(0)
-                                        .GetChild(0)
-                                        .GetChild(0)
-                                        .GetComponent<战斗系统>();
-                                    if (全局变量.军情列表[i].坐标x == 战斗系统脚本对象.坐标x && 全局变量.军情列表[i].坐标y == 战斗系统脚本对象.坐标y && 全局变量.军情列表[i].战场类型 == 战斗系统脚本对象.战场类型)
-                                    {
-                                        战斗系统脚本对象.守方要渲染的编队将领列表.Add(全局变量.军情列表[i].队列将领列表);
-                                        print($"要加入的战场{全局变量.军情列表[i].坐标x},{全局变量.军情列表[i].坐标y}实际加入的战场{战斗系统脚本对象.坐标x},{战斗系统脚本对象.坐标y}");
-                                        break;
-                                    }
-                                }
-                            }
-
-                        }
+                            战斗系统脚本对象.守方要渲染的编队将领列表.Add(全局变量.军情列表[i].队列将领列表);
                         else
-                        {
-                            foreach (object obj in 战斗地图列表.transform)
-                            {
-                                Transform transform = (Transform)obj;
-                                战斗系统脚本对象 = transform.GetChild(0).GetChild(0).GetChild(0)
-                                    .GetChild(0)
-                                    .GetChild(0)
-                                    .GetComponent<战斗系统>();
-                                if (全局变量.军情列表[i].坐标x == 战斗系统脚本对象.坐标x && 全局变量.军情列表[i].坐标y == 战斗系统脚本对象.坐标y && 全局变量.军情列表[i].战场类型 == 战斗系统脚本对象.战场类型)
-                                {
-                                    战斗系统脚本对象.攻方要渲染的编队将领列表.Add(全局变量.军情列表[i].队列将领列表);
-                                    print($"要加入的战场{全局变量.军情列表[i].坐标x},{全局变量.军情列表[i].坐标y}实际加入的战场{战斗系统脚本对象.坐标x},{战斗系统脚本对象.坐标y}");
-                                    break;
-                                }
-                            }
-
-                        }
+                            战斗系统脚本对象.攻方要渲染的编队将领列表.Add(全局变量.军情列表[i].队列将领列表);
                         全局变量.军情列表[i].已进入战场 = true;
+                        战斗系统脚本对象.登记参战军情(全局变量.军情列表[i]);
                     }
                 }
             }
@@ -1001,20 +1023,40 @@ public class 全局任务脚本 : MonoBehaviour
         }
     }
 
+    private double 已安排守方兵力(战斗系统 战场)
+    {
+        double 总数 = 战场.守方兵力;
+        // 渲染器在下一次 Update 才累计兵力；同帧恢复的后续编队也要看到这批预占。
+        if (战场.守方要渲染的编队将领列表 != null)
+            foreach (var 编队 in 战场.守方要渲染的编队将领列表)
+                foreach (var 将领 in 编队)
+                    if (将领 != null && 将领.将领配兵 != null) 总数 += 将领.将领配兵.数量;
+        return 总数;
+    }
+
     private IEnumerator 加入战场(战斗系统 要加入的战场, List<将领信息> 要加入的编队)
     {
         long 加入计时 = TIME.getTime();
-        double 守方兵力 = 要加入的战场.守方兵力;
-        int 计数器 = 0;
         long 加入间隔 = UnityEngine.Random.Range(5, 20);
-        while (TIME.getTime() - 加入计时 <= 加入间隔 || 守方兵力 >= 500000.0)
+        var 检查间隔 = new WaitForSeconds(0.25f);
+        while (要加入的战场 != null && !要加入的战场.战斗结束 &&
+            (TIME.getTime() - 加入计时 <= 加入间隔 || 已安排守方兵力(要加入的战场) >= 500000.0))
         {
-            计数器++;
-            yield return null;
+            yield return 检查间隔;
         }
         if (要加入的战场 != null && !要加入的战场.战斗结束)
         {
             要加入的战场.守方要渲染的编队将领列表.Add(要加入的编队);
+        }
+        else
+        {
+            // 尚未生成战场模型的名将也需要释放；俘虏与驻防有各自的归属规则。
+            foreach (var 将领 in 要加入的编队)
+            {
+                if (将领 == null || 将领.详细信息 == null) continue;
+                if (缺失界面.窗口4.和平驻防规则.接管战后返回(将领, TIME.getTime())) continue;
+                if (将领.详细信息.状态 == 1) 将领.详细信息.状态 = 0;
+            }
         }
     }
 
@@ -1038,6 +1080,7 @@ public class 全局任务脚本 : MonoBehaviour
     {
 
         军情信息 ai = new 军情信息();
+        ai.临时AI部队 = true;
         ai.身份 = 666;
         ai.战场类型 = 1;
         ai.坐标x = x;

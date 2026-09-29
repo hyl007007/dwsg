@@ -68,9 +68,35 @@ namespace Dwsg.Window1
             unbind.Add(() => { if (button != null) button.onClick.RemoveListener(action); });
             界面窗口管理器.注册运行时按钮(button);
         }
+        private void BindRecharge(Button button)
+        {
+            if (button == null) return;
+            // 原充值按钮仅关闭商城。此版本不提供支付，取消旧动作并复用原按钮说明开放状态。
+            for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+            {
+                int index = i;
+                var state = button.onClick.GetPersistentListenerState(index);
+                button.onClick.SetPersistentListenerState(index, UnityEventCallState.Off);
+                unbind.Add(() => { if (button != null) button.onClick.SetPersistentListenerState(index, state); });
+            }
+            var label = button.GetComponentInChildren<Text>(true);
+            if (label != null)
+            {
+                string previous = label.text;
+                label.text = "未开放";
+                原界面文字样式.居中按钮文字(label);
+                unbind.Add(() => { if (label != null) label.text = previous; });
+            }
+            Bind(button, () => { if (全局变量.提示类 != null) 全局变量.提示类.显示信息("本局域网版本不提供充值。"); });
+        }
         private void BindEntries()
         {
             var transforms = SceneTransforms().ToArray();
+            // 复用主界面将领按钮的完整回调链，保留共同导航、数据刷新与开窗顺序。
+            var generalEntry = mainRoot.GetComponentsInChildren<Button>(true).FirstOrDefault(button =>
+                Enumerable.Range(0, button.onClick.GetPersistentEventCount()).Any(i =>
+                    button.onClick.GetPersistentTarget(i) is 将领列表显示));
+            pages.AttachGoalEntries(mainRoot.GetComponent<主界面UI脚本>(), generalEntry);
             var task = transforms.FirstOrDefault(t => t.name == "主界面_任务图标" && t.parent != null && t.parent.gameObject == mainRoot);
             if (task != null)
             {
@@ -85,7 +111,16 @@ namespace Dwsg.Window1
                 if (t.name == "打开告示栏") Bind(t.GetComponent<Button>(), () => pages.Open(JournalPage.Notices));
                 if (t.name == "打开邮件") Bind(t.GetComponent<Button>(), () => pages.Open(JournalPage.Mail));
             }
+            var shop = transforms.FirstOrDefault(t => t.parent == null && t.name == "商城信息界面UI");
+            var recharge = shop == null ? null : shop.Find("资产布局/充值");
+            if (recharge != null) BindRecharge(recharge.GetComponent<Button>());
             var lord = transforms.FirstOrDefault(t => t.parent == null && t.name == "君主信息界面UI");
+            var reserved = lord == null ? null : lord.Find("六部布局");
+            if (reserved != null && reserved.childCount == 0)
+            {
+                var ministries = reserved.GetComponent<Window1Ministries>() ?? reserved.gameObject.AddComponent<Window1Ministries>();
+                ministries.Initialize(pages.Style, lord);
+            }
             var achievementLayout = lord == null ? null : lord.Find("成就信息布局");
             if (achievementLayout != null)
             {
@@ -109,7 +144,7 @@ namespace Dwsg.Window1
         }
     }
 
-    // 仅复制 RectTransform/Image 的装饰属性，不复制 Button 回调和任何旧 MonoBehaviour。
+    // 仅读取原控件的视觉属性，不复制回调或任何旧玩法脚本。
     public sealed class Window1Style
     {
         public static readonly Color Ink = new Color(.84f, .95f, .87f);
@@ -119,6 +154,7 @@ namespace Dwsg.Window1
         public Font Font;
         private Sprite buttonSprite, iconSprite;
         private Button closeSource;
+        private Scrollbar scrollbarSource;
         private Transform title, background, information, frame;
         public static Window1Style FromScene(Scene scene)
         {
@@ -139,6 +175,10 @@ namespace Dwsg.Window1
             result.closeSource = source.Select(t => t.GetComponent<Button>()).FirstOrDefault(b => b != null && b.name == "关闭" && b.GetComponent<Image>() != null);
             var task = all.FirstOrDefault(t => t.name == "主界面_任务图标");
             result.iconSprite = task == null || task.GetComponent<Image>() == null ? null : task.GetComponent<Image>().sprite;
+            var scrollbars = all.Select(t => t.GetComponent<Scrollbar>()).Where(b => b != null &&
+                b.direction == Scrollbar.Direction.BottomToTop && b.handleRect != null &&
+                b.handleRect.GetComponentsInChildren<Image>(true).Length > 0).ToArray();
+            result.scrollbarSource = scrollbars.FirstOrDefault(b => b.transform.root.name == "君主信息界面UI") ?? scrollbars.FirstOrDefault();
             return result;
         }
         public static RectTransform Rect(Transform parent, string name)
@@ -178,7 +218,35 @@ namespace Dwsg.Window1
             button.onClick.AddListener(click);
             return button;
         }
-        private static void Graphics(Transform source, RectTransform target, bool isTitle)
+        public Scrollbar VerticalScrollbar(RectTransform parent)
+        {
+            var originalTrack = scrollbarSource == null ? null : scrollbarSource.GetComponent<Image>();
+            var originalHandle = scrollbarSource == null ? null : scrollbarSource.targetGraphic as Image;
+            bool decoratedHandle = scrollbarSource != null && originalHandle == null;
+            var track = Image(parent, "滚动条", originalTrack == null ? Surface : originalTrack.color,
+                originalTrack == null ? null : originalTrack.sprite);
+            track.type = originalTrack == null ? UnityEngine.UI.Image.Type.Sliced : originalTrack.type;
+            track.raycastTarget = true;
+            Anchors(track.rectTransform, new Vector2(1, 0), Vector2.one);
+            track.rectTransform.pivot = new Vector2(1, .5f);
+            track.rectTransform.sizeDelta = new Vector2(12, 0);
+            track.rectTransform.anchoredPosition = new Vector2(-2, 0);
+            if (scrollbarSource != null && originalTrack == null)
+                Graphics(scrollbarSource.transform, track.rectTransform, false, scrollbarSource.handleRect);
+            var area = Rect(track.transform, "滑动区域"); Anchors(area, Vector2.zero, Vector2.one);
+            area.offsetMin = new Vector2(2, 2); area.offsetMax = new Vector2(-2, -2);
+            var handle = Image(area, "滑块", decoratedHandle ? Color.clear : originalHandle == null ? Muted : originalHandle.color,
+                originalHandle == null ? null : originalHandle.sprite);
+            handle.type = originalHandle == null ? UnityEngine.UI.Image.Type.Sliced : originalHandle.type;
+            handle.raycastTarget = true; Anchors(handle.rectTransform, Vector2.zero, Vector2.one);
+            if (decoratedHandle) Graphics(scrollbarSource.handleRect, handle.rectTransform, false);
+            var bar = track.gameObject.AddComponent<Scrollbar>(); bar.direction = Scrollbar.Direction.BottomToTop;
+            bar.handleRect = handle.rectTransform; bar.targetGraphic = handle;
+            if (scrollbarSource != null)
+            { bar.colors = scrollbarSource.colors; bar.transition = scrollbarSource.transition; bar.spriteState = scrollbarSource.spriteState; }
+            return bar;
+        }
+        private static void Graphics(Transform source, RectTransform target, bool isTitle, Transform exclude = null)
         {
             var root = source as RectTransform;
             if (root == null || root.rect.width <= 0 || root.rect.height <= 0) return;
@@ -188,6 +256,7 @@ namespace Dwsg.Window1
             var corners = new Vector3[4];
             foreach (var graphic in source.GetComponentsInChildren<Image>(true))
             {
+                if (exclude != null && graphic.transform.IsChildOf(exclude)) continue;
                 if (graphic.GetComponentInParent<Button>(true) != null || graphic.GetComponent<Text>() != null) continue;
                 var graphicMask = graphic.GetComponent<Mask>();
                 if (graphicMask != null && graphicMask.enabled && !graphicMask.showMaskGraphic) continue;
@@ -231,7 +300,8 @@ namespace Dwsg.Window1
     public sealed class Window1Pages : MonoBehaviour
     {
         private const int PageSize = 6;
-        private static readonly Color FeedbackInk = new Color(.035f, .12f, .105f);
+        private const float ScrollbarSpace = 20;
+        private static readonly Color FeedbackInk = Window1Style.Gold;
         public Window1Style Style { get; private set; }
         private JournalPage currentPage;
         private int pageIndex;
@@ -244,6 +314,8 @@ namespace Dwsg.Window1
         private Button previous, next, claim, delete;
         private Toggle unreadToggle;
         private Window1Achievements achievements;
+        private 主界面UI脚本 mainNavigation;
+        private Button generalEntry;
         private static readonly JournalPage[] TabPages = { JournalPage.Growth, JournalPage.Daily, JournalPage.Notices, JournalPage.Mail };
         private readonly List<Button> tabs = new List<Button>();
         private readonly List<Row> rows = new List<Row>();
@@ -278,7 +350,7 @@ namespace Dwsg.Window1
                 fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained; fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             }
         }
-        private ScrollRect Scroll(Transform parent, string name, float x, float y, float width, float height)
+        private ScrollRect Scroll(Transform parent, string name, float x, float y, float width, float height, bool scrollbar = false)
         {
             var rt = Window1Style.Rect(parent, name); Window1Style.Place(rt, x, y, width, height);
             var sr = rt.gameObject.AddComponent<ScrollRect>(); sr.horizontal = false; sr.movementType = ScrollRect.MovementType.Clamped; sr.inertia = false;
@@ -286,7 +358,14 @@ namespace Dwsg.Window1
             var hit = viewport.gameObject.AddComponent<Image>(); hit.color = Color.clear; hit.raycastTarget = true;
             var content = Window1Style.Rect(viewport, "内容"); content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one;
             content.pivot = new Vector2(0, 1); content.anchoredPosition = Vector2.zero; content.sizeDelta = new Vector2(0, height);
-            sr.viewport = viewport; sr.content = content; return sr;
+            sr.viewport = viewport; sr.content = content;
+            if (scrollbar)
+            {
+                viewport.offsetMax = new Vector2(-ScrollbarSpace, 0);
+                sr.verticalScrollbar = Style.VerticalScrollbar(rt);
+                sr.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+            }
+            return sr;
         }
         private void Construct()
         {
@@ -328,11 +407,11 @@ namespace Dwsg.Window1
             detailMeta = Label(panel, "详情状态", "", 13, Window1Style.Muted, 372, 164, 399, 24);
             var progressBg = Window1Style.Image(panel, "详情进度底", new Color(.025f, .09f, .08f)); Window1Style.Place(progressBg.rectTransform, 372, 194, 398, 5);
             progressFill = Window1Style.Image(progressBg.transform, "详情进度条", new Color(.37f, .75f, .56f)); Window1Style.Anchors(progressFill.rectTransform, Vector2.zero, Vector2.one);
-            detailScroll = Scroll(panel, "详情正文", 372, 212, 399, 116);
-            detailBody = Label(detailScroll.content, "正文", "", 16, Window1Style.Ink, 0, 0, 393, 116); detailBody.lineSpacing = 1.15f;
+            detailScroll = Scroll(panel, "详情正文", 372, 204, 399, 147, true);
+            detailBody = Label(detailScroll.content, "正文", "", 16, Window1Style.Ink, 0, 0, 375, 147); detailBody.lineSpacing = 1.15f;
             attachmentIcon = Window1Style.Image(panel, "附件头像", Color.white); Window1Style.Place(attachmentIcon.rectTransform, 372, 348, 34, 34); attachmentIcon.preserveAspect = true;
-            rewardScroll = Scroll(panel, "奖励附件", 412, 334, 359, 73);
-            rewards = Label(rewardScroll.content, "奖励预览", "", 14, Window1Style.Gold, 0, 0, 353, 73);
+            rewardScroll = Scroll(panel, "奖励附件", 412, 359, 359, 48, true);
+            rewards = Label(rewardScroll.content, "奖励预览", "", 14, Window1Style.Gold, 0, 0, 335, 48);
             unreadToggle = MakeToggle(panel);
             previous = ActionButton(panel, "上一页", "上一页", () => ChangePage(-1), 26, 428, 95, 34);
             pageBackground = Window1Style.Image(panel, "页码底", Window1Style.Surface); Window1Style.Place(pageBackground.rectTransform, 124, 428, 117, 34);
@@ -340,7 +419,8 @@ namespace Dwsg.Window1
             next = ActionButton(panel, "下一页", "下一页", () => ChangePage(1), 244, 428, 95, 34);
             claim = ActionButton(panel, "领取", "领取奖励", Claim, 374, 428, 182, 34);
             delete = ActionButton(panel, "删除", "删除邮件", Delete, 568, 428, 203, 34);
-            feedback = Label(panel, "操作结果", "", 12, FeedbackInk, 24, 467, 752, 20, TextAnchor.MiddleCenter);
+            feedback = Label(panel, "操作结果", "", 12, FeedbackInk, 24, 407, 752, 20, TextAnchor.MiddleCenter);
+            LayoutDetail();
         }
         private Toggle MakeToggle(Transform panel)
         {
@@ -358,6 +438,44 @@ namespace Dwsg.Window1
             return toggle;
         }
         public void AttachAchievements(Window1Achievements existingList) { achievements = existingList; }
+        public void AttachGoalEntries(主界面UI脚本 navigation, Button generals)
+        { mainNavigation = navigation; generalEntry = generals; }
+        private static string NextStep(WorldMetric metric)
+        {
+            switch (metric)
+            {
+                case WorldMetric.Buildings: case WorldMetric.BuildingLevels: return "前往封地，建造或升级建筑。";
+                case WorldMetric.Technology: return "前往封地书院，研究个人科技。";
+                case WorldMetric.Generals: return "前往封地酒馆，招募将领。";
+                case WorldMetric.GeneralLevel: case WorldMetric.GeneralLevels: return "打开将领，选择将领后训练或使用经验道具。";
+                case WorldMetric.Troops: return "前往封地兵营，招募士兵并为将领配兵。";
+                case WorldMetric.HallLevel: return "前往封地，升级大厅。";
+                default: return "前往地图，参加战斗，积累声望与战功。";
+            }
+        }
+        private bool HasGoalEntry(WorldMetric metric)
+        {
+            var player = ExistingWorldAdapter.CurrentPlayer;
+            if (player == null || player.封地信息表 == null || player.封地信息表.Count == 0) return false;
+            if ((metric == WorldMetric.GeneralLevel || metric == WorldMetric.GeneralLevels) && generalEntry != null) return true;
+            return mainNavigation != null;
+        }
+        private string GoalEntryLabel(WorldMetric metric)
+        {
+            if ((metric == WorldMetric.GeneralLevel || metric == WorldMetric.GeneralLevels) && generalEntry != null) return "前往将领";
+            return metric == WorldMetric.LordLevel || metric == WorldMetric.Merit ? "前往地图" : "前往封地";
+        }
+        private void GoToGoal()
+        {
+            var goal = goalViews.FirstOrDefault(g => g.Definition.Id == selectedId);
+            if (goal == null || !HasGoalEntry(goal.Definition.Metric)) return;
+            var metric = goal.Definition.Metric;
+            gameObject.SetActive(false);
+            if ((metric == WorldMetric.GeneralLevel || metric == WorldMetric.GeneralLevels) && generalEntry != null)
+                generalEntry.onClick.Invoke();
+            else if (metric == WorldMetric.LordLevel || metric == WorldMetric.Merit) mainNavigation.加载大地图场景();
+            else mainNavigation.加载封地场景();
+        }
         public void Open(JournalPage page)
         {
             if (page == JournalPage.Achievement)
@@ -389,12 +507,9 @@ namespace Dwsg.Window1
             Window1Style.Place(detailTitle.rectTransform, achievementDetail ? 40 : 372, achievementDetail ? 110 : 129, achievementDetail ? 720 : 399, achievementDetail ? 32 : 30);
             Window1Style.Place(detailMeta.rectTransform, achievementDetail ? 40 : 372, achievementDetail ? 147 : 164, achievementDetail ? 720 : 399, achievementDetail ? 26 : 24);
             Window1Style.Place((RectTransform)progressFill.transform.parent, achievementDetail ? 40 : 372, achievementDetail ? 182 : 194, achievementDetail ? 720 : 398, 5);
-            Window1Style.Place(detailScroll.GetComponent<RectTransform>(), achievementDetail ? 40 : 372, achievementDetail ? 204 : 212, achievementDetail ? 720 : 399, achievementDetail ? 135 : 116);
-            Window1Style.Place(attachmentIcon.rectTransform, achievementDetail ? 40 : 372, achievementDetail ? 353 : 348, 34, 34);
-            Window1Style.Place(rewardScroll.GetComponent<RectTransform>(), achievementDetail ? 84 : 412, achievementDetail ? 345 : 334, achievementDetail ? 676 : 359, achievementDetail ? 62 : 73);
-            detailBody.rectTransform.sizeDelta = new Vector2(achievementDetail ? 714 : 393, achievementDetail ? 135 : 116);
-            rewards.rectTransform.sizeDelta = new Vector2(achievementDetail ? 670 : 353, achievementDetail ? 62 : 73);
-            Window1Style.Place(claim.GetComponent<RectTransform>(), achievementDetail ? 294 : 374, 428, achievementDetail ? 212 : 182, 34);
+            LayoutDetail();
+            Window1Style.Place(claim.GetComponent<RectTransform>(), achievementDetail ? 160 : 374, 428, achievementDetail ? 228 : 182, 34);
+            Window1Style.Place(delete.GetComponent<RectTransform>(), achievementDetail ? 408 : 568, 428, achievementDetail ? 228 : 203, 34);
         }
         private void OnEnable()
         { if (!ready) return; Window1Module.Changed += OnChanged; refreshLoop = StartCoroutine(VisibleRefresh()); }
@@ -427,7 +542,7 @@ namespace Dwsg.Window1
             }
             else if (currentPage == JournalPage.Notices) noticeViews = Window1Module.告示列表();
             else goalViews = s.Goals((GoalKind)currentPage);
-            string nextSignature = currentPage + ":" + pageIndex + ":" + selectedId + ":" +
+            string nextSignature = Window1Module.CurrentWorldId + ":" + (currentPage == JournalPage.Daily ? s.DailyDate : "") + ":" + currentPage + ":" + pageIndex + ":" + selectedId + ":" +
                 (currentPage == JournalPage.Mail ? string.Join("|", mailViews.Select(m => m.Id + m.Read + m.Claimed).ToArray()) :
                 currentPage == JournalPage.Notices ? string.Join("|", noticeViews.Select(n => n.Id + n.Body + s.NoticeRead(n.Id)).ToArray()) :
                 string.Join("|", goalViews.Select(g => g.Definition.Id + g.Current + g.Claimed).ToArray()));
@@ -444,8 +559,8 @@ namespace Dwsg.Window1
             for (int i = 0; i < tabs.Count; i++) tabs[i].GetComponent<Image>().color = TabPages[i] == currentPage ? new Color(.77f, 1, .8f) : Color.white;
             unreadToggle.gameObject.SetActive(currentPage == JournalPage.Mail);
             subtitle.rectTransform.sizeDelta = new Vector2(currentPage == JournalPage.Mail ? 590 : 745, 22);
-            subtitle.text = currentPage == JournalPage.Mail ? "本地收件箱 · 未连接网络邮件服务" : currentPage == JournalPage.Notices ? "本地告示 · 当前封地与玩法规则" :
-                currentPage == JournalPage.Daily ? "本地规则 · " + s.DailyDate + " · 今日基线后的净增长" : "本地规则 · 达成记录保留 · 奖励仅可领取一次";
+            subtitle.text = currentPage == JournalPage.Mail ? "收件箱" : currentPage == JournalPage.Notices ? "封地政务与任务须知" :
+                currentPage == JournalPage.Daily ? s.DailyDate + " · 仅计今日载入后的净增加 · 达成记录保留 · 每项奖励每日可领一次" : "完成条件领取奖励 · 达成记录保留 · 每项奖励可领取一次";
             pageIndex = JournalService.ClampPage(pageIndex, Count, PageSize);
             int first = pageIndex * PageSize;
             var ids = currentPage == JournalPage.Mail ? mailViews.Select(m => m.Id).ToList() : currentPage == JournalPage.Notices ? noticeViews.Select(n => n.Id).ToList() : goalViews.Select(g => g.Definition.Id).ToList();
@@ -462,7 +577,7 @@ namespace Dwsg.Window1
                     var m = mailViews[index]; row.Title.text = ShortTitle(m.Title, 14); row.Meta.text = ShortTitle(m.Sender, 12) + " · " + DateLabel(m.SentUtcTicks); row.Status.text = m.Read ? "已读" : "未读";
                 }
                 else if (currentPage == JournalPage.Notices)
-                { var n = noticeViews[index]; row.Title.text = ShortTitle(n.Title, 14); row.Meta.text = n.Pinned ? "置顶 · 本地说明" : "本地告示"; row.Status.text = s.NoticeRead(n.Id) ? "已读" : "未读"; }
+                { var n = noticeViews[index]; row.Title.text = ShortTitle(n.Title, 14); row.Meta.text = n.Pinned ? "置顶" : "封地告示"; row.Status.text = s.NoticeRead(n.Id) ? "已读" : "未读"; }
                 else
                 { var g = goalViews[index]; row.Title.text = g.Definition.Title; row.Meta.text = "进度 " + g.Current.ToString("0") + " / " + g.Definition.Target.ToString("0"); row.Status.text = g.Status; ratio = (float)(g.Current / g.Definition.Target); }
                 row.Fill.gameObject.SetActive(currentPage <= JournalPage.Achievement); row.Fill.rectTransform.sizeDelta = new Vector2(300 * Mathf.Clamp01(ratio), 2);
@@ -470,7 +585,7 @@ namespace Dwsg.Window1
             }
             if (force) listScroll.verticalNormalizedPosition = 1;
             empty.gameObject.SetActive(Count == 0);
-            empty.text = currentPage == JournalPage.Mail ? (unreadOnly ? "没有未读邮件\n取消筛选可查看已读信件。" : "尚未收到邮件\n本地世界未连接网络邮件服务。\n实际本地通知投递后会显示在这里。") : "当前列表为空";
+            empty.text = currentPage == JournalPage.Mail ? (unreadOnly ? "没有未读邮件\n取消筛选可查看已读信件。" : "暂无邮件") : "当前列表为空";
             previous.interactable = pageIndex > 0; next.interactable = pageIndex + 1 < JournalService.PageCount(Count, PageSize);
             pageLabel.text = (pageIndex + 1) + " / " + JournalService.PageCount(Count, PageSize);
             RenderDetail(s, force || previousSelection != selectedId);
@@ -484,36 +599,37 @@ namespace Dwsg.Window1
         }
         private void RenderDetail(JournalService service, bool resetScroll)
         {
-            claim.gameObject.SetActive(currentPage != JournalPage.Notices); delete.gameObject.SetActive(currentPage == JournalPage.Mail);
+            claim.gameObject.SetActive(currentPage != JournalPage.Notices); delete.gameObject.SetActive(currentPage != JournalPage.Notices);
             attachmentIcon.gameObject.SetActive(false); progressFill.transform.parent.gameObject.SetActive(currentPage <= JournalPage.Achievement);
             rewardScroll.gameObject.SetActive(currentPage != JournalPage.Notices);
-            detailScroll.GetComponent<RectTransform>().sizeDelta = achievementDetail ? new Vector2(720, 135) : new Vector2(399, currentPage == JournalPage.Notices || currentPage == JournalPage.Mail ? 195 : 116);
             if (selectedId == null || (achievementDetail && !goalViews.Any(g => g.Definition.Id == selectedId)))
             {
                 detailTitle.text = currentPage == JournalPage.Mail ? "收件箱为空" : "选择一项查看详情";
-                detailMeta.text = ""; detailBody.text = currentPage == JournalPage.Mail ? "这里记录实际收到的本地信件。附件先校验后领取，未领取附件的邮件不能删除。" : ""; rewards.text = "";
-                claim.interactable = false; delete.interactable = false; SetBodyHeight(resetScroll); return;
+                detailMeta.text = ""; detailBody.text = ""; rewards.text = "";
+                claim.gameObject.SetActive(false); delete.gameObject.SetActive(false); rewardScroll.gameObject.SetActive(false);
+                progressFill.transform.parent.gameObject.SetActive(false); LayoutDetail(); SetBodyHeight(resetScroll); return;
             }
             if (currentPage == JournalPage.Mail)
             {
                 service.ReadMail(selectedId);
                 var m = mailViews.First(x => x.Id == selectedId);
-                detailTitle.text = ShortTitle(m.Title, 19); detailMeta.text = "本地来信 · " + ShortTitle(m.Sender, 10) + " · " + DateLabel(m.SentUtcTicks);
+                detailTitle.text = ShortTitle(m.Title, 19); detailMeta.text = "来信 · " + ShortTitle(m.Sender, 10) + " · " + DateLabel(m.SentUtcTicks);
                 detailBody.text = "发信者：" + m.Sender + "\n主题：" + m.Title + "\n\n" + m.Body;
                 rewards.text = "附件：" + m.Attachment.Preview();
+                rewardScroll.gameObject.SetActive(m.Attachment.HasAnything);
+                claim.gameObject.SetActive(m.Attachment.HasAnything);
                 claim.GetComponentInChildren<Text>().text = m.Claimed ? "附件已领取" : "领取附件";
                 claim.interactable = m.Attachment.HasAnything && !m.Claimed;
                 delete.interactable = !m.Attachment.HasAnything || m.Claimed;
                 delete.GetComponentInChildren<Text>().text = deletePendingId == selectedId ? "确认删除" : "删除邮件";
-                // 邮件正文预留附件行，不与可滚动正文重叠。
-                detailScroll.GetComponent<RectTransform>().sizeDelta = new Vector2(399, 116);
+                // 保留邮件原始段落，附件空间由实际预览高度决定。
                 SetAttachment(m.Attachment);
             }
             else if (currentPage == JournalPage.Notices)
             {
                 service.ReadNotice(selectedId);
                 var n = noticeViews.First(x => x.Id == selectedId); detailTitle.text = ShortTitle(n.Title, 19);
-                detailMeta.text = n.Pinned ? "置顶 · 本地说明" : "本地告示 · " + DateLabel(n.PublishedUtcTicks);
+                detailMeta.text = n.Pinned ? "置顶" : "封地告示 · " + DateLabel(n.PublishedUtcTicks);
                 detailBody.text = n.Title + "\n\n" + n.Body; rewards.text = "";
             }
             else
@@ -521,12 +637,39 @@ namespace Dwsg.Window1
                 var g = goalViews.First(x => x.Definition.Id == selectedId);
                 detailTitle.text = g.Definition.Title; detailMeta.text = g.Status + " · 进度 " + g.Current.ToString("0") + "/" + g.Definition.Target.ToString("0");
                 progressFill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01((float)(g.Current / g.Definition.Target)), 1);
-                detailBody.text = g.Definition.Description + "\n\n" + (g.Definition.Kind == GoalKind.Daily ? "当地日期每日刷新；进度为当天基线后的净增加。" : "条件达成后保留记录，领取奖励不会扣除进度。") + "\n精确条件与奖励为本地规则。";
+                detailBody.text = GoalBody(g);
+                delete.GetComponentInChildren<Text>().text = GoalEntryLabel(g.Definition.Metric);
+                delete.interactable = HasGoalEntry(g.Definition.Metric);
                 rewards.text = "奖励预览\n" + g.Definition.Reward.Preview();
                 claim.GetComponentInChildren<Text>().text = g.Claimed ? "奖励已领取" : g.Complete ? "领取奖励" : "条件未达成";
                 claim.interactable = g.Complete && !g.Claimed; SetAttachment(g.Definition.Reward);
             }
-            SetBodyHeight(resetScroll);
+            LayoutDetail(); SetBodyHeight(resetScroll);
+        }
+        private static string GoalBody(GoalView goal)
+        {
+            string action = goal.Claimed ? "奖励已领取，可继续完成其他任务。" : goal.Complete ?
+                "条件已达成，点击下方按钮领取奖励。" : "下一步：" + NextStep(goal.Definition.Metric);
+            return "完成条件：" + goal.Definition.Description + "\n" + action +
+                (goal.Definition.Kind == GoalKind.Achievement ? "\n达成记录保留，奖励可领取一次。" : "");
+        }
+        private void LayoutDetail()
+        {
+            float left = achievementDetail ? 40 : 372, width = achievementDetail ? 720 : 399;
+            const float top = 204, bottom = 407, gap = 8;
+            float bodyHeight = bottom - top;
+            if (rewardScroll.gameObject.activeSelf)
+            {
+                float inset = attachmentIcon.gameObject.activeSelf ? 40 : 0;
+                float rewardWidth = width - inset;
+                rewards.rectTransform.sizeDelta = new Vector2(rewardWidth - ScrollbarSpace - 4, 0);
+                float rewardHeight = Mathf.Clamp(rewards.preferredHeight + 8, 48, 72);
+                bodyHeight -= rewardHeight + gap;
+                Window1Style.Place(rewardScroll.GetComponent<RectTransform>(), left + inset, bottom - rewardHeight, rewardWidth, rewardHeight);
+                Window1Style.Place(attachmentIcon.rectTransform, left, bottom - rewardHeight + (rewardHeight - 34) / 2, 34, 34);
+            }
+            Window1Style.Place(detailScroll.GetComponent<RectTransform>(), left, top, width, bodyHeight);
+            detailBody.rectTransform.sizeDelta = new Vector2(width - ScrollbarSpace - 4, 0);
         }
         private void SetAttachment(Reward reward)
         {
@@ -538,23 +681,27 @@ namespace Dwsg.Window1
         private void SetBodyHeight(bool resetScroll)
         {
             float bodyPosition = detailScroll.verticalNormalizedPosition, rewardPosition = rewardScroll.verticalNormalizedPosition;
+            float bodyWidth = detailScroll.viewport.rect.width - 4, rewardWidth = rewardScroll.viewport.rect.width - 4;
+            detailBody.rectTransform.sizeDelta = new Vector2(bodyWidth, 0); rewards.rectTransform.sizeDelta = new Vector2(rewardWidth, 0);
             float height = Mathf.Max(detailScroll.viewport.rect.height, detailBody.preferredHeight + 8);
-            detailBody.rectTransform.sizeDelta = new Vector2(achievementDetail ? 714 : 393, height); detailScroll.content.sizeDelta = new Vector2(0, height); detailScroll.verticalNormalizedPosition = resetScroll ? 1 : Mathf.Clamp01(bodyPosition);
-            float rewardHeight = Mathf.Max(achievementDetail ? 62 : 73, rewards.preferredHeight + 8);
-            rewards.rectTransform.sizeDelta = new Vector2(achievementDetail ? 670 : 353, rewardHeight); rewardScroll.content.sizeDelta = new Vector2(0, rewardHeight); rewardScroll.verticalNormalizedPosition = resetScroll ? 1 : Mathf.Clamp01(rewardPosition);
+            detailBody.rectTransform.sizeDelta = new Vector2(bodyWidth, height); detailScroll.content.sizeDelta = new Vector2(0, height); detailScroll.verticalNormalizedPosition = resetScroll ? 1 : Mathf.Clamp01(bodyPosition);
+            float rewardHeight = Mathf.Max(rewardScroll.viewport.rect.height, rewards.preferredHeight + 8);
+            rewards.rectTransform.sizeDelta = new Vector2(rewardWidth, rewardHeight); rewardScroll.content.sizeDelta = new Vector2(0, rewardHeight); rewardScroll.verticalNormalizedPosition = resetScroll ? 1 : Mathf.Clamp01(rewardPosition);
         }
         private void Claim()
         {
             var s = Window1Module.Service; if (s == null || selectedId == null) return;
             string error; bool ok = currentPage == JournalPage.Mail ? s.ClaimMail(selectedId, out error) : s.ClaimGoal(selectedId, out error);
-            feedback.text = ok ? "奖励已存入当前君主资源与背包。" : error; feedback.color = ok ? FeedbackInk : new Color(.36f, .035f, .02f);
+            feedback.text = ok ? "已领取，奖励已到账。" : error; feedback.color = ok ? FeedbackInk : new Color(1f, .58f, .43f);
+            if (全局变量.提示类 != null) 全局变量.提示类.显示信息(feedback.text);
             deletePendingId = null; Refresh(true); if (ok) Window1Module.Signal();
         }
         private void Delete()
         {
+            if (currentPage <= JournalPage.Achievement) { GoToGoal(); return; }
             if (selectedId == null || Window1Module.Service == null) return;
             feedback.color = FeedbackInk;
-            if (deletePendingId != selectedId) { deletePendingId = selectedId; feedback.text = "再次点击“确认删除”移除此信；已领取记录仍会保存。"; Refresh(true); return; }
+            if (deletePendingId != selectedId) { deletePendingId = selectedId; feedback.text = "再次点击“确认删除”，移除此信。"; Refresh(true); return; }
             string error; bool ok = Window1Module.Service.DeleteMail(selectedId, out error);
             feedback.text = ok ? "信件已删除。" : error; if (ok) selectedId = null; deletePendingId = null; Refresh(true); if (ok) Window1Module.Signal();
         }

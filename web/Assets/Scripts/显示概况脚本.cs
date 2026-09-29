@@ -37,14 +37,21 @@ public class 显示概况脚本 : MonoBehaviour
         {
             国家名字.text = "未加入国家"; 国王名字.text = "无国王"; 国都名字.text = "无国都";
             城池数量.text = "0"; 成员数量.text = "0"; 科技等级.text = "0"; 排名.text = "—";
-            国家名字效率显示.text = "返回换国入口加入有效国家";
+            国家名字效率显示.text = "选择入国，可加入或建立国家";
         }
         foreach (Text 文本 in new[] { 国家名字, 国王名字, 国都名字, 城池数量, 成员数量, 科技等级, 排名, 国家名字效率显示 })
         {
-            if (文本 == null) continue;
-            文本.supportRichText = false; 文本.horizontalOverflow = HorizontalWrapMode.Wrap; 文本.verticalOverflow = VerticalWrapMode.Truncate;
-            文本.resizeTextForBestFit = true; 文本.resizeTextMinSize = 10; 文本.resizeTextMaxSize = Mathf.Max(10, 文本.fontSize);
+            // 国家名称和效率另有保留后缀的省略规则，其余字段也保留完整字体行高。
+            if (文本 != 国家名字 && 文本 != 国家名字效率显示) NationOriginalControls.SingleLine(文本);
         }
+        // Keep the original readable size. Full names remain available through the existing 查看 links.
+        Clip(国家名字, 国家 == null ? "" : "(" + Short(国家.Code, 3) + ")");
+        Clip(国王名字); Clip(国都名字);
+        Clip(国家名字效率显示, 国家 == null ? "" : "    效率:" + NationDataSource.Number(国家.Efficiency) + "%");
+    }
+    private static void Clip(Text text, string suffix = "")
+    {
+        NationOriginalControls.SingleLine(text, suffix);
     }
     private static string Short(string value, int max) { value = value ?? ""; return value.Length <= max ? value : value.Substring(0, max) + "…"; }
 }

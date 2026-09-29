@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using Dwsg.Window1;
 
 public class 显示背包物品 : MonoBehaviour
 {
@@ -33,7 +34,12 @@ public class 显示背包物品 : MonoBehaviour
 
 	public 调整数量脚本 调整数量脚本对象;
 
-	private bool 重置列表 = true;
+	private Text 空态文字;
+
+	private void OnEnable()
+	{
+		if (物品列表对象 != null && 切换布局对象 != null) 刷新显示();
+	}
 
 	public void 切换道具()
 	{
@@ -157,7 +163,6 @@ public class 显示背包物品 : MonoBehaviour
 
 	public void 切换武器()
 	{
-		装备排序("武器");
 
         if (切换布局对象.transform.GetChild(1).gameObject.activeSelf && 切换布局对象.transform.GetChild(1).GetChild(0).GetComponent<Toggle>()
 			.isOn)
@@ -212,7 +217,14 @@ public class 显示背包物品 : MonoBehaviour
 
 	public void 刷新显示()
 	{
+		var 旧选择 = 当前选中详情();
+		var 旧物品 = 旧选择 == null ? null : 旧选择.要显示的物品;
+		var 旧装备 = 旧选择 == null ? null : 旧选择.要显示的装备;
+		int 选中行 = 旧选择 == null ? 0 : 旧选择.选中第几个;
+		获取选中物品();
 		物品详情布局对象.SetActive(value: false);
+		已选择道具名字.text = "";
+		已选中道具.text = "0";
 		int childCount = 物品列表对象.transform.childCount;
 		for (int i = 0; i < childCount; i++)
 		{
@@ -223,6 +235,7 @@ public class 显示背包物品 : MonoBehaviour
 			物品列表对象.transform.GetChild(i).GetChild(3).gameObject.SetActive(value: false);
 			物品列表对象.transform.GetChild(i).GetChild(5).gameObject.SetActive(value: false);
 			物品列表对象.transform.GetChild(i).GetChild(6).gameObject.SetActive(value: false);
+			物品列表对象.transform.GetChild(i).GetChild(6).GetComponent<Image>().sprite = null;
 			物品列表对象.transform.GetChild(i).GetChild(7).gameObject.SetActive(value: false);
 			物品列表对象.transform.GetChild(i).GetChild(8).gameObject.SetActive(value: false);
 			Transform child = 物品列表对象.transform.GetChild(i).GetChild(9);
@@ -230,31 +243,36 @@ public class 显示背包物品 : MonoBehaviour
 			显示物品详情 component = child.GetComponent<显示物品详情>();
 			component.要显示的物品 = null;
 			component.要显示的装备 = null;
-			child.GetComponent<Toggle>().isOn = false;
+			child.GetComponent<Toggle>().SetIsOnWithoutNotify(false);
 		}
-		int num = (显示第几页 - 1) * 18;
+		int num;
 		int num2 = 0;
 		if (显示类型 == 1)
 		{
-			num2 = 要显示的物品列表.Count;
+			num2 = 要显示的物品列表 == null ? 0 : 要显示的物品列表.Count;
         }
 		else if (显示类型 == 2)
 		{
-			num2 = 要显示的装备列表.Count;
-            要显示的装备列表.Sort((将领装备 a, 将领装备 b) =>
+			num2 = 要显示的装备列表 == null ? 0 : 要显示的装备列表.Count;
+            if (要显示的装备列表 != null) 要显示的装备列表.Sort((将领装备 a, 将领装备 b) =>
             {
-                int tmp = (int)(a.品质) - (int)b.品质;
-                if (tmp != 0) return -tmp;
-                tmp = (int)a.装备信息.基础值 - (int)b.装备信息.基础值;
-                if (tmp != 0) return -tmp;
-                return -((int)a.强化等级 - (int)b.强化等级);
+                if (a == null || a.装备信息 == null) return b == null || b.装备信息 == null ? 0 : 1;
+                if (b == null || b.装备信息 == null) return -1;
+                int tmp = b.品质.CompareTo(a.品质);
+                if (tmp != 0) return tmp;
+                tmp = b.装备信息.基础值.CompareTo(a.装备信息.基础值);
+                return tmp != 0 ? tmp : b.强化等级.CompareTo(a.强化等级);
             });
         }
+		总页数 = JournalService.PageCount(num2, 18);
+		显示第几页 = JournalService.ClampPage(显示第几页 - 1, num2, 18) + 1;
+		num = (显示第几页 - 1) * 18;
+		选中行 = Mathf.Clamp(选中行, 0, Mathf.Max(0, Mathf.Min(18, num2 - num) - 1));
 		if (num2 > 0)
 		{
 			物品详情布局对象.SetActive(value: true);
 		}
-		for (int j = 0; j < 18; j++)
+		for (int j = 0; j < Mathf.Min(18, childCount); j++)
 		{
 			if (num + j >= num2)
 			{
@@ -271,8 +289,9 @@ public class 显示背包物品 : MonoBehaviour
 			component5.选中第几个 = j;
 			if (显示类型 == 1)
 			{
+				if (要显示的物品列表[num + j] == null) continue;
 				道具信息库类 道具信息库类 = 全局道具库.获取指定名字的道具(要显示的物品列表[num + j].名字);
-				component2.sprite = 全局道具库.获取道具头像(道具信息库类.头像);
+				component2.sprite = 道具信息库类 == null || 全局变量.所有道具头像资源表 == null ? null : 全局道具库.获取道具头像(道具信息库类.头像);
 				component3.text = 要显示的物品列表[num + j].名字;
 				物品列表对象.transform.GetChild(j).GetChild(3).gameObject.SetActive(value: true);
 				component4.text = (要显示的物品列表[num + j].数量.ToString() ?? "");
@@ -281,17 +300,18 @@ public class 显示背包物品 : MonoBehaviour
 			}
 			else if (显示类型 == 2)
 			{
+				if (要显示的装备列表[num + j] == null || 要显示的装备列表[num + j].装备信息 == null) continue;
 				component2.sprite = 要显示的装备列表[num + j].获取装备头像();
 				component3.text = 要显示的装备列表[num + j].获取装备名字();
 				component3.color = 要显示的装备列表[num + j].获取装备文字颜色();
 				物品列表对象.transform.GetChild(j).GetChild(3).gameObject.SetActive(value: false);
 				component4.text = "";
-				物品列表对象.transform.GetChild(j).GetChild(6).gameObject.SetActive(value: true);
 				Image component6 = 物品列表对象.transform.GetChild(j).GetChild(6).GetComponent<Image>();
 				double 品质 = 要显示的装备列表[num + j].品质;
-				if (品质 > 1.0)
+				if (品质 > 1.0 && 全局变量.装备品质图片资源表 != null && 品质 < 全局变量.装备品质图片资源表.Length)
 				{
 					component6.sprite = 全局变量.装备品质图片资源表[(int)品质];
+					component6.gameObject.SetActive(component6.sprite != null);
 				}
 				if (要显示的装备列表[num + j].将领ID != -1)
 				{
@@ -311,210 +331,134 @@ public class 显示背包物品 : MonoBehaviour
 				component5.要显示的装备 = 要显示的装备列表[num + j];
 				child2.gameObject.SetActive(value: true);
 			}
-			if (j == 0)
+			InventoryUi.显示格子名称(component3);
+			if ((旧物品 != null && component5.要显示的物品 == 旧物品) || (旧装备 != null && component5.要显示的装备 == 旧装备)) 选中行 = j;
+		}
+		var player = ExistingWorldAdapter.CurrentPlayer;
+		容量显示.text = player == null ? "背包数据暂不可用" : "背包上限  " + player.获取背包物品数量() + "/" + player.基础信息.背包容量上限;
+		页数显示.text = 显示第几页 + "/" + 总页数;
+		空态文字 = InventoryUi.Empty(空态文字, 物品列表对象.GetComponent<RectTransform>(), 页数显示,
+			player == null ? "背包数据暂不可用" : num2 == 0 ? (显示类型 == 2 ? "此分类暂无装备" : "此分类暂无道具") : "");
+		if (num2 > 0 && 选中行 < childCount)
+		{
+			var row = 物品列表对象.transform.GetChild(选中行).GetChild(9);
+			if (row.gameObject.activeSelf)
 			{
-				物品列表对象.transform.GetChild(j).GetChild(9).GetComponent<Toggle>()
-					.isOn = true;
+				row.GetComponent<Toggle>().SetIsOnWithoutNotify(true);
+				row.GetComponent<显示物品详情>().显示物品信息();
 			}
 		}
-		int 本机身份 = 全局变量.本机身份;
-		容量显示.text = "背包上限  " + 全局变量.所有玩家数据表[本机身份].获取背包物品数量().ToString() + "/" + 全局变量.所有玩家数据表[本机身份].基础信息.背包容量上限.ToString();
-		总页数 = Mathf.Ceil((float)num2 / 18f);
-		页数显示.text = 显示第几页.ToString() + "/" + 总页数.ToString();
+	}
+
+	private 显示物品详情 当前选中详情()
+	{
+		if (物品列表对象 == null) return null;
+		foreach (Transform row in 物品列表对象.transform)
+		{
+			if (row.childCount <= 9) continue;
+			var selector = row.GetChild(9);
+			var toggle = selector.GetComponent<Toggle>();
+			if (selector.gameObject.activeSelf && toggle != null && toggle.isOn) return selector.GetComponent<显示物品详情>();
+		}
+		return null;
 	}
 
 	public double 获取选中物品数量()
 	{
-		if (已选择道具名字.text != "")
-		{
-			int num = int.Parse(已选中道具.text);
-			int num2 = (显示第几页 - 1) * 18;
-			return 要显示的物品列表[num2 + num].数量;
-		}
-		return 1.0;
+		var selection = 当前选中详情();
+		return selection != null && selection.要显示的物品 != null && 要显示的物品列表.Contains(selection.要显示的物品) ? selection.要显示的物品.数量 : 0;
 	}
 
 	public void 批量使用道具()
 	{
-		if (已选择道具名字.text != "")
-		{
-			调整数量脚本对象.调整类型 = 3;
-			调整数量脚本对象.gameObject.SetActive(value: true);
-			调整数量脚本对象.显示说明文本();
-		}
+		var selection = 当前选中详情();
+		var player = ExistingWorldAdapter.CurrentPlayer;
+		var item = selection == null ? null : selection.要显示的物品;
+		if (player == null || item == null || !全局道具库.可在背包开启(item.名字) || item.数量 < 1 || !要显示的物品列表.Contains(item)) return;
+		调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
+		调整数量脚本对象.调整类型 = 3;
+		调整数量脚本对象.gameObject.SetActive(true);
+		调整数量脚本对象.显示说明文本();
+		调整数量脚本对象.数量滑条对象.wholeNumbers = true;
+		调整数量脚本对象.数量滑条对象.minValue = 1;
+		调整数量脚本对象.数量滑条对象.value = 1;
+		调整数量脚本对象.滑条改变购买数量();
 	}
 
 	public void 使用道具()
 	{
-		if (!(已选择道具名字.text != ""))
-		{
-			return;
-		}
-		int 本机身份 = 全局变量.本机身份;
-		string text = 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具(已选择道具名字.text, 0, 0);
-		if (text != "使用失败")
-		{
-			全局变量.提示类.显示信息("使用成功:\n" + text);
-			int index = int.Parse(已选中道具.text);
-			刷新显示();
-			if (物品列表对象.transform.GetChild(index).GetChild(9).gameObject.activeSelf)
-			{
-				物品列表对象.transform.GetChild(index).GetChild(9).GetComponent<Toggle>()
-					.isOn = true;
-			}
-		}
-		else
-		{
-			全局变量.提示类.显示信息("使用失败!");
-		}
+		var selection = 当前选中详情();
+		var player = ExistingWorldAdapter.CurrentPlayer;
+		if (player == null || selection == null || selection.要显示的物品 == null ||
+			!全局道具库.可在背包开启(selection.要显示的物品.名字) || !要显示的物品列表.Contains(selection.要显示的物品)) return;
+		string result = player.背包道具列表.使用道具(selection.要显示的物品.名字, 0, 0);
+		全局变量.提示类.显示信息(result == "使用失败" ? "使用失败，请检查道具与使用条件" : "使用成功:\n" + result);
+		刷新显示();
 	}
 
 	public void 丢弃道具()
 	{
-		if (!(已选择道具名字.text != ""))
+		var selection = 当前选中详情();
+		var player = ExistingWorldAdapter.CurrentPlayer;
+		if (player == null || selection == null) return;
+		string name;
+		bool removed;
+		if (显示类型 == 1 && selection.要显示的物品 != null)
 		{
-			return;
+			name = selection.要显示的物品.名字;
+			removed = player.背包道具列表.删除道具(selection.要显示的物品);
 		}
-		int num = int.Parse(已选中道具.text);
-		int 本机身份 = 全局变量.本机身份;
-		if (显示类型 == 1)
+		else if (显示类型 == 2 && selection.要显示的装备 != null)
 		{
-			if (全局变量.所有玩家数据表[本机身份].背包道具列表.删除道具(已选择道具名字.text))
-			{
-				全局变量.提示类.显示信息("丢弃" + 已选择道具名字.text + "成功!");
-				刷新显示();
-			}
-			else
-			{
-				全局变量.提示类.显示信息("丢弃失败!");
-			}
+			if (selection.要显示的装备.将领ID != -1)
+			{ 全局变量.提示类.显示信息("请先卸下装备，再丢弃"); return; }
+			name = selection.要显示的装备.获取装备名字();
+			int index = 要显示的装备列表.IndexOf(selection.要显示的装备);
+			removed = index >= 0 && player.背包装备列表.删除装备(selection.要显示的装备, index);
 		}
-		else if (显示类型 == 2)
-		{
-			int num2 = (显示第几页 - 1) * 18 + num;
-			if (全局变量.所有玩家数据表[本机身份].背包装备列表.删除装备(要显示的装备列表[num2], num2))
-			{
-				全局变量.提示类.显示信息("丢弃" + 已选择道具名字.text + "成功!");
-				刷新显示();
-			}
-			else
-			{
-				全局变量.提示类.显示信息("丢弃失败!");
-			}
-		}
-		if (物品列表对象.transform.GetChild(num).GetChild(9).gameObject.activeSelf)
-		{
-			物品列表对象.transform.GetChild(num).GetChild(9).GetComponent<Toggle>()
-				.isOn = true;
-		}
+		else return;
+		全局变量.提示类.显示信息(removed ? "已丢弃：" + name : "丢弃失败，请重新选择物品");
+		刷新显示();
 	}
 
 	private void 获取选中物品()
 	{
-		int childCount = 切换布局对象.transform.childCount;
-		for (int i = 0; i < childCount; i++)
+		var player = ExistingWorldAdapter.CurrentPlayer;
+		要显示的物品列表 = null; 要显示的装备列表 = null;
+		if (player == null) return;
+		for (int group = 0; group < 切换布局对象.transform.childCount; group++)
 		{
-			if (!切换布局对象.transform.GetChild(i).gameObject.activeSelf)
+			var tabs = 切换布局对象.transform.GetChild(group);
+			if (!tabs.gameObject.activeSelf) continue;
+			int selected = 0;
+			for (int i = 0; i < tabs.childCount; i++)
+				if (tabs.GetChild(i).GetComponent<Toggle>().isOn) { selected = i; break; }
+			if (group == 0)
 			{
-				continue;
+				显示类型 = 1;
+				var lists = new[] { player.背包道具列表.宝物道具列表, player.背包道具列表.加速道具列表, player.背包道具列表.生产道具列表,
+					player.背包道具列表.宝箱道具列表, player.背包道具列表.强化道具列表, player.背包道具列表.任务道具列表 };
+				要显示的物品列表 = lists[Mathf.Min(selected, lists.Length - 1)];
 			}
-			int childCount2 = 切换布局对象.transform.GetChild(i).childCount;
-			for (int j = 0; j < childCount2; j++)
+			else
 			{
-				if (!切换布局对象.transform.GetChild(i).GetChild(j).gameObject.activeSelf)
-				{
-					continue;
-				}
-				int childCount3 = 物品列表对象.transform.GetChild(i).childCount;
-				for (int k = 0; k < childCount2; k++)
-				{
-					int 本机身份 = 全局变量.本机身份;
-					switch (i)
-					{
-						case 0:
-							显示类型 = 1;
-							switch (j)
-							{
-								case 0:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.宝物道具列表;
-									return;
-								case 1:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.加速道具列表;
-									return;
-								case 2:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.生产道具列表;
-									return;
-								case 3:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.宝箱道具列表;
-									return;
-								case 4:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.强化道具列表;
-									return;
-								case 5:
-									要显示的物品列表 = 全局变量.所有玩家数据表[本机身份].背包道具列表.任务道具列表;
-									return;
-							}
-							break;
-						case 1:
-							显示类型 = 2;
-							switch (j)
-							{
-								case 0:
-									要显示的装备列表 = 全局变量.所有玩家数据表[本机身份].背包装备列表.武器装备列表;
-									return;
-								case 1:
-									要显示的装备列表 = 全局变量.所有玩家数据表[本机身份].背包装备列表.头盔装备列表;
-									return;
-								case 2:
-									要显示的装备列表 = 全局变量.所有玩家数据表[本机身份].背包装备列表.铠甲装备列表;
-									return;
-								case 3:
-									要显示的装备列表 = 全局变量.所有玩家数据表[本机身份].背包装备列表.坐骑装备列表;
-									return;
-							}
-							break;
-					}
-				}
+				显示类型 = 2;
+				var lists = new[] { player.背包装备列表.武器装备列表, player.背包装备列表.头盔装备列表, player.背包装备列表.铠甲装备列表, player.背包装备列表.坐骑装备列表 };
+				要显示的装备列表 = lists[Mathf.Min(selected, lists.Length - 1)];
 			}
+			return;
 		}
 	}
 
 	public void 左翻页()
 	{
-		if (显示第几页 != 1)
-		{
-			显示第几页--;
-			刷新显示();
-		}
+		if (显示第几页 <= 1) return;
+		显示第几页--; 刷新显示();
 	}
 
 	public void 右翻页()
 	{
-		if ((float)显示第几页 < 总页数)
-		{
-			显示第几页++;
-			刷新显示();
-		}
-	}
-
-	private void 装备排序(string 装备类型)
-	{
-		
-		if (装备类型 == "武器")
-		{
-			for (int i = 0; i < 全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表.Count; i++)
-			{
-				for (int j = 0; j < 全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表.Count-1-i; j++)
-				{
-					if (全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[i].品质< 全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[j].品质)
-					{
-						将领装备 temp = 全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[i];
-						全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[i] = 全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[j];
-						全局变量.所有玩家数据表[全局变量.本机身份].背包装备列表.武器装备列表[j] = temp;
-                    }
-				}
-			}
-		}
-			
+		if (显示第几页 >= 总页数) return;
+		显示第几页++; 刷新显示();
 	}
 }

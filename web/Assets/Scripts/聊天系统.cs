@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -59,6 +61,38 @@ public class 聊天消息
 
 	//玩家自己说的话（显示时跟系统播报区分开：名字缀「我」、颜色不同）
 	public bool 自己;
+
+	// 只有实际角色名能解析出的身份才带编号；系统播报仍保留原发送者。
+	public string 关联角色ID;
+}
+
+// 先筛选频道再分页；未读只来自保留的记录，不把自己的发言计入。
+internal static class 聊天记录查询
+{
+	internal static List<聊天消息> 筛选(IList<聊天消息> source, 聊天频道 channel, int limit, long cutoff,
+		ISet<string> blocked, string roleId = null, string roleName = null)
+	{
+		var result = new List<聊天消息>();
+		foreach (var message in source)
+		{
+			if (channel != 聊天频道.全部 && message.频道 != channel) continue;
+			if (cutoff > 0 && message.序号 > cutoff) continue;
+			if (!message.自己 && blocked != null && message.关联角色ID != null && blocked.Contains(message.关联角色ID)) continue;
+			if (!string.IsNullOrEmpty(roleId) && message.关联角色ID != roleId &&
+				(string.IsNullOrEmpty(roleName) || (message.内容 ?? "").IndexOf(roleName, StringComparison.Ordinal) < 0)) continue;
+			result.Add(message);
+		}
+		if (result.Count > limit) result.RemoveRange(0, result.Count - Math.Max(0, limit));
+		return result;
+	}
+	internal static int 未读(IList<聊天消息> source, ISet<long> read, 聊天频道 channel, ISet<string> blocked)
+	{
+		return 筛选(source, channel, int.MaxValue, 0, blocked).Count(m => !m.自己 && !read.Contains(m.序号));
+	}
+	internal static void 标记已读(IEnumerable<聊天消息> shown, ISet<long> read)
+	{
+		foreach (var message in shown) read.Add(message.序号);
+	}
 }
 
 public class 聊天系统 : MonoBehaviour
@@ -78,7 +112,7 @@ public class 聊天系统 : MonoBehaviour
 
 	private const float 消息区右留白 = 8f;
 
-	private const float 消息区上留白 = 10f;
+	private const float 消息区上留白 = 50f;
 
 	private const float 消息区下留白 = 66f;
 
@@ -87,10 +121,6 @@ public class 聊天系统 : MonoBehaviour
 	private const float 频道按钮宽 = 116f;
 
 	private const float 频道按钮高 = 30f;
-
-	private const float 频道间距 = 36f;
-
-	private const float 频道首个纵坐标 = -8f;
 
 	private const float 头像尺寸 = 46f;
 
@@ -207,6 +237,11 @@ public class 聊天系统 : MonoBehaviour
 	private GameObject 战斗界面;
 
 	private GameObject 战斗播报条对象;
+	private RectTransform 战斗播报框, 战斗播报父框;
+	private readonly List<RectTransform> 战斗操作边界 = new List<RectTransform>();
+	private readonly Vector3[] 战斗边界四角 = new Vector3[4];
+	private Vector2 上次战斗播报尺寸;
+	private bool 上次战斗播报可见;
 
 	private 面板部件 世界部件;
 
@@ -214,7 +249,11 @@ public class 聊天系统 : MonoBehaviour
 
 	private 聊天频道 当前频道 = 聊天频道.全部;
 
-	private long 已读序号 = 0L;
+	private readonly HashSet<long> 已读消息 = new HashSet<long>();
+	private readonly HashSet<string> 屏蔽角色 = new HashSet<string>();
+	private Dwsg.Social.ISocialAdapter 社交数据;
+	private string 聊天世界;
+	private string 相关角色ID, 相关角色名;
 
 	private int 已刷新数据版本 = -1;
 
@@ -243,6 +282,17 @@ public class 聊天系统 : MonoBehaviour
 		public Button 发送按钮;
 
 		public Text 空提示;
+		public Text 标题, 只读提示, 设置社交文字;
+		public Button 更早按钮, 最新按钮, 社交按钮;
+		public Text 最新文字;
+		public int 显示上限 = 单页显示上限;
+		public long 浏览截止, 最后显示序号;
+		public bool 跳到最新 = true, 加载更早;
+		public float 原缩放;
+		public Vector2 原位置;
+		public Vector2 上次分辨率;
+		public Rect 上次安全区, 上次键盘;
+		public bool 上次在底部;
 
 		public readonly List<Button> 频道按钮 = new List<Button>();
 
@@ -286,11 +336,13 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return;
 		}
+		if (实例 != null) 实例.绑定社交数据();
 		聊天消息 消息 = new 聊天消息();
 		消息.频道 = 频道;
 		消息.发送者 = (string.IsNullOrEmpty(发送者) ? 取默认发送者(频道) : 发送者);
 		消息.内容 = 内容.Replace("\r\n", "  ").Replace('\n', ' ').Replace('\r', ' ');
 		消息.发送者 = 消息.发送者.Replace("\r\n", "  ").Replace('\n', ' ').Replace('\r', ' ');
+		消息.关联角色ID = 解析角色ID(发送者, 频道 == 聊天频道.国家 ? 消息.内容 : null);
 		消息.时间 = 0L;
 		try
 		{
@@ -311,6 +363,7 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return false;
 		}
+		实例.绑定社交数据();
 		内容 = 内容.Replace("\r", "").Replace("\n", " ").Trim();
 		if (内容.Length <= 0)
 		{
@@ -340,8 +393,6 @@ public class 聊天系统 : MonoBehaviour
 			消息.时间 = 0L;
 		}
 		加入消息(消息);
-		//自己说的话不算未读，免得聊天按钮上凭空冒红点
-		实例.已读序号 = 自增序号;
 		return true;
 	}
 
@@ -393,9 +444,9 @@ public class 聊天系统 : MonoBehaviour
 		{
 			if (频道 == 聊天频道.全部)
 			{
-				return "说点什么…（会发到「世界」频道）";
+				return "本机发言，记入世界频道（最多 40 字）";
 			}
-			return "说点什么…";
+			return "本机发言，最多 40 字";
 		}
 		if (频道 == 聊天频道.传闻)
 		{
@@ -405,7 +456,7 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return "「系统」只能查看";
 		}
-		return "离线：请在社交页选择对象；关系频道尚未连接服务器";
+		return "查看频道记录，关系管理请点击右侧按钮";
 	}
 
 	//消息统一进列表，超上限就顶掉最旧的
@@ -416,6 +467,7 @@ public class 聊天系统 : MonoBehaviour
 		全部消息.Add(消息);
 		while (全部消息.Count > 消息总上限)
 		{
+			if (实例 != null) 实例.已读消息.Remove(全部消息[0].序号);
 			全部消息.RemoveAt(0);
 		}
 		数据版本++;
@@ -424,6 +476,7 @@ public class 聊天系统 : MonoBehaviour
 	public static void 清空聊天()
 	{
 		全部消息.Clear();
+		if (实例 != null) 实例.已读消息.Clear();
 		数据版本++;
 	}
 
@@ -434,16 +487,35 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return 0;
 		}
-		long 未读 = 自增序号 - 实例.已读序号;
-		if (未读 <= 0L)
-		{
-			return 0;
-		}
-		if (未读 > 99L)
-		{
-			return 99;
-		}
-		return (int)未读;
+		return Math.Min(99, 聊天记录查询.未读(全部消息, 实例.已读消息, 聊天频道.全部, 实例.屏蔽角色));
+	}
+
+	public static void 查看相关消息(string roleId, string roleName)
+	{
+		初始化();
+		实例.相关角色ID = roleId; 实例.相关角色名 = roleName;
+		实例.切换频道(聊天频道.全部, false);
+		实例.恢复聊天(实例.世界部件);
+	}
+
+	private static string 解析角色ID(string sender, string nationalReport = null)
+	{
+		var ids = new HashSet<string>();
+		if (全局变量.所有玩家数据表 != null)
+			foreach (var role in 全局变量.所有玩家数据表)
+			{
+				var info = role == null ? null : role.基础信息;
+				if (info == null || string.IsNullOrEmpty(info.名字)) continue;
+				bool matches = sender == info.名字;
+				if (!matches && nationalReport != null)
+					matches = 国家关键词.Any(word => nationalReport.StartsWith(info.名字 + word, StringComparison.Ordinal));
+				if (matches) ids.Add("local-" + info.ID);
+			}
+		if (!string.IsNullOrEmpty(sender) && 实例 != null && 实例.社交数据 != null)
+			foreach (var contact in 实例.社交数据.Snapshot().Players)
+				if (contact.Name == sender) ids.Add(contact.Id);
+		// 重名角色不猜身份，避免屏蔽或打开错误名片。
+		return ids.Count == 1 ? ids.First() : null;
 	}
 
 	private static 聊天频道 判断频道(string 内容)
@@ -500,7 +572,11 @@ public class 聊天系统 : MonoBehaviour
 
 	private void Update()
 	{
+		绑定社交数据();
 		挂界面();
+		适应键盘(世界部件);
+		适应键盘(战斗部件);
+		适应战斗播报条();
 		同步面板(世界部件);
 		同步面板(战斗部件);
 		刷新输入状态();
@@ -515,6 +591,38 @@ public class 聊天系统 : MonoBehaviour
 			下次角标刷新 = Time.unscaledTime + 0.5f;
 			刷新未读红点();
 		}
+	}
+
+	private void 绑定社交数据()
+	{
+		var next = Dwsg.Social.社交界面入口.Adapter;
+		if (ReferenceEquals(next, 社交数据)) return;
+		if (社交数据 != null) 社交数据.Changed -= 刷新屏蔽;
+		社交数据 = next;
+		if (next != null) next.Changed += 刷新屏蔽;
+		刷新屏蔽();
+	}
+	private void 刷新屏蔽()
+	{
+		屏蔽角色.Clear();
+		if (社交数据 != null)
+		{
+			var snapshot = 社交数据.Snapshot();
+			string identity = snapshot.WorldKey + ":" + 社交数据.CurrentPlayerId;
+			if (聊天世界 != null && 聊天世界 != identity)
+			{
+				清空聊天(); 相关角色ID = 相关角色名 = null;
+				重置浏览(世界部件); 重置浏览(战斗部件);
+			}
+			聊天世界 = identity;
+			foreach (var block in snapshot.Blocks.Where(x => x.Owner == 社交数据.CurrentPlayerId)) 屏蔽角色.Add(block.Target);
+		}
+		数据版本++;
+	}
+	private void OnDestroy()
+	{
+		if (社交数据 != null) 社交数据.Changed -= 刷新屏蔽;
+		if (实例 == this) 实例 = null;
 	}
 
 	//输入框被选中时：告诉别的系统「正在打字」，回车就当发送。
@@ -564,6 +672,7 @@ public class 聊天系统 : MonoBehaviour
 			return;
 		}
 		部件.输入框.text = "";
+		重置浏览(部件);
 		刷新提示(部件);
 		StartCoroutine(延迟聚焦(部件));
 	}
@@ -680,7 +789,18 @@ public class 聊天系统 : MonoBehaviour
 
 	private GameObject 建战斗播报条(Transform 父物体)
 	{
+		战斗操作边界.Clear();
+		foreach (Transform 节点 in 父物体)
+		{
+			var 框 = 节点 as RectTransform;
+			if (框 != null && (节点.GetComponent<Button>() != null || 节点.name.StartsWith("操作背景", StringComparison.Ordinal)))
+				战斗操作边界.Add(框);
+		}
 		GameObject 条 = 新建节点("战斗聊天播报条", 父物体, new Vector2(播报条宽, 播报条高), Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
+		战斗播报框 = (RectTransform)条.transform;
+		战斗播报父框 = 父物体 as RectTransform;
+		上次战斗播报尺寸 = Vector2.zero;
+		上次战斗播报可见 = false;
 		Image 条底 = 条.AddComponent<Image>();
 		条底.color = 播报条底;
 		条底.raycastTarget = true;
@@ -691,8 +811,10 @@ public class 聊天系统 : MonoBehaviour
 		{
 			开关面板(战斗部件);
 		});
-		建纯色块(条.transform, "上线", new Vector2(播报条宽, 2f), new Vector2(0f, 播报条高 - 2f), 金色线);
-		建纯色块(条.transform, "下线", new Vector2(播报条宽, 2f), Vector2.zero, 金色线);
+		foreach (var 线 in new[] {
+			建纯色块(条.transform, "上线", new Vector2(0, 2f), new Vector2(0f, 播报条高 - 2f), 金色线),
+			建纯色块(条.transform, "下线", new Vector2(0, 2f), Vector2.zero, 金色线) })
+			线.rectTransform.anchorMax = new Vector2(1, 0);
 		GameObject 图标对象 = 新建节点("聊天图标", 条.transform, new Vector2(44f, 52f), Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
 		Image 图标图 = 图标对象.AddComponent<Image>();
 		Sprite 图标 = 取图("聊天/主界面_聊天", "主界面_聊天");
@@ -701,6 +823,9 @@ public class 聊天系统 : MonoBehaviour
 		图标图.color = ((图标 == null) ? 选中字色 : Color.white);
 		图标图.raycastTarget = false;
 		Text 文本 = 建文本(条.transform, "播报文本", "暂无播报", 20, 青字, new Vector2(播报条宽 - 56f, 播报条高 - 4f), new Vector2(52f, 2f), TextAnchor.MiddleLeft, true, Vector2.zero, Vector2.zero, Vector2.zero);
+		文本.rectTransform.anchorMax = Vector2.one;
+		文本.rectTransform.offsetMin = new Vector2(52, 2);
+		文本.rectTransform.offsetMax = new Vector2(-4, -2);
 		文本.horizontalOverflow = HorizontalWrapMode.Wrap;
 		文本.verticalOverflow = VerticalWrapMode.Truncate;
 		加描边(文本, 描边色, 1.6f);
@@ -713,6 +838,37 @@ public class 聊天系统 : MonoBehaviour
 		return 条;
 	}
 
+	private void 适应战斗播报条()
+	{
+		if (战斗播报框 == null || 战斗播报父框 == null) return;
+		bool 可见 = 战斗播报框.gameObject.activeInHierarchy;
+		Vector2 尺寸 = 战斗播报父框.rect.size;
+		if (可见 == 上次战斗播报可见 && 尺寸 == 上次战斗播报尺寸) return;
+		上次战斗播报可见 = 可见;
+		上次战斗播报尺寸 = 尺寸;
+		if (!可见) return;
+
+		// 原按钮和操作背景只在建条时缓存；启用或父框尺寸变化时才重算边界。
+		Rect 父矩形 = 战斗播报父框.rect;
+		float 右边界 = 父矩形.xMin + Mathf.Min(播报条宽, 父矩形.width);
+		foreach (var 操作 in 战斗操作边界)
+		{
+			if (操作 == null || !操作.gameObject.activeSelf) continue;
+			操作.GetWorldCorners(战斗边界四角);
+			float 左 = float.PositiveInfinity, 下 = float.PositiveInfinity, 上 = float.NegativeInfinity;
+			foreach (var 角 in 战斗边界四角)
+			{
+				Vector3 点 = 战斗播报父框.InverseTransformPoint(角);
+				左 = Mathf.Min(左, 点.x); 下 = Mathf.Min(下, 点.y); 上 = Mathf.Max(上, 点.y);
+			}
+			if (上 > 父矩形.yMin && 下 < 父矩形.yMin + 播报条高)
+				右边界 = Mathf.Min(右边界, 左 - 4f);
+		}
+		float 宽度 = Mathf.Max(0, 右边界 - 父矩形.xMin);
+		if (!Mathf.Approximately(战斗播报框.rect.width, 宽度))
+			战斗播报框.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 宽度);
+	}
+
 	//播报条只显示最新一条，内容过长就自动换行截断
 	private void 刷新战斗条()
 	{
@@ -723,7 +879,8 @@ public class 聊天系统 : MonoBehaviour
 		string 文本 = "暂无播报";
 		for (int i = 全部消息.Count - 1; i >= 0; i--)
 		{
-			if (当前频道 != 聊天频道.全部 && 全部消息[i].频道 != 当前频道)
+			if (当前频道 != 聊天频道.全部 && 全部消息[i].频道 != 当前频道 ||
+				全部消息[i].关联角色ID != null && 屏蔽角色.Contains(全部消息[i].关联角色ID))
 			{
 				continue;
 			}
@@ -744,6 +901,7 @@ public class 聊天系统 : MonoBehaviour
 		GameObject 面板 = 新建节点("聊天面板", 父物体, new Vector2(面板宽, 面板高), 位置, Vector2.zero, Vector2.zero, Vector2.zero);
 		面板.transform.localScale = new Vector3(缩放, 缩放, 1f);
 		部件.面板 = 面板;
+		部件.原缩放 = 缩放; 部件.原位置 = 位置;
 
 		// 底板：通用绿色背景 + 金色四角边框
 		GameObject 底板 = 新建节点("面板底", 面板.transform, new Vector2(面板宽, 面板高), Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero);
@@ -754,11 +912,16 @@ public class 聊天系统 : MonoBehaviour
 		底板图.raycastTarget = true;
 		建边框(底板.transform);
 
-		// 左侧频道列
+		// 频道列交由布局组件排布，角标变化不改变按钮位置。
+		GameObject 频道列 = 新建节点("频道列表", 面板.transform, new Vector2(频道按钮宽, 356f), new Vector2(8f, -8f), new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1));
+		GridLayoutGroup 频道布局 = 频道列.AddComponent<GridLayoutGroup>();
+		频道布局.cellSize = new Vector2(频道按钮宽, 频道按钮高);
+		频道布局.spacing = new Vector2(0, 6);
+		频道布局.constraint = GridLayoutGroup.Constraint.FixedColumnCount; 频道布局.constraintCount = 1;
 		for (int i = 0; i < 频道名称.Length; i++)
 		{
 			int 索引 = i;
-			Button 频道按钮 = 建频道按钮(面板.transform, 频道名称[i], 频道首个纵坐标 - 频道间距 * (float)i);
+			Button 频道按钮 = 建频道按钮(频道列.transform, 频道名称[i], 0);
 			频道按钮.onClick.AddListener(delegate
 			{
 				切换频道((聊天频道)索引);
@@ -794,18 +957,13 @@ public class 聊天系统 : MonoBehaviour
 		滚动.content = (RectTransform)内容.transform;
 		部件.滚动 = 滚动;
 		部件.内容 = (RectTransform)内容.transform;
-
-		// 左下角返回箭头
-		Button 返回按钮 = 建按钮(面板.transform, "返回", "", 取图("873.dat", "873.dat"), new Vector2(52f, 52f), new Vector2(8f, 26f), 16, Vector2.zero, Vector2.zero, Vector2.zero);
-		返回按钮.onClick.AddListener(delegate
-		{
-			部件.面板.SetActive(value: false);
-		});
+		建浏览栏(部件);
 
 		// 设置按钮 + 设置小面板
 		Button 设置按钮 = 建按钮(面板.transform, "设置", "设 置", 取图("7992.dat", "7992.dat"), new Vector2(86f, 40f), new Vector2(150f, 22f), 16, Vector2.zero, Vector2.zero, Vector2.zero);
 		设置按钮.onClick.AddListener(delegate
 		{
+			if (部件.设置社交文字 != null) 部件.设置社交文字.text = "好友 / 社交";
 			if (部件.设置面板 != null)
 			{
 				部件.设置面板.SetActive(!部件.设置面板.activeSelf);
@@ -826,6 +984,81 @@ public class 聊天系统 : MonoBehaviour
 		return 部件;
 	}
 
+	private void 建浏览栏(面板部件 部件)
+	{
+		Vector2 top = new Vector2(0, 1);
+		部件.标题 = 建文本(部件.面板.transform, "聊天标题", "", 18, 选中字色, new Vector2(368, 34), new Vector2(消息区左, -8), TextAnchor.MiddleLeft, false, top, top, top);
+		部件.更早按钮 = 建按钮(部件.面板.transform, "更早消息", "更早消息", 取图("7992.dat", "7992.dat"), new Vector2(86, 32), new Vector2(514, -8), 16, top, top, top);
+		部件.更早按钮.onClick.AddListener(() =>
+		{
+			if (部件.浏览截止 == 0) 部件.浏览截止 = 自增序号;
+			部件.显示上限 = Math.Min(消息总上限, 部件.显示上限 + 单页显示上限);
+			部件.加载更早 = true; 部件.跳到最新 = false; 部件.已刷新版本 = -1;
+		});
+		部件.最新按钮 = 建按钮(部件.面板.transform, "最新消息", "最新", 取图("7992.dat", "7992.dat"), new Vector2(86, 32), new Vector2(610, -8), 16, top, top, top);
+		部件.最新文字 = 部件.最新按钮.GetComponentInChildren<Text>();
+		部件.最新按钮.onClick.AddListener(() => 重置浏览(部件));
+		Transform source = null;
+		foreach (var root in 部件.面板.scene.GetRootGameObjects())
+			if (root.name == "城池信息界面UI") source = root.transform.Find("标题栏背景/关闭");
+		Image image = source == null ? null : source.GetComponent<Image>();
+		Button close = 建按钮(部件.面板.transform, "关闭聊天", image == null ? "×" : "", image == null ? null : image.sprite, new Vector2(42, 38), new Vector2(708, -5), 22, top, top, top);
+		if (source != null)
+		{
+			Button original = source.GetComponent<Button>();
+			if (original != null) { close.transition = original.transition; close.colors = original.colors; close.spriteState = original.spriteState; }
+		}
+		close.onClick.AddListener(() =>
+		{
+			if (部件.输入框 != null) 部件.输入框.DeactivateInputField();
+			部件.面板.SetActive(false);
+			if (部件.设置面板 != null) 部件.设置面板.SetActive(false);
+		});
+	}
+	private static void 重置浏览(面板部件 部件)
+	{
+		if (部件 == null) return;
+		部件.显示上限 = 单页显示上限; 部件.浏览截止 = 部件.最后显示序号 = 0;
+		部件.跳到最新 = true; 部件.加载更早 = false; 部件.已刷新版本 = -1;
+		部件.上次在底部 = false;
+	}
+	private void 恢复聊天(面板部件 部件)
+	{
+		if (部件 == null || 部件.面板 == null) return;
+		部件.面板.SetActive(true); 部件.已刷新版本 = -1;
+		部件.上次分辨率 = Vector2.zero;
+		刷新输入行(部件); 同步面板(部件); 适应键盘(部件);
+	}
+	private static void 适应键盘(面板部件 部件)
+	{
+		if (部件 == null || 部件.面板 == null || !部件.面板.activeInHierarchy) return;
+		var resolution = new Vector2(Screen.width, Screen.height);
+		Rect keyboard = TouchScreenKeyboard.visible ? TouchScreenKeyboard.area : Rect.zero;
+		Rect safe = Screen.safeArea;
+		if (部件.上次分辨率 == resolution && 部件.上次安全区 == safe && 部件.上次键盘 == keyboard) return;
+		部件.上次分辨率 = resolution; 部件.上次安全区 = safe; 部件.上次键盘 = keyboard;
+		if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, resolution.x, resolution.y);
+		if (keyboard.height > 0 && keyboard.yMax > safe.yMin && keyboard.yMin < safe.yMax)
+			safe = Rect.MinMaxRect(safe.xMin, Mathf.Clamp(keyboard.yMax, safe.yMin, safe.yMax), safe.xMax, safe.yMax);
+		RectTransform rect = (RectTransform)部件.面板.transform;
+		RectTransform parent = rect.parent as RectTransform;
+		if (parent == null) return;
+		rect.localScale = Vector3.one * 部件.原缩放; rect.anchoredPosition = 部件.原位置;
+		Canvas canvas = rect.GetComponentInParent<Canvas>();
+		Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+		var corners = new Vector3[4]; rect.GetWorldCorners(corners);
+		Vector2 min = RectTransformUtility.WorldToScreenPoint(camera, corners[0]), max = RectTransformUtility.WorldToScreenPoint(camera, corners[2]);
+		float ratio = Mathf.Clamp(Mathf.Min((safe.width - 12) / Mathf.Max(1, max.x - min.x), (safe.height - 12) / Mathf.Max(1, max.y - min.y)), .1f, 1f);
+		rect.localScale *= ratio; rect.GetWorldCorners(corners);
+		min = RectTransformUtility.WorldToScreenPoint(camera, corners[0]); max = RectTransformUtility.WorldToScreenPoint(camera, corners[2]);
+		Vector2 center = (min + max) / 2, half = (max - min) / 2;
+		Vector2 target = new Vector2(Mathf.Clamp(center.x, safe.xMin + half.x, Mathf.Max(safe.xMin + half.x, safe.xMax - half.x)),
+			Mathf.Clamp(center.y, safe.yMin + half.y, Mathf.Max(safe.yMin + half.y, safe.yMax - half.y)));
+		Vector2 before, after;
+		if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, center, camera, out before) &&
+			RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, target, camera, out after)) rect.anchoredPosition += after - before;
+	}
+
 	private void 建设置面板(面板部件 部件)
 	{
 		GameObject 面板 = 新建节点("聊天设置", 部件.面板.transform, new Vector2(240f, 190f), new Vector2(148f, 68f), Vector2.zero, Vector2.zero, Vector2.zero);
@@ -840,10 +1073,11 @@ public class 聊天系统 : MonoBehaviour
 		清空按钮.onClick.AddListener(delegate
 		{
 			清空聊天();
-			已读序号 = 自增序号;
+			重置浏览(世界部件); 重置浏览(战斗部件);
 			刷新未读红点();
 		});
 		Button 社交按钮 = 建按钮(面板.transform, "好友社交", "好友 / 社交", 按钮底, new Vector2(224f, 36f), new Vector2(8f, -92f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		部件.设置社交文字 = 社交按钮.GetComponentInChildren<Text>();
 		社交按钮.onClick.AddListener(delegate { 打开社交页("好友"); });
 		Button 关闭按钮 = 建按钮(面板.transform, "关闭", "关 闭", 按钮底, new Vector2(224f, 36f), new Vector2(8f, -134f), 15, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
 		关闭按钮.onClick.AddListener(delegate
@@ -882,12 +1116,19 @@ public class 聊天系统 : MonoBehaviour
 		});
 		部件.输入框 = 输入;
 		部件.输入提示 = 提示;
-		Button 发送 = 建按钮(部件.面板.transform, "发送", "发 送", 取图("7992.dat", "7992.dat"), new Vector2(发送按钮宽, 输入行高), new Vector2(发送按钮左, 输入行纵坐标), 16, Vector2.zero, Vector2.zero, Vector2.zero);
+		Button 发送 = 建按钮(部件.面板.transform, "发送", "记 录", 取图("7992.dat", "7992.dat"), new Vector2(发送按钮宽, 输入行高), new Vector2(发送按钮左, 输入行纵坐标), 16, Vector2.zero, Vector2.zero, Vector2.zero);
 		发送.onClick.AddListener(delegate
 		{
 			发送输入(部件);
 		});
 		部件.发送按钮 = 发送;
+		部件.只读提示 = 建文本(部件.面板.transform, "频道提示", "", 15, 未选中字色, new Vector2(输入框宽, 输入行高), new Vector2(输入框左, 输入行纵坐标), TextAnchor.MiddleLeft, false, Vector2.zero, Vector2.zero, Vector2.zero);
+		部件.社交按钮 = 建按钮(部件.面板.transform, "关系管理", "联系人", 取图("7992.dat", "7992.dat"), new Vector2(发送按钮宽, 输入行高), new Vector2(发送按钮左, 输入行纵坐标), 16, Vector2.zero, Vector2.zero, Vector2.zero);
+		部件.社交按钮.onClick.AddListener(() =>
+		{
+			if (相关角色ID != null) { 相关角色ID = 相关角色名 = null; 切换频道(当前频道); }
+			else 打开社交页(当前频道 == 聊天频道.传闻 || 当前频道 == 聊天频道.系统 ? "好友" : 频道名称[(int)当前频道]);
+		});
 	}
 
 	//切频道时同步输入行：能说话的换提示文字，只读频道把输入框锁上
@@ -898,7 +1139,14 @@ public class 聊天系统 : MonoBehaviour
 			return;
 		}
 		聊天频道 落点;
-		bool 可发言 = 取发言落点(当前频道, out 落点);
+		bool 可发言 = 相关角色ID == null && 取发言落点(当前频道, out 落点);
+		部件.输入框.gameObject.SetActive(可发言);
+		部件.发送按钮.gameObject.SetActive(可发言);
+		部件.只读提示.gameObject.SetActive(!可发言);
+		部件.社交按钮.gameObject.SetActive(!可发言);
+		部件.社交按钮.GetComponentInChildren<Text>().text = 相关角色ID != null ? "全部消息" :
+			当前频道 == 聊天频道.私聊 ? "联系人" : 当前频道 == 聊天频道.传闻 || 当前频道 == 聊天频道.系统 ? "社交" : 频道名称[(int)当前频道];
+		部件.只读提示.text = 相关角色ID != null ? "相关播报 · " + 相关角色名 : 取输入提示(当前频道);
 		if (部件.输入框.interactable != 可发言)
 		{
 			部件.输入框.interactable = 可发言;
@@ -958,6 +1206,11 @@ public class 聊天系统 : MonoBehaviour
 		}
 		聊天频道 落点;
 		bool 可发言 = 取发言落点(当前频道, out 落点);
+		if (相关角色ID != null)
+		{
+			部件.空提示.text = "尚无“" + 相关角色名 + "”的相关播报\n点击“全部消息”查看其他记录";
+			return;
+		}
 		string 文案 = ((当前频道 == 聊天频道.全部) ? "还没有任何消息" : ("「" + 频道名称[(int)当前频道] + "」还没有消息"));
 		if (可发言)
 		{
@@ -1000,8 +1253,8 @@ public class 聊天系统 : MonoBehaviour
 		部件.面板.SetActive(要打开);
 		if (要打开)
 		{
-			已读序号 = 自增序号;
-			部件.已刷新版本 = -1;
+			相关角色ID = 相关角色名 = null;
+			重置浏览(部件);
 			刷新输入行(部件);
 			刷新未读红点();
 			同步面板(部件);
@@ -1012,15 +1265,11 @@ public class 聊天系统 : MonoBehaviour
 		}
 	}
 
-	private void 切换频道(聊天频道 频道)
+	private void 切换频道(聊天频道 频道, bool clearRole = true)
 	{
-		// 私聊及关系频道进入真实 UGUI 关系/会话页；不把离线草稿写入公共播报列表。
-		if (频道 == 聊天频道.私聊 || 频道 == 聊天频道.军团 || 频道 == 聊天频道.师徒 || 频道 == 聊天频道.结拜)
-		{
-			打开社交页(频道名称[(int)频道]);
-			return;
-		}
+		if (clearRole) 相关角色ID = 相关角色名 = null;
 		当前频道 = 频道;
+		重置浏览(世界部件); 重置浏览(战斗部件);
 		PlayerPrefs.SetInt(频道存档键, (int)频道);
 		刷新战斗条();
 		刷新输入行(世界部件);
@@ -1031,14 +1280,20 @@ public class 聊天系统 : MonoBehaviour
 
 	private void 打开社交页(string 页面)
 	{
+		var origin = 世界部件 != null && 世界部件.面板.activeInHierarchy ? 世界部件 : 战斗部件;
 		if (全局变量.主界面UI对象 != null && 全局变量.主界面UI对象.activeInHierarchy && Dwsg.Social.社交界面入口.打开(页面))
 		{
+			Dwsg.Social.社交界面入口.Panel.ReturnToChatOnClose(() => 恢复聊天(origin));
 			if (世界部件 != null && 世界部件.面板 != null) 世界部件.面板.SetActive(false);
 			if (战斗部件 != null && 战斗部件.面板 != null) 战斗部件.面板.SetActive(false);
 			return;
 		}
 		// 战斗进行时保留播报面板，返回世界后才能编辑关系。
-		发送(聊天频道.系统, "社交", "社交关系页需在世界/封地界面打开；当前网络未连接。");
+		if (origin != null)
+		{
+			if (origin.只读提示 != null) origin.只读提示.text = "返回世界或封地后可管理联系人及关系";
+			if (origin.设置社交文字 != null) origin.设置社交文字.text = "需返回世界或封地";
+		}
 	}
 
 	private void 同步面板(面板部件 部件)
@@ -1054,11 +1309,19 @@ public class 聊天系统 : MonoBehaviour
 		}
 		if (部件.已刷新版本 != 数据版本 || 部件.已刷新频道 != 当前频道)
 		{
+			if (!部件.跳到最新 && !部件.加载更早 && 部件.浏览截止 == 0 && 部件.最后显示序号 > 0 && 部件.滚动.verticalNormalizedPosition > .02f)
+				部件.浏览截止 = 部件.最后显示序号;
 			部件.已刷新版本 = 数据版本;
 			部件.已刷新频道 = 当前频道;
-			刷新频道高亮(部件);
 			重建消息(部件);
 		}
+		// 滚回最新页底部才清除该页未读；正在看历史时新到达的消息保持未读。
+		else if (部件.浏览截止 == 0 && !部件.上次在底部 && 部件.滚动.verticalNormalizedPosition <= .02f)
+		{
+			聊天记录查询.标记已读(聊天记录查询.筛选(全部消息, 当前频道, 部件.显示上限, 0, 屏蔽角色, 相关角色ID, 相关角色名), 已读消息);
+			刷新频道高亮(部件);
+		}
+		部件.上次在底部 = 部件.滚动.verticalNormalizedPosition <= .02f;
 	}
 
 	private void 刷新频道高亮(面板部件 部件)
@@ -1074,37 +1337,53 @@ public class 聊天系统 : MonoBehaviour
 			if (i < 部件.频道文字.Count && 部件.频道文字[i] != null)
 			{
 				部件.频道文字[i].color = (选中 ? 选中字色 : 未选中字色);
+				int count = Math.Min(99, 聊天记录查询.未读(全部消息, 已读消息, (聊天频道)i, 屏蔽角色));
+				部件.频道文字[i].text = 频道名称[i] + (count > 0 ? " · " + count : "");
 			}
 		}
 	}
 
 	private void 重建消息(面板部件 部件)
 	{
+		float previousHeight = 部件.内容.rect.height;
+		Vector2 previousPosition = 部件.内容.anchoredPosition;
+		bool atBottom = 部件.滚动.verticalNormalizedPosition <= .02f;
 		for (int i = 部件.内容.childCount - 1; i >= 0; i--)
 		{
 			GameObject 旧行 = 部件.内容.GetChild(i).gameObject;
 			旧行.SetActive(value: false);
 			UnityEngine.Object.Destroy(旧行);
 		}
-		List<聊天消息> 待显示 = new List<聊天消息>();
-		int 起点 = Mathf.Max(0, 全部消息.Count - 单页显示上限);
-		for (int j = 起点; j < 全部消息.Count; j++)
-		{
-			if (当前频道 != 聊天频道.全部 && 全部消息[j].频道 != 当前频道)
-			{
-				continue;
-			}
-			待显示.Add(全部消息[j]);
-		}
+		var 待显示 = 聊天记录查询.筛选(全部消息, 当前频道, 部件.显示上限, 部件.浏览截止, 屏蔽角色, 相关角色ID, 相关角色名);
 		for (int k = 0; k < 待显示.Count; k++)
 		{
 			建消息行(部件, 待显示[k]);
 		}
-		if (部件.滚动 != null && 待显示.Count > 0)
+		if (部件.滚动 != null)
 		{
 			Canvas.ForceUpdateCanvases();
-			部件.滚动.verticalNormalizedPosition = 0f;
+			部件.滚动.StopMovement();
+			if (部件.跳到最新 || atBottom && 部件.浏览截止 == 0)
+			{
+				部件.滚动.verticalNormalizedPosition = 0f;
+				聊天记录查询.标记已读(待显示, 已读消息);
+			}
+			else
+			{
+				float heightAdded = 部件.加载更早 ? 部件.内容.rect.height - previousHeight : 0;
+				部件.内容.anchoredPosition = new Vector2(previousPosition.x, Mathf.Clamp(previousPosition.y + heightAdded, 0, Mathf.Max(0, 部件.内容.rect.height - 部件.滚动.viewport.rect.height)));
+				if (部件.加载更早) 聊天记录查询.标记已读(待显示, 已读消息);
+			}
 		}
+		部件.最后显示序号 = 待显示.Count == 0 ? 0 : 待显示[待显示.Count - 1].序号;
+		部件.跳到最新 = 部件.加载更早 = false;
+		var available = 聊天记录查询.筛选(全部消息, 当前频道, int.MaxValue, 部件.浏览截止, 屏蔽角色, 相关角色ID, 相关角色名);
+		部件.更早按钮.gameObject.SetActive(available.Count > 部件.显示上限);
+		int newer = 部件.浏览截止 == 0 ? 0 : 聊天记录查询.筛选(全部消息, 当前频道, int.MaxValue, 0, 屏蔽角色, 相关角色ID, 相关角色名).Count(x => x.序号 > 部件.浏览截止);
+		部件.最新按钮.gameObject.SetActive(待显示.Count > 0 || 部件.浏览截止 > 0);
+		部件.最新文字.text = newer > 0 ? "新 " + Math.Min(99, newer) + " 条" : "最新";
+		部件.标题.text = (相关角色ID == null ? 频道名称[(int)当前频道] : "相关消息") + " · 本次记录";
+		刷新频道高亮(部件); 刷新未读红点();
 		刷新空提示(部件, 待显示.Count == 0);
 	}
 
@@ -1117,15 +1396,39 @@ public class 聊天系统 : MonoBehaviour
 		// 头像
 		GameObject 头像对象 = 新建节点("头像", 行.transform, new Vector2(头像尺寸, 头像尺寸), Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
 		Image 头像图 = 头像对象.AddComponent<Image>();
-		Sprite 头像资源 = 取图("主界面_头像2", "主界面_头像2");
+		玩家数据结构.基础信息 role = null;
+		if (消息.关联角色ID != null && 全局变量.所有玩家数据表 != null)
+			foreach (var person in 全局变量.所有玩家数据表)
+				if (person != null && person.基础信息 != null && "local-" + person.基础信息.ID == 消息.关联角色ID) { role = person.基础信息; break; }
+		string selfId = 社交数据 == null ? null : 社交数据.CurrentPlayerId;
+		bool npc = role != null && 消息.关联角色ID != selfId;
+		Sprite 头像资源 = 消息.自己 ? 取图("主界面_头像2", "主界面_头像2") : null;
+		if (role != null && 全局变量.所有头像资源表 != null && role.头像 >= 0 && role.头像 < 全局变量.所有头像资源表.Count) 头像资源 = 全局变量.所有头像资源表[role.头像];
 		头像图.sprite = 头像资源;
 		头像图.type = Image.Type.Simple;
 		头像图.color = ((头像资源 == null) ? new Color(0.24f, 0.26f, 0.24f, 1f) : Color.white);
 		头像图.raycastTarget = false;
 		加细边框(头像对象.transform, 头像尺寸, 头像尺寸, new Color(0.451f, 0.396f, 0.235f, 0.9f), 1f);
+		bool canShowProfile = 消息.关联角色ID != null && !消息.自己 && Dwsg.Social.社交界面入口.Panel != null &&
+			Dwsg.Social.社交界面入口.Panel.Ready && 全局变量.主界面UI对象 != null && 全局变量.主界面UI对象.activeInHierarchy;
+		if (canShowProfile)
+		{
+			Button profile = 建按钮(行.transform, "查看名片", "名片", 取图("7992.dat", "7992.dat"), new Vector2(78, 名字行高), new Vector2(行宽 - 82, 0), 15, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1));
+			profile.onClick.AddListener(() =>
+			{
+				var panel = Dwsg.Social.社交界面入口.Panel;
+				if (panel != null && 全局变量.主界面UI对象 != null && 全局变量.主界面UI对象.activeInHierarchy && panel.OpenContact(消息.关联角色ID, () => 恢复聊天(部件)))
+					部件.面板.SetActive(false);
+			});
+		}
 
 		// 发送者（自己说的：名字用青色并缀「我」）
-		Text 名字 = 建文本(行.transform, "名字", (消息.自己 ? (消息.发送者 + "（我）") : 消息.发送者), 18, (消息.自己 ? 青字 : 名字色), new Vector2(行宽 - 行文字左偏移, 名字行高), new Vector2(行文字左偏移, 0f), TextAnchor.MiddleLeft, true, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		string sender = 消息.自己 ? 消息.发送者 + "（我）" : npc ? 消息.发送者 + (消息.发送者 == role.名字 ? " · NPC" : " · 关于" + role.名字 + "（NPC）") : 消息.发送者;
+		Text 名字 = 建文本(行.transform, "名字", sender, 18, (消息.自己 ? 青字 : 名字色), new Vector2(行宽 - 行文字左偏移 - (canShowProfile ? 90 : 0), 名字行高), new Vector2(行文字左偏移, 0f), TextAnchor.MiddleLeft, true, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		名字.horizontalOverflow = HorizontalWrapMode.Wrap;
+		名字.verticalOverflow = VerticalWrapMode.Overflow;
+		float nameHeight = Mathf.Max(名字行高, 名字.preferredHeight);
+		名字.rectTransform.sizeDelta = new Vector2(名字.rectTransform.sizeDelta.x, nameHeight);
 		加描边(名字, 描边色, 1.4f);
 
 		// 正文先建出来量高度，量完再塞进消息框里
@@ -1151,7 +1454,7 @@ public class 聊天系统 : MonoBehaviour
 
 		// 黑底金边的消息框
 		float 框宽 = 行宽 - 行文字左偏移;
-		GameObject 框对象 = 新建节点("消息框", 行.transform, new Vector2(框宽, 框高), new Vector2(行文字左偏移, -(名字行高 + 2f)), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+		GameObject 框对象 = 新建节点("消息框", 行.transform, new Vector2(框宽, 框高), new Vector2(行文字左偏移, -(nameHeight + 2f)), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
 		Image 框图 = 框对象.AddComponent<Image>();
 		框图.color = (消息.自己 ? 自己框底 : 消息框底);
 		框图.raycastTarget = false;
@@ -1166,7 +1469,7 @@ public class 聊天系统 : MonoBehaviour
 		正文框.anchoredPosition = new Vector2(框内边距, -框内边距);
 		正文框.sizeDelta = new Vector2(行文本宽, 文本高);
 
-		float 行高 = 名字行高 + 2f + 框高 + 6f;
+		float 行高 = nameHeight + 2f + 框高 + 6f;
 		if (行高 < 头像尺寸 + 6f)
 		{
 			行高 = 头像尺寸 + 6f;
@@ -1193,6 +1496,7 @@ public class 聊天系统 : MonoBehaviour
 		建纯色块(物体.transform, "金线", new Vector2(频道按钮宽 - 8f, 2f), new Vector2(4f, 3f), 金色线);
 		Text 文本 = 建文本(物体.transform, "文字", 名字, 16, 未选中字色, new Vector2(频道按钮宽, 频道按钮高), Vector2.zero, TextAnchor.MiddleCenter, true, 居中锚点, 居中锚点, 居中轴心);
 		加描边(文本, 描边色, 1.2f);
+		原界面文字样式.居中按钮文字(文本);
 		return 按钮;
 	}
 
@@ -1210,7 +1514,7 @@ public class 聊天系统 : MonoBehaviour
 		if (!string.IsNullOrEmpty(文案))
 		{
 			Text 文本 = 建文本(物体.transform, "文字", 文案, 字号, 选中字色, new Vector2(尺寸.x, 尺寸.y), Vector2.zero, TextAnchor.MiddleCenter, true, 居中锚点, 居中锚点, 居中轴心);
-			加描边(文本, 描边色, 1.2f);
+			原界面文字样式.按钮(文本);
 		}
 		return 按钮;
 	}

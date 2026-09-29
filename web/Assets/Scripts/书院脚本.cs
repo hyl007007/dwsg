@@ -1,3 +1,6 @@
+using System;
+using Dwsg.Window3;
+using 玩家数据结构;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,9 +15,17 @@ public class 书院脚本 : MonoBehaviour
 	public int 第几个封地;
 
 	public int 第几个建筑;
+	private 建筑信息 打开时书院;
+	private Text 研究费用文本;
+	private ScrollRect 科技滚动列表;
+	private float 科技列表原顶部;
+	private float 已布局费用高度 = -1;
 
 	public void 显示书院建筑信息()
-	{
+    {
+        var building = FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑);
+        if (building == null || building.类型 != 1 || 书院信息对象 == null) return;
+        打开时书院 = building;
 		float num = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].建筑信息表[第几个建筑].等级;
 		int num2 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].建筑信息表[第几个建筑].获取建筑头像索引();
 		书院信息对象.transform.GetChild(1).GetComponent<Image>().sprite = 全局变量.书院头像资源表[num2];
@@ -22,12 +33,14 @@ public class 书院脚本 : MonoBehaviour
 	}
 
 	public void 显示科技列表()
-	{
+    {
+        var building = FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑);
+        if (building == null || building.类型 != 1 || 书院列表对象 == null || 书院列表对象.transform.childCount < 21) return;
 		double 工程设计 = 全局变量.所有玩家数据表[第几个玩家].科技信息.工程设计;
 		Text component = 书院列表对象.transform.GetChild(0).GetChild(3).GetComponent<Text>();
 		Text component2 = 书院列表对象.transform.GetChild(0).GetChild(4).GetComponent<Text>();
 		component.text = "(" + 工程设计.ToString() + "级)";
-		if (工程设计 < 10.0)
+		if (工程设计 < 15.0)
 		{
 			component2.text = "升级:人口上限增加" + ((工程设计 + 1.0) * 5.0).ToString() + "%";
 		}
@@ -53,11 +66,11 @@ public class 书院脚本 : MonoBehaviour
 		component4.text = "(" + 工程设计.ToString() + "级)";
 		if (工程设计 < 10.0)
 		{
-			component2.text = "升级:粮食产量增加" + ((工程设计 + 1.0) * 10.0).ToString() + "%";
+			component2.text = "升级:粮食产量增加" + ((工程设计 + 1.0) * 5.0).ToString() + "%";
 		}
 		else
 		{
-			component2.text = "已满级:粮食产量增加" + (工程设计 * 10.0).ToString() + "%";
+			component2.text = "已满级:粮食产量增加" + (工程设计 * 5.0).ToString() + "%";
 		}
 		工程设计 = 全局变量.所有玩家数据表[第几个玩家].科技信息.行军技巧;
 		Text component5 = 书院列表对象.transform.GetChild(3).GetChild(3).GetComponent<Text>();
@@ -275,415 +288,138 @@ public class 书院脚本 : MonoBehaviour
 		{
 			component2.text = "已满级:招募战车资源时间-" + (工程设计 * 5.0).ToString() + "%,人口占用-" + (工程设计 * 10.0).ToString() + "%";
 		}
+		显示研究费用();
 	}
 
-	public void 升级选中科技()
-	{
-		int 等级 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].建筑信息表[第几个建筑].等级;
-		if (书院列表对象.transform.GetChild(0).GetChild(5).gameObject.activeSelf)
-		{
-			double 工程设计 = 全局变量.所有玩家数据表[第几个玩家].科技信息.工程设计;
-			if ((double)等级 > 工程设计 && 工程设计 < 15.0)
-			{
-				double num = 获取升级需要铜钱(2.0, 工程设计);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.工程设计 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(1).GetChild(5).gameObject.activeSelf)
-		{
-			double 征召技巧 = 全局变量.所有玩家数据表[第几个玩家].科技信息.征召技巧;
-			if ((double)等级 > 征召技巧 && 征召技巧 < 10.0)
-			{
-				double num2 = 获取升级需要铜钱(2.0, 征召技巧);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num2))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.征召技巧 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num2 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num2 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(2).GetChild(5).gameObject.activeSelf)
-		{
-			double 种植技术 = 全局变量.所有玩家数据表[第几个玩家].科技信息.种植技术;
-			if ((double)等级 > 种植技术 && 种植技术 < 10.0)
-			{
-				double num3 = 获取升级需要铜钱(0.24, 种植技术);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num3))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.种植技术 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num3 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num3 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(3).GetChild(5).gameObject.activeSelf)
-		{
-			double 行军技巧 = 全局变量.所有玩家数据表[第几个玩家].科技信息.行军技巧;
-			if ((double)等级 > 行军技巧 && 行军技巧 < 10.0)
-			{
-				double num4 = 获取升级需要铜钱(2.2, 行军技巧);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num4))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.行军技巧 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num4 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num4 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(4).GetChild(5).gameObject.activeSelf)
-		{
-			double 市场贸易 = 全局变量.所有玩家数据表[第几个玩家].科技信息.市场贸易;
-			if ((double)等级 > 市场贸易 && 市场贸易 < 10.0)
-			{
-				double num5 = 获取升级需要铜钱(0.24, 市场贸易);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num5))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.市场贸易 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num5 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num5 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(5).GetChild(5).gameObject.activeSelf)
-		{
-			double 建筑学 = 全局变量.所有玩家数据表[第几个玩家].科技信息.建筑学;
-			if ((double)等级 > 建筑学 && 建筑学 < 10.0)
-			{
-				double num6 = 获取升级需要铜钱(0.24, 建筑学);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num6))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.建筑学 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num6 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num6 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(6).GetChild(5).gameObject.activeSelf)
-		{
-			double 铸铁技术 = 全局变量.所有玩家数据表[第几个玩家].科技信息.铸铁技术;
-			if ((double)等级 > 铸铁技术 && 铸铁技术 < 10.0)
-			{
-				double num7 = 获取升级需要铜钱(2.8, 铸铁技术);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num7))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.铸铁技术 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num7 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num7 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(7).GetChild(5).gameObject.activeSelf)
-		{
-			double 甲胄制造 = 全局变量.所有玩家数据表[第几个玩家].科技信息.甲胄制造;
-			if ((double)等级 > 甲胄制造 && 甲胄制造 < 10.0)
-			{
-				double num8 = 获取升级需要铜钱(2.5, 甲胄制造);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num8))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.甲胄制造 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num8 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num8 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(8).GetChild(5).gameObject.activeSelf)
-		{
-			double 药草研究 = 全局变量.所有玩家数据表[第几个玩家].科技信息.药草研究;
-			if ((double)等级 > 药草研究 && 药草研究 < 10.0)
-			{
-				double num9 = 获取升级需要铜钱(2.5, 药草研究);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num9))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.药草研究 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num9 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num9 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(9).GetChild(5).gameObject.activeSelf)
-		{
-			double 阵法技巧 = 全局变量.所有玩家数据表[第几个玩家].科技信息.阵法技巧;
-			if ((double)等级 > 阵法技巧 && 阵法技巧 < 10.0)
-			{
-				double num10 = 获取升级需要铜钱(2.0, 阵法技巧);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num10))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.阵法技巧 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num10 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num10 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(10).GetChild(5).gameObject.activeSelf)
-		{
-			double 抛射技巧 = 全局变量.所有玩家数据表[第几个玩家].科技信息.抛射技巧;
-			if ((double)等级 > 抛射技巧 && 抛射技巧 < 10.0)
-			{
-				double num11 = 获取升级需要铜钱(2.0, 抛射技巧);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num11))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.抛射技巧 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num11 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num11 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(11).GetChild(5).gameObject.activeSelf)
-		{
-			double 驾驭技巧 = 全局变量.所有玩家数据表[第几个玩家].科技信息.驾驭技巧;
-			if ((double)等级 > 驾驭技巧 && 驾驭技巧 < 10.0)
-			{
-				double num12 = 获取升级需要铜钱(2.0, 驾驭技巧);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num12))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.驾驭技巧 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num12 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num12 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(12).GetChild(5).gameObject.activeSelf)
-		{
-			double 战车设计 = 全局变量.所有玩家数据表[第几个玩家].科技信息.战车设计;
-			if ((double)等级 > 战车设计 && 战车设计 < 10.0)
-			{
-				double num13 = 获取升级需要铜钱(2.0, 战车设计);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num13))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.战车设计 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num13 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num13 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(13).GetChild(5).gameObject.activeSelf)
-		{
-			double 统帅能力 = 全局变量.所有玩家数据表[第几个玩家].科技信息.统帅能力;
-			if ((double)等级 > 统帅能力 && 统帅能力 < 10.0)
-			{
-				double num14 = 获取升级需要铜钱(3.0, 统帅能力);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num14))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.统帅能力 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num14 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num14 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(14).GetChild(5).gameObject.activeSelf)
-		{
-			double 信仰 = 全局变量.所有玩家数据表[第几个玩家].科技信息.信仰;
-			if ((double)等级 > 信仰 && 信仰 < 10.0)
-			{
-				double num15 = 获取升级需要铜钱(0.4, 信仰);
-				if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除铜钱(num15))
-				{
-					全局变量.所有玩家数据表[第几个玩家].科技信息.信仰 += 1.0;
-					全局变量.提示类.显示信息("升级成功,消耗铜钱:" + (num15 / 10000.0).ToString() + "W");
-				}
-				else
-				{
-					全局变量.提示类.显示信息("铜钱不足 " + (num15 / 10000.0).ToString() + "W 升级失败!");
-				}
-			}
-		}
-		else if (书院列表对象.transform.GetChild(15).GetChild(5).gameObject.activeSelf)
-		{
-			double 仓储 = 全局变量.所有玩家数据表[第几个玩家].科技信息.仓储;
-			if ((double)等级 > 10.0 + 仓储)
-			{
-				if (仓储 < 5.0)
-				{
-					double num16 = 获取升级需要铜钱(5.0, 仓储);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num16))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.仓储 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num16 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num16 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		else if (书院列表对象.transform.GetChild(16).GetChild(5).gameObject.activeSelf)
-		{
-			double 安置 = 全局变量.所有玩家数据表[第几个玩家].科技信息.安置;
-			if ((double)等级 > 10.0 + 安置)
-			{
-				if (安置 < 5.0)
-				{
-					double num17 = 获取升级需要铜钱(5.0, 安置);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num17))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.安置 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num17 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num17 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		else if (书院列表对象.transform.GetChild(17).GetChild(5).gameObject.activeSelf)
-		{
-			double 格斗 = 全局变量.所有玩家数据表[第几个玩家].科技信息.格斗;
-			if ((double)等级 > 10.0 + 格斗)
-			{
-				if (格斗 < 5.0)
-				{
-					double num18 = 获取升级需要铜钱(5.0, 格斗);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num18))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.格斗 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num18 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num18 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		else if (书院列表对象.transform.GetChild(18).GetChild(5).gameObject.activeSelf)
-		{
-			double 精准 = 全局变量.所有玩家数据表[第几个玩家].科技信息.精准;
-			if ((double)等级 > 10.0 + 精准)
-			{
-				if (精准 < 5.0)
-				{
-					double num19 = 获取升级需要铜钱(5.0, 精准);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num19))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.精准 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num19 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num19 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		else if (书院列表对象.transform.GetChild(19).GetChild(5).gameObject.activeSelf)
-		{
-			double 驯马 = 全局变量.所有玩家数据表[第几个玩家].科技信息.驯马;
-			if ((double)等级 > 10.0 + 驯马)
-			{
-				if (驯马 < 5.0)
-				{
-					double num20 = 获取升级需要铜钱(5.0, 驯马);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num20))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.驯马 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num20 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num20 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		else if (书院列表对象.transform.GetChild(20).GetChild(5).gameObject.activeSelf)
-		{
-			double 精工 = 全局变量.所有玩家数据表[第几个玩家].科技信息.精工;
-			if ((double)等级 > 10.0 + 精工)
-			{
-				if (精工 < 5.0)
-				{
-					double num21 = 获取升级需要铜钱(5.0, 精工);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.扣除黄金(num21))
-					{
-						全局变量.所有玩家数据表[第几个玩家].科技信息.精工 += 1.0;
-						全局变量.提示类.显示信息("升级成功,消耗黄金:" + (num21 / 10000.0).ToString() + "W");
-					}
-					else
-					{
-						全局变量.提示类.显示信息("黄金不足 " + (num21 / 10000.0).ToString() + "W 升级失败!");
-					}
-				}
-			}
-			else
-			{
-				全局变量.提示类.显示信息("书院等级不足!");
-			}
-		}
-		显示科技列表();
-	}
+    public void 升级选中科技()
+    {
+        var building = FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑);
+        if (building == null || !ReferenceEquals(building, 打开时书院)) { 全局变量.提示类.显示信息("书院已变化，请重新打开。"); return; }
+        int selected = 选中科技();
+        if (selected < 0) { 全局变量.提示类.显示信息("请先选择要研究的科技。"); return; }
+        var result = FiefActions.Research(第几个玩家, 第几个封地, 第几个建筑, selected);
+        全局变量.提示类.显示信息(result.Message); 显示科技列表(); 显示研究费用();
+    }
+    private int 选中科技()
+    {
+        if (书院列表对象 == null) return -1;
+        for (int i = 0; i < 21 && i < 书院列表对象.transform.childCount; i++)
+        {
+            var row = 书院列表对象.transform.GetChild(i);
+            if (row.gameObject.activeSelf && row.childCount > 5 && row.GetChild(5).gameObject.activeSelf) return i;
+        }
+        return -1;
+    }
+    private void 显示研究费用()
+    {
+        if (书院信息对象 == null) return;
+        if (研究费用文本 == null)
+        {
+            var go = new GameObject("研究费用", typeof(RectTransform)); go.transform.SetParent(transform, false);
+            var rect = (RectTransform)go.transform; rect.anchorMin = rect.anchorMax = new Vector2(.5f,.5f);
+            rect.pivot = new Vector2(.5f, 0);
+            rect.sizeDelta = new Vector2(405, 52); rect.anchoredPosition = new Vector2(16.75f, -172);
+            研究费用文本 = go.AddComponent<Text>();
+            var source = 书院信息对象.transform.GetChild(2).GetComponent<Text>();
+            研究费用文本.font = source.font; 研究费用文本.fontSize = 16; 研究费用文本.color = source.color;
+            研究费用文本.alignment = TextAnchor.MiddleLeft; 研究费用文本.raycastTarget = false;
+            研究费用文本.horizontalOverflow = HorizontalWrapMode.Wrap; 研究费用文本.verticalOverflow = VerticalWrapMode.Truncate;
+        }
+        int index = 选中科技();
+        if (index < 0) { 更新研究费用("选择科技，查看费用后点“升级”。"); return; }
+        var p = FiefActions.Player(第几个玩家); if (p == null) { 更新研究费用("请重新打开书院。"); return; }
+        double level = FiefActions.ResearchLevel(p.科技信息, index);
+        更新研究费用(level >= FiefActions.ResearchCap(index) ? "科技已满级。" :
+            "需书院" + FiefActions.ResearchRequirement(index, level) + "级 · " + (index >= 15 ? "黄金" : "铜钱") + FiefActions.ResearchCost(index, level).ToString("0") + "\n" + (FiefActions.ResearchError(第几个玩家, 第几个封地, 第几个建筑, index) ?? "可研究，点“升级”完成。"));
+    }
+    private void 更新研究费用(string text)
+    {
+        研究费用文本.text = text;
+        float height = Mathf.Max(52, 研究费用文本.preferredHeight + 4);
+        if (Math.Abs(height - 已布局费用高度) < .1f) return;
+        var fee = 研究费用文本.rectTransform;
+        fee.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+        if (科技滚动列表 == null)
+        {
+            foreach (var scroll in GetComponentsInChildren<ScrollRect>(true))
+            {
+                if (scroll.content == null || scroll.content.gameObject != 书院列表对象 || scroll.viewport == null) continue;
+                科技滚动列表 = scroll;
+                var original = (RectTransform)scroll.transform;
+                科技列表原顶部 = original.anchoredPosition.y + original.rect.height * (1 - original.pivot.y);
+                break;
+            }
+        }
+        if (科技滚动列表 == null) return;
+        var list = (RectTransform)科技滚动列表.transform;
+        float position = 科技滚动列表.verticalNormalizedPosition;
+        // 原裁剪在整个 ScrollRect 上；费用独立留在它下方，视口再隔开内容与原滚动条。
+        float bottom = list.parent.InverseTransformPoint(fee.TransformPoint(new Vector3(0, fee.rect.yMax, 0))).y + 8;
+        float listHeight = Mathf.Max(64, 科技列表原顶部 - bottom);
+        list.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, listHeight);
+        list.anchoredPosition = new Vector2(list.anchoredPosition.x, 科技列表原顶部 - listHeight * (1 - list.pivot.y));
+        var viewport = 科技滚动列表.viewport;
+        viewport.anchorMin = Vector2.zero; viewport.anchorMax = Vector2.one;
+        viewport.offsetMin = Vector2.zero; viewport.offsetMax = new Vector2(-28, 0);
+        if (viewport.GetComponent<RectMask2D>() == null && viewport.GetComponent<Mask>() == null)
+            viewport.gameObject.AddComponent<RectMask2D>();
+        var content = 科技滚动列表.content;
+        var grid = content.GetComponent<GridLayoutGroup>();
+        float width = Mathf.Max(64, viewport.rect.width - 12);
+        float delta = grid == null ? 0 : width - grid.cellSize.x;
+        content.anchorMin = content.anchorMax = new Vector2(0, 1); content.pivot = new Vector2(0, 1);
+        content.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
+        content.anchoredPosition = new Vector2(6, 0);
+        if (grid != null)
+        {
+            grid.cellSize = new Vector2(width, grid.cellSize.y);
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 1;
+            for (int i = 0; i < content.childCount; i++)
+            {
+                var row = content.GetChild(i);
+                if (row.childCount < 6) continue;
+                for (int j = 0; j < 6; j++)
+                {
+                    if (j != 0 && j != 3 && j != 4 && j != 5) continue;
+                    var child = row.GetChild(j) as RectTransform;
+                    if (child == null) continue;
+                    child.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, Mathf.Max(1, child.rect.width + delta));
+                    if (j == 3 || j == 4) child.anchoredPosition += new Vector2(delta / 2, 0);
+                }
+            }
+        }
+        var scrollbar = 科技滚动列表.verticalScrollbar;
+        if (scrollbar != null)
+        {
+            var bar = (RectTransform)scrollbar.transform;
+            float barWidth = bar.rect.width;
+            bar.anchorMin = new Vector2(1, 0); bar.anchorMax = Vector2.one; bar.pivot = new Vector2(.5f, .5f);
+            bar.sizeDelta = new Vector2(barWidth, -46); bar.anchoredPosition = new Vector2(-barWidth / 2, 0);
+            bar.SetAsLastSibling();
+            // 原轨道只有滑块和箭头 Graphic；透明命中面让空轨道也能直接点击。
+            var track = bar.GetComponent<Graphic>();
+            if (track == null)
+            {
+                var image = bar.gameObject.AddComponent<Image>(); image.color = new Color(1, 1, 1, 0); track = image;
+            }
+            track.raycastTarget = true; scrollbar.targetGraphic = track;
+            摆放滚动箭头(bar.Find("Sliding Area/Image") as RectTransform, true);
+            摆放滚动箭头(bar.Find("Sliding Area/Image (1)") as RectTransform, false);
+        }
+        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        科技滚动列表.verticalNormalizedPosition = position;
+        已布局费用高度 = height;
+    }
+    private static void 摆放滚动箭头(RectTransform arrow, bool up)
+    {
+        if (arrow == null) return;
+        arrow.anchorMin = arrow.anchorMax = new Vector2(.5f, up ? 1 : 0); arrow.pivot = new Vector2(.5f, .5f);
+        arrow.anchoredPosition = new Vector2(0, (up ? 1 : -1) * arrow.rect.height / 2);
+    }
 
 	public void 选中高亮()
 	{
+        显示研究费用();
 		int childCount = 书院列表对象.transform.childCount;
 		for (int i = 0; i < childCount; i++)
 		{
@@ -706,18 +442,4 @@ public class 书院脚本 : MonoBehaviour
 		}
 	}
 
-	private double 获取升级需要铜钱(double 基数, double 等级)
-	{
-		double num = 基数;
-		for (int i = 0; (double)i < 等级; i++)
-		{
-			num *= 2.0;
-		}
-		num *= 10000.0;
-		if (num > 15000000.0)
-		{
-			num = 15000000.0;
-		}
-		return num;
-	}
 }

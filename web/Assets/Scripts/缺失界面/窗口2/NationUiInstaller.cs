@@ -13,9 +13,9 @@ namespace 缺失界面.窗口2
         private 显示概况脚本 overview;
         private NationOverviewNotices notices;
         private Toggle overviewTab;
+        private 显示国家列表 nationList;
         private readonly List<Selectable> ownControls = new List<Selectable>();
         private readonly Dictionary<Selectable, bool> savedControlStates = new Dictionary<Selectable, bool>();
-        private bool foreignView;
         private string ViewedCode { get { return overview == null ? NationDataSource.Current.OwnNationCode : overview.当前查看国号; } }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -77,6 +77,17 @@ namespace 缺失界面.窗口2
             Bind(country, "个人布局/信息列表布局/轮选时间/查看按钮", NationPage.轮选);
             // The old rank callback opened change-country. Keep the existing office popup and correct its copy.
             Bind(country, "概况布局/信息列表布局/排名/查看按钮", NationPage.国家排行, true);
+            var nationName = country.Find("概况布局/信息列表布局/国名/查看按钮");
+            var nationNameButton = nationName == null ? null : nationName.GetComponent<Button>();
+            if (nationNameButton != null)
+            {
+                nationNameButton.onClick.AddListener(() =>
+                {
+                    if (nationList != null) { nationList.gameObject.SetActive(true); nationList.刷新显示(); }
+                    else if (全局变量.提示类 != null) 全局变量.提示类.显示信息("国家列表未就绪，请返回重试。");
+                });
+                界面窗口管理器.注册运行时按钮(nationNameButton);
+            }
             var officeTextObject = country.Find("官职说明/官职说明文本"); var officeText = officeTextObject == null ? null : officeTextObject.GetComponent<Text>();
             if (officeText != null)
             {
@@ -91,6 +102,7 @@ namespace 缺失界面.窗口2
                 AddFooter(ui, footer, "国家排行", NationPage.国家排行, .71f);
             }
             notices = country.gameObject.AddComponent<NationOverviewNotices>();
+            NationOriginalTabs.Install(country, Window, () => ViewedCode);
             var tab = country.Find("选项列表/切换/概况"); overviewTab = tab == null ? null : tab.GetComponent<Toggle>();
             foreach (string path in new[] { "个人布局", "选项列表/切换/个人", "概况布局/进入国库", "概况布局/征调兵马", "概况布局/信息列表布局/科技等级/查看按钮", "换国", "界面操作/国家管理" })
             {
@@ -99,6 +111,7 @@ namespace 缺失界面.窗口2
             }
             foreach (GameObject sceneRoot in country.gameObject.scene.GetRootGameObjects())
             {
+                if (sceneRoot.name == "国家列表布局") nationList = sceneRoot.GetComponent<显示国家列表>();
                 if (sceneRoot.name != "主界面UI") continue;
                 var entry = sceneRoot.transform.Find("主界面_国家"); var button = entry == null ? null : entry.GetComponent<Button>();
                 if (button != null) button.onClick.AddListener(() => OpenOriginalNation(NationDataSource.Current.OwnNationCode));
@@ -112,17 +125,18 @@ namespace 缺失界面.窗口2
             if (NationDataSource.Current.ReadNation(code) == null && (code ?? "") != NationDataSource.Current.OwnNationCode) return false;
             overview.查看国号 = code ?? "";
             bool foreign = overview.当前查看国号 != NationDataSource.Current.OwnNationCode;
-            if (foreign != foreignView)
+            bool noNation = NationDataSource.Current.ReadNation(overview.当前查看国号) == null;
+            var changeNation = originalCountry.Find("换国");
+            foreach (var control in ownControls)
             {
-                foreach (var control in ownControls)
-                {
-                    if (control == null) continue;
-                    if (foreign) { savedControlStates[control] = control.interactable; control.interactable = false; }
-                    else if (savedControlStates.ContainsKey(control)) control.interactable = savedControlStates[control];
-                }
-                if (!foreign) savedControlStates.Clear();
-                foreignView = foreign;
+                if (control == null) continue;
+                bool changeEntry = changeNation != null && (control.transform == changeNation || control.transform.IsChildOf(changeNation));
+                bool restricted = foreign || (noNation && !changeEntry);
+                if (restricted)
+                { if (!savedControlStates.ContainsKey(control)) savedControlStates[control] = control.interactable; control.interactable = false; }
+                else if (savedControlStates.ContainsKey(control)) { control.interactable = savedControlStates[control]; savedControlStates.Remove(control); }
             }
+            if (changeNation != null) NationOriginalControls.Caption(changeNation.GetComponent<Button>(), noNation ? "入国" : "换国", overview.国家名字);
             foreach (string path in new[] { "个人布局", "国库", "科技详细", "官职说明" })
             { var panel = originalCountry.Find(path); if (panel != null) panel.gameObject.SetActive(false); }
             if (overviewTab != null) overviewTab.isOn = true;
@@ -164,16 +178,18 @@ namespace 缺失界面.窗口2
         public void Refresh()
         {
             var data = NationDataSource.Current; var country = data.ReadNation(overview == null ? data.OwnNationCode : overview.当前查看国号);
-            SetSummary(notice, "公告：" + (country == null || country.Notice.Length == 0 ? "尚未发布，可查看并编辑" : Preview(country.Notice)));
-            SetSummary(declaration, "宣告：" + (country == null || country.Declaration.Length == 0 ? "尚未发布，可查看并编辑" : Preview(country.Declaration)));
-            if (welfare != null) welfare.text = country == null ? "无国家" : NationDataSource.Number(country.Welfare);
+            SetSummary(notice, "公告：" + (country == null || country.Notice.Length == 0 ? "尚未发布" : Preview(country.Notice)));
+            SetSummary(declaration, "宣告：" + (country == null || country.Declaration.Length == 0 ? "尚未发布" : Preview(country.Declaration)));
+            if (welfare != null)
+            {
+                welfare.text = country == null ? "无国家" : NationDataSource.Number(country.Welfare);
+                NationOriginalControls.SingleLine(welfare);
+            }
         }
         private static void SetSummary(Text text, string value)
         {
             if (text == null) return;
-            text.supportRichText = false; text.fontSize = 12; text.lineSpacing = 1;
-            text.resizeTextForBestFit = false; text.horizontalOverflow = HorizontalWrapMode.Overflow;
-            text.verticalOverflow = VerticalWrapMode.Truncate; text.text = value;
+            text.text = value; NationOriginalControls.SingleLine(text);
         }
         private static string Preview(string text) { text = text.Replace('\n', ' ').Replace('\r', ' '); return text.Length <= 26 ? text : text.Substring(0, 26) + "…"; }
     }

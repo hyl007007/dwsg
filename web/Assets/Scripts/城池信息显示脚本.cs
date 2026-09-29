@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using Dwsg.Window3;
+using 缺失界面.窗口4;
 
 public class 城池信息显示脚本 : MonoBehaviour
 {
@@ -74,7 +75,7 @@ public class 城池信息显示脚本 : MonoBehaviour
 				case "收藏": 动作 = 收藏城池; break;
 				case "进入城池": 动作 = 进入城池; break;
 				case "修筑城池": 动作 = 修筑城池; break;
-				case "城主征收": 动作 = 城主征收; break;
+				case "城主征收": 动作 = 出征驻防本城池; 规范驻防按钮文字(按钮); break;
 				case "国家征收": 动作 = 国家征收; break;
 				case "竞选": 动作 = 城主竞选; break;
 				case "查看按钮": 动作 = 查看国家; break;
@@ -88,6 +89,20 @@ public class 城池信息显示脚本 : MonoBehaviour
 			按钮.onClick.AddListener(动作);
 			界面窗口管理器.注册运行时按钮(按钮);
 		}
+	}
+
+	private static void 规范驻防按钮文字(Button 按钮)
+	{
+		var 字 = 按钮.GetComponentInChildren<Text>(true);
+		if (字 == null) return;
+		字.text = "派遣驻防";
+		字.fontSize = 18;
+		字.fontStyle = FontStyle.Normal;
+		字.supportRichText = false;
+		字.resizeTextForBestFit = false;
+		字.alignment = TextAnchor.MiddleCenter;
+		军事界面样式.拉伸(字.rectTransform, 4);
+		原界面文字样式.按钮(字);
 	}
 
 	private void 收紧公告摘要框()
@@ -267,8 +282,21 @@ public class 城池信息显示脚本 : MonoBehaviour
             {
                 全局变量.提示类.显示信息("路径不通!");
             }
-        }else
-            全局变量.提示类.显示信息("当前无法驻防!");
+        }
+        else
+        {
+            var 检查 = 和平驻防规则.检查目标(CityLocalAdapter.Me, 城池);
+            if (!检查.成功) { 城池提示(检查.说明); return; }
+            var 驻防选择将领 = CityNavigation.Find<选择出征将领>(v => v.name == "攻占城池出征界面UI");
+            if (驻防选择将领 == null) { 城池提示("驻防将领选择界面尚未就绪。"); return; }
+            驻防选择将领.index = 0;
+            驻防选择将领.城池坐标x = 城池.坐标x;
+            驻防选择将领.城池坐标y = 城池.坐标y;
+            驻防选择将领.gameObject.SetActive(true);
+            驻防选择将领.切换出征封地(第几个封地);
+            驻防选择将领.刷新城池();
+            驻防选择将领.设置和平驻防模式(true);
+        }
 
     }
 

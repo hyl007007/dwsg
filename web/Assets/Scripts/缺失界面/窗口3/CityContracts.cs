@@ -33,7 +33,7 @@ namespace Dwsg.Window3
         public bool Fighting, CanReadDefenders;
         public long ObservedUtc;
         public readonly List<string> Defenders = new List<string>();
-        public string Connection = "离线 · 本地公开信息，未向服务器发送侦查";
+        public string Connection = "地图观察";
     }
 
     // Only module state. Cities, players and treasuries stay in the existing world save.

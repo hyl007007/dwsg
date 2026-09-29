@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.Events;
+using Dwsg.Window1;
 
 namespace Dwsg.Window3
 {
@@ -41,6 +42,7 @@ namespace Dwsg.Window3
         private readonly Dictionary<CityPage, CityPanel> pages = new Dictionary<CityPage, CityPanel>();
         internal readonly 城池信息显示脚本 View;
         internal readonly Font Font;
+        internal readonly Window1Style NativeStyle;
         internal readonly Sprite ButtonSprite, CloseSprite, InfoSprite;
         internal readonly RectTransform TitleDecor, FrameDecor, InfoDecor, BorderDecor;
         private readonly Sprite oldTitleText;
@@ -50,6 +52,7 @@ namespace Dwsg.Window3
         public CityPanels(城池信息显示脚本 view)
         {
             View = view; Font = view.城池名字坐标.font;
+            NativeStyle = Window1Style.FromScene(view.gameObject.scene);
             TitleDecor = DecorNamed("标题栏背景"); FrameDecor = DecorNamed("黄色背景图");
             InfoDecor = DecorNamed("通用界面背景图"); BorderDecor = DecorNamed("通用界面边框");
             var infoImage = InfoDecor == null ? null : InfoDecor.GetComponentsInChildren<Image>(true).FirstOrDefault(i => i.sprite != null);
@@ -150,6 +153,7 @@ namespace Dwsg.Window3
         private readonly List<GameObject> rows = new List<GameObject>();
         private Coroutine ticker;
         private Text progress;
+        private CityRepairOrder displayedRepair;
         public int X, Y, Tab;
         internal string ConfirmationTitle, ConfirmationDetail;
         internal Func<CityResult> Command;
@@ -212,7 +216,7 @@ namespace Dwsg.Window3
             // background sprite to this information area instead of copying its oversize rect.
             Image(info, ui.InfoSprite, ui.InfoSprite == null ? new Color(.04f, .17f, .14f) : Color.white);
             ui.Decor(ui.BorderDecor, Box("信息边框", pane, new Vector2(682, 354), new Vector2(0, 16)));
-            subtitle = Label("城池坐标与状态", pane, "离线 · 本地城池", new Vector2(636, 38), new Vector2(0, 161), 14, Quiet);
+            subtitle = Label("城池坐标与状态", pane, "城池状态", new Vector2(636, 38), new Vector2(0, 161), 14, Quiet);
             tabs = Box("分页", pane, new Vector2(644, 33), new Vector2(0, 121));
             var tabLayout = tabs.gameObject.AddComponent<GridLayoutGroup>();
             tabLayout.cellSize = new Vector2(150, 32); tabLayout.spacing = new Vector2(6, 0);
@@ -235,11 +239,11 @@ namespace Dwsg.Window3
             contentMinimum = content.gameObject.AddComponent<LayoutElement>(); contentMinimum.minHeight = 218;
             var fitter = content.gameObject.AddComponent<ContentSizeFitter>(); fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             scroll.content = content;
-            var barRect = Box("滚动条", pane, new Vector2(9, 218), new Vector2(329, -13)); Image(barRect, null, new Color(.04f, .12f, .10f));
-            var bar = barRect.gameObject.AddComponent<Scrollbar>(); bar.direction = Scrollbar.Direction.BottomToTop;
-            var handle = Box("滑块", barRect, Vector2.zero, Vector2.zero); Image(handle, null, Gold).raycastTarget = true; bar.handleRect = handle; bar.targetGraphic = handle.GetComponent<Image>(); scroll.verticalScrollbar = bar;
+            var bar = ui.NativeStyle.VerticalScrollbar(pane); var barRect = (RectTransform)bar.transform;
+            barRect.anchorMin = barRect.anchorMax = new Vector2(.5f,.5f); barRect.pivot = new Vector2(.5f,.5f);
+            barRect.sizeDelta = new Vector2(12,218); barRect.anchoredPosition = new Vector2(329,-13); scroll.verticalScrollbar = bar;
             scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
-            feedback = Label("操作反馈", pane, "离线 · 所有操作仅修改本地世界", new Vector2(642, 35), new Vector2(0, -141), 13, Quiet);
+            feedback = Label("操作反馈", pane, "", new Vector2(642, 35), new Vector2(0, -141), 13, Quiet);
             footer = Box("操作栏", pane, new Vector2(644, 39), new Vector2(0, -195));
         }
         private void OnEnable()
@@ -254,7 +258,17 @@ namespace Dwsg.Window3
             {
                 yield return new WaitForSecondsRealtime(1);
                 CityLocalAdapter.Local.Settle();
-                if (progress != null) progress.text = ProgressText();
+                if (progress != null)
+                {
+                    var pending = CityLocalAdapter.Local.Pending(X, Y);
+                    if (displayedRepair != null && pending == null)
+                    {
+                        var finished = displayedRepair; var city = CityLocalAdapter.City(X, Y);
+                        bool cancelled = city == null || city.正在交战 || city.城主 != finished.Owner || city.国家 != finished.Nation;
+                        Render(); Result(cancelled ? CityResult.Fail("修筑已取消，费用已退还。") : CityResult.Ok((finished.Kind == CityRepairKind.Wall ? "城墙" : "道路") + "修筑完成。"));
+                    }
+                    else progress.text = ProgressText();
+                }
             }
         }
         private void Clear()
@@ -303,11 +317,11 @@ namespace Dwsg.Window3
             scroll.viewport.anchoredPosition = new Vector2(-5, viewportY);
             contentMinimum.minHeight = viewportHeight;
             var barRect = (RectTransform)scroll.verticalScrollbar.transform;
-            barRect.sizeDelta = new Vector2(9, viewportHeight); barRect.anchoredPosition = new Vector2(329, viewportY);
+            barRect.sizeDelta = new Vector2(12, viewportHeight); barRect.anchoredPosition = new Vector2(329, viewportY);
             heading.text = page == CityPage.Civic ? "城池内政" : page == CityPage.Scout ? "侦查结果" : page == CityPage.Bookmarks ? "城池收藏册" : page == CityPage.Confirm ? ConfirmationTitle : page == CityPage.Lord ? "本城城主" : "本城归属";
             string cityName = c == null ? "" : c.名称 ?? "";
-            subtitle.text = c == null ? "离线 · 当前世界的收藏坐标" : (cityName.Length > 24 ? cityName.Substring(0, 24) + "…" : cityName) + "（" + X + "," + Y + "）  · " + (c.正在交战 ? "交战中" : "和平") + "  · 本地世界";
-            feedback.text = "离线 · 所有操作仅修改本地世界"; feedback.color = Quiet;
+            subtitle.text = c == null ? "城池收藏" : (cityName.Length > 24 ? cityName.Substring(0, 24) + "…" : cityName) + "（" + X + "," + Y + "）  · " + (c.正在交战 ? "交战中" : "和平");
+            feedback.text = ""; feedback.color = Quiet;
             for (int i = 0; i < tabButtons.Count; i++) SetEnabled(tabButtons[i], i + 1 != Tab);
             if (page == CityPage.Bookmarks) RenderBookmarks();
             else if (c == null) Row("这座城池已不存在。返回地图后重新选择城池。", 70);
@@ -331,48 +345,49 @@ namespace Dwsg.Window3
         }
         private void RenderDefenders(城池信息库类 c)
         {
-            if (!CityLocalAdapter.Friendly(c)) { Row("敌方或无主城的驻防细节未公开。当前没有网络侦查，不能获取对方将领、兵力或秘密。", 96); return; }
+            if (!CityLocalAdapter.Friendly(c)) { Row("驻防详情仅对本国城池开放。", 96); return; }
             var data = CityLocalAdapter.DefenderRows(c);
-            Row("本地驻防记录：" + data.Count + "    驻防上限：" + Number(c.获取驻防上限()), 48);
+            Row("驻防将领：" + data.Count + "    驻防上限：" + Number(c.获取驻防上限()), 48);
             foreach (var entry in data) Row(entry, 62);
-            if (data.Count == 0) Row("本城目前没有驻防将领记录。现有派兵流程只支持交战时援军，和平时不会创建虚假的驻防。", 88);
-            ActionRow(c.正在交战 ? "沿用已有出征与援军选择" : "和平中：现有驻防派遣暂不可用", "援军驻防", ui.View.出征驻防本城池, c.正在交战);
+            if (data.Count == 0) Row("暂无驻防将领。可选择将领派遣驻防。", 88);
+            ActionRow(c.正在交战 ? "选择将领，派往本城支援" : "选择将领，派往本城驻防", c.正在交战 ? "援军驻防" : "派遣驻防", ui.View.出征驻防本城池);
         }
         private void RenderFiefs(城池信息库类 c)
         {
-            Row("本城封地：" + c.城池封地列表.Count + "/" + c.获取封地上限() + " · 只显示封地公开名称与归属", 58);
+            Row("本城封地：" + c.城池封地列表.Count + "/" + c.获取封地上限(), 58);
             foreach (var index in c.城池封地列表)
             {
                 var p = index == null ? null : CityLocalAdapter.Player(index.第几个玩家);
                 var f = p == null ? null : p.封地信息表.FirstOrDefault(v => v.ID == index.封地ID标识);
-                if (f == null) { Row("封地记录已失效，请在世界数据维护时核对。", 52); continue; }
+                if (f == null) { Row("封地已迁出。", 52); continue; }
                 if (p == CityLocalAdapter.Me) ActionRow(f.封地名字 + "  · 我的封地", "进入封地", ui.View.进入封地, true, 58);
                 else Row(f.封地名字 + "  · " + p.基础信息.名字, 58);
             }
-            if (c.城池封地列表.Count == 0) Row("本城没有封地。符合本国归属、个人10座与城池容量限制时可以开辟。", 72);
-            if (CityLocalAdapter.Friendly(c) && !c.是否有我的封地()) ActionRow("按现有封地流程创建并验证结果", "开辟封地", () => { ui.View.开辟封地(); Render(); });
+            if (c.城池封地列表.Count == 0) Row("暂无封地。每位君主最多10座，同城只能开辟1座。", 72);
+            if (CityLocalAdapter.Friendly(c) && !c.是否有我的封地()) ActionRow("在本城建立封地", "开辟封地", () => { ui.View.开辟封地(); Render(); });
         }
         private string ProgressText()
         {
             var p = CityLocalAdapter.Local.Pending(X, Y);
-            if (p == null) return "当前没有修筑任务 · 设施数值已按本地任务结算，请刷新查看。";
+            if (p == null) return "暂无修筑任务";
             var seconds = Math.Max(0, p.EndsUtc - CityLocalAdapter.Local.UtcNow());
-            return (p.Kind == CityRepairKind.Wall ? "城墙" : "道路") + "修筑：" + Number(p.Amount) + "  进度 " + Number(Math.Min(100, (30 - seconds) * 100.0 / 30)) + "%  · 剩余 " + seconds + "秒";
+            return (p.Kind == CityRepairKind.Wall ? "城墙" : "道路") + "修筑：" + Number(p.Amount) + "  进度 " + Number(Math.Max(0, Math.Min(100, (30 - seconds) * 100.0 / 30))) + "%  · 剩余 " + seconds + "秒";
         }
         private void RenderRepairs(城池信息库类 c)
         {
-            Row("本地规则：每次修复至多10,000；每10点消耗1铜、每20点消耗1粮（向上取整），30秒完成。", 86);
+            Row("修筑耗时30秒，同城同时可进行1项。", 44);
             Row("城墙：" + Number(c.城墙) + "/" + Number(c.获取城墙上限()) + "    道路：" + Number(c.道路) + "/" + Number(c.获取道路上限()), 60);
-            var row = Row("", 72); progress = row.GetComponentInChildren<Text>(); progress.text = ProgressText();
+            displayedRepair = CityLocalAdapter.Local.Pending(X, Y);
+            var row = Row("", 48); progress = row.GetComponentInChildren<Text>(); progress.text = ProgressText();
             foreach (CityRepairKind kind in Enum.GetValues(typeof(CityRepairKind)))
             {
                 var quote = CityLocalAdapter.Local.Quote(X, Y, kind); var captured = kind;
                 string label = kind == CityRepairKind.Wall ? "修筑城墙" : "修筑道路";
-                ActionRow(quote.Allowed ? label + "：增加" + Number(quote.Amount) + "，消耗铜" + Number(quote.Copper) + " / 粮" + Number(quote.Food) : label + "：" + quote.Error,
+                ActionRow(label + "：+" + Number(quote.Amount) + " · 铜钱" + Number(quote.Copper) + " / 粮食" + Number(quote.Food) + (quote.Allowed ? "" : "\n" + quote.Error),
                     "确认修筑", () => PrepareRepair(captured), quote.Allowed, 80);
             }
-            Row("仅限自己或本国城池；交战禁止。归属变化或交战将取消并退还费用。关闭窗口不会停止任务。", 88);
-            ActionRow("重新查询任务与当前设施数值", "刷新", Render);
+            Row("限自己或本国城池。交战或归属变化时取消并退费。", 52);
+            ActionRow("更新设施和进度", "刷新", Render);
         }
         private void PrepareRepair(CityRepairKind kind)
         {
@@ -380,33 +395,33 @@ namespace Dwsg.Window3
             if (!quote.Allowed) { Result(CityResult.Fail(quote.Error)); return; }
             string request = Guid.NewGuid().ToString("N");
             ui.Confirm(X, Y, kind == CityRepairKind.Wall ? "确认修筑城墙" : "确认修筑道路",
-                "本地修筑：增加 " + Number(quote.Amount) + "\n费用：铜 " + Number(quote.Copper) + " / 粮 " + Number(quote.Food) + "\n耗时：30秒；同城只可进行一个任务。\n确认时重新校验归属、余额、设施数值和上限；失败不扣费。",
+                "修复 " + Number(quote.Amount) + "\n费用：铜 " + Number(quote.Copper) + " / 粮 " + Number(quote.Food) + "\n耗时：30秒；同城只可进行一个任务。",
                 () => CityLocalAdapter.Local.Repair(quote, request));
         }
         private void RenderGovernment(城池信息库类 c)
         {
-            Row("城池公告全文：" + (string.IsNullOrEmpty(c.公告) ? "本城尚未发布公告。" : c.公告), 64);
-            Row("本地征收规则：按现有城池额度记账，每城每类24小时一次；城主所得进入个人财产，国家所得进入国库。", 94);
+            Row("公告：" + (string.IsNullOrEmpty(c.公告) ? "本城尚未发布公告。" : c.公告), 64);
+            Row("每类税收间隔24小时。城主收入归个人，国家收入归国库。", 60);
             foreach (CityTaxKind kind in Enum.GetValues(typeof(CityTaxKind)))
             {
                 var captured = kind; string permission = CityLocalAdapter.Local.TaxPermission(X, Y, kind);
                 string name = kind == CityTaxKind.Lord ? "城主征收" : "国家征收";
-                ActionRow(permission ?? name + "：铜" + Number(kind == CityTaxKind.Lord ? c.城主征收_铜 : c.国家征收_铜) + " / 粮" + Number(kind == CityTaxKind.Lord ? c.城主征收_粮 : c.国家征收_粮), name,
-                    () => PrepareTax(captured), permission == null, 88);
+                ActionRow(name + "：铜钱" + Number(kind == CityTaxKind.Lord ? c.城主征收_铜 : c.国家征收_铜) + " / 粮食" + Number(kind == CityTaxKind.Lord ? c.城主征收_粮 : c.国家征收_粮) + (permission == null ? "" : "\n" + permission), name,
+                    () => PrepareTax(captured), permission == null, 64);
             }
             string candidate = CityLocalAdapter.Local.CandidatePermission(X, Y);
-            ActionRow(candidate ?? "本国且在本城有封地可登记候选，不收费", "竞选登记", () => { var r = CityLocalAdapter.Local.Apply(X, Y, Guid.NewGuid().ToString("N")); Render(); Result(r); }, candidate == null, 88);
-            Row("本地任命规则：候选登记后由国王任命，不模拟服务器投票。候选按实际国家贡献展示。", 78);
+            ActionRow(candidate ?? "在本城有封地的本国君主可登记候选，免费。", "竞选登记", () => { var r = CityLocalAdapter.Local.Apply(X, Y, Guid.NewGuid().ToString("N")); Render(); Result(r); }, candidate == null, 64);
+            Row("城主由国王从候选中任命。", 44);
             var n = 全局方法类.获取指定名字的国家(c.国家);
             var list = CityLocalAdapter.Local.Candidates(X, Y).Select(a => new { Record = a, Player = 全局变量.所有玩家数据表.FirstOrDefault(p => p.基础信息.ID == a.PlayerId) }).Where(a => a.Player != null).OrderByDescending(a => a.Player.基础信息.贡献).ToList();
             foreach (var a in list)
             {
                 int id = a.Record.PlayerId; string name = a.Player.基础信息.名字; string request = Guid.NewGuid().ToString("N");
                 ActionRow(name + " · 贡献 " + Number(a.Player.基础信息.贡献), "任命",
-                    () => ui.Confirm(X, Y, "确认任命城主", "本地任命：" + name + "\n将替换当前城主。确认时再次校验国家、国王权限和候选封地。", () => CityLocalAdapter.Local.Appoint(X, Y, id, request)),
+                    () => ui.Confirm(X, Y, "确认任命城主", "任命" + name + "\n将替换当前城主。", () => CityLocalAdapter.Local.Appoint(X, Y, id, request)),
                     n != null && CityLocalAdapter.Me != null && n.国王 == CityLocalAdapter.Me.基础信息.ID && CityLocalAdapter.Me.基础信息.国家 == c.国家, 62);
             }
-            if (list.Count == 0) Row("本城当前没有登记候选。符合资格的本地角色可先登记，国王再任命。", 72);
+            if (list.Count == 0) Row("暂无候选。先登记，再由国王任命。", 72);
         }
         public void PrepareTax(CityTaxKind kind)
         {
@@ -416,7 +431,7 @@ namespace Dwsg.Window3
             double copper = kind == CityTaxKind.Lord ? c.城主征收_铜 : c.国家征收_铜;
             double food = kind == CityTaxKind.Lord ? c.城主征收_粮 : c.国家征收_粮;
             int owner = c.城主, actor = CityLocalAdapter.Me.基础信息.ID; string nation = c.国家;
-            ui.Confirm(X, Y, kind == CityTaxKind.Lord ? "确认城主征收" : "确认国家征收", "本地征收：铜 " + Number(copper) + " / 粮 " + Number(food) + "\n所得进入" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "。每城每类24小时一次，重复点击不会重复记账。", () =>
+            ui.Confirm(X, Y, kind == CityTaxKind.Lord ? "确认城主征收" : "确认国家征收", "征收铜钱 " + Number(copper) + " / 粮 " + Number(food) + "\n所得进入" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "。下次征收需等待24小时。", () =>
             {
                 var current = CityLocalAdapter.City(X, Y);
                 if (current == null || CityLocalAdapter.Me == null || CityLocalAdapter.Me.基础信息.ID != actor || current.城主 != owner || current.国家 != nation ||
@@ -443,15 +458,15 @@ namespace Dwsg.Window3
             Row(report.Connection, 72);
             Row("国家：" + report.Nation + "    城主：" + report.Lord, 54);
             Row("城墙：" + Number(report.Wall) + "/" + Number(report.WallLimit) + "    道路：" + Number(report.Road) + "/" + Number(report.RoadLimit), 65);
-            Row("本地观察时间（UTC）：" + DateTimeOffset.FromUnixTimeSeconds(report.ObservedUtc).ToString("MM-dd HH:mm:ss") + "    封地：" + report.Fiefs, 64);
-            if (!report.CanReadDefenders) Row("未连接侦查服务器，敌方驻防、将领、兵力和私人资源不可获取。以上是地图公开状态。", 94);
-            else if (report.Defenders.Count == 0) Row("本国城池当前没有本地驻防记录。", 54);
+            Row("观察时间：" + DateTimeOffset.FromUnixTimeSeconds(report.ObservedUtc).ToLocalTime().ToString("MM-dd HH:mm:ss") + "    封地：" + report.Fiefs, 64);
+            if (!report.CanReadDefenders) Row("仅显示地图公开信息。敌方兵力和资源未公开。", 94);
+            else if (report.Defenders.Count == 0) Row("暂无驻防将领。", 54);
             else foreach (string entry in report.Defenders) Row(entry, 62);
             Footer("刷新观察", -80, Render); Footer("返回", 240, () => gameObject.SetActive(false));
         }
         private void RenderBookmarks()
         {
-            Row("收藏按城池坐标保存，切换列表排序不影响定位。每位君主最多128座；随世界存档保存本模块状态。", 82);
+            Row("已收藏城池：最多128座。点“定位”跳转地图。", 48);
             var list = CityLocalAdapter.Local.Bookmarks();
             foreach (var b in list)
             {
@@ -461,37 +476,36 @@ namespace Dwsg.Window3
                 SetEnabled(Button("查看收藏", row, "查看", new Vector2(70, 34), new Vector2(183, 0), () => ui.OpenCity(x, y)), c != null);
                 Button("移除收藏", row, "移除", new Vector2(70, 34), new Vector2(259, 0), () => { var r = CityLocalAdapter.Local.Bookmark(x, y, false); Render(); Result(r); });
             }
-            if (list.Count == 0) Row("收藏册为空。可在城池详情点“收藏”，或在内政页点“收藏本城”，随后从这里定位或查看。", 90);
+            if (list.Count == 0) Row("暂无收藏。点“收藏本城”加入此城。", 90);
             Footer("收藏本城", -80, () => { var r = CityLocalAdapter.Local.Bookmark(X, Y, true); Render(); Result(r); }, CityLocalAdapter.City(X, Y) != null);
             Footer("返回", 240, () => gameObject.SetActive(false));
         }
         private void RenderLord(城池信息库类 c)
         {
             var p = CityLocalAdapter.Player(c.城主);
-            if (p == null) Row("本城没有城主。无主城通过现有攻占流程取得归属；有国家的城池可查看竞选资格。", 96);
+            if (p == null) Row("本城暂无城主。所属国家的君主可在政务页查看竞选资格。", 96);
             else
             {
                 Row("城主：" + p.基础信息.名字 + "    国家：" + p.基础信息.国家, 60);
                 Row("等级：" + p.基础信息.等级 + "    称号：" + p.基础信息.称号名, 55);
                 Row("官职：" + p.基础信息.官职 + "    贡献：" + Number(p.基础信息.贡献), 55);
                 Row("战功：" + Number(p.基础信息.战功) + "    声望：" + Number(p.基础信息.声望), 55);
-                Row("本地公开君主资料，不提供对方财产或私人封地内容。", 68);
+
             }
             Footer("返回", 240, () => gameObject.SetActive(false));
         }
         private void RenderNation(城池信息库类 c)
         {
             var n = 全局方法类.获取指定名字的国家(c.国家);
-            if (n == null) Row("本城不属于任何国家。攻占与封地权限按实际城池归属处理。", 84);
+            if (n == null) Row("本城暂无所属国家。", 84);
             else
             {
                 Row("本城所属：" + n.国名 + "（" + n.国号 + "）", 60);
                 var king = 全局变量.所有玩家数据表.FirstOrDefault(p => p.基础信息.ID == n.国王);
                 Row("国王：" + (king == null ? "记录失效" : king.基础信息.名字) + "    国都坐标：" + n.国都x + "," + n.国都y, 64);
                 Row("国家公告：" + (string.IsNullOrEmpty(n.公告) ? "所属国家尚未发布公告。" : n.公告), 104);
-                Row("当前显示本城归属资料。国家详情与排行由国家界面提供。", 72);
                 if (CityLocalAdapter.Me != null && CityLocalAdapter.Me.基础信息.国家 == c.国家)
-                    ActionRow("打开现有本国信息界面", "进入国家", () =>
+                    ActionRow("查看国家详情", "进入国家", () =>
                     {
                         if (!ui.View.尝试打开本国界面()) Result(CityResult.Fail("本国信息界面未就绪。"));
                     });

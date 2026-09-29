@@ -67,7 +67,7 @@ public class 全局方法类
             case 1:
                 return "战斗";
             case 2:
-                return "未知";
+                return "驻防";
             case 3:
                 return "俘虏";
             default:

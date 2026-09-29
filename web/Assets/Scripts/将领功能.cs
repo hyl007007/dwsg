@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using 缺失界面.窗口4;
 
 public class 将领功能 : MonoBehaviour
 {
@@ -33,6 +34,10 @@ public class 将领功能 : MonoBehaviour
 	private long 被攻击间隔 = 2L;
 
 	private int 已被攻击;
+
+	private bool 已退出战场;
+
+	public bool 正在退场 { get { return 已退出战场; } }
 
 	private long 攻击计时 = TIME.getTime();
 
@@ -344,6 +349,8 @@ public class 将领功能 : MonoBehaviour
 						全局变量.所有玩家数据表[(int)被攻击的将领脚本.本将领信息.详细信息.身份].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领].详细信息.状态 = 3.0;
 						全局变量.所有玩家数据表[(int)被攻击的将领脚本.本将领信息.详细信息.身份].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领].详细信息.俘虏玩家 = num3;
 						全局变量.所有玩家数据表[num3].封地信息表[num4].添加一个俘虏到列表(new 将领索引((int)被攻击的将领脚本.本将领信息.详细信息.身份, 被攻击的将领脚本.本将领信息.ID));
+						// 先落定俘虏状态，再移除驻防关联，避免死亡回调把俘虏重新入驻。
+						被攻击的将领脚本.退出战场(false);
 					}
 					else
 					{
@@ -520,7 +527,7 @@ public class 将领功能 : MonoBehaviour
 		int 不攻击计次 = 0;
 		while (true)
 		{
-			if (!base.gameObject)
+			if (已退出战场 || !base.gameObject)
 			{
 				yield break;
 			}
@@ -568,15 +575,7 @@ public class 将领功能 : MonoBehaviour
 			}
 			yield return null;
 		}
-		if (本将领信息.详细信息.状态 == 1.0)
-		{
-			本将领信息.详细信息.状态 = 0.0;
-			
-
-        }
-		更新显示统兵();
-		设置死亡状态();
-		UnityEngine.Object.Destroy(base.gameObject, 0.5f);
+		退出战场(true);
 	}
 
 	private void 将领显示特效()
@@ -644,7 +643,7 @@ public class 将领功能 : MonoBehaviour
 		血条信息对象.transform.parent = base.transform;
 		血条信息对象.transform.localPosition = new Vector2(0f, 2f);
 		统兵对象 = 血条信息对象.transform.GetChild(0).GetChild(0).GetComponent<Text>();
-		统兵对象.text = 本将领信息.详细信息.剩余兵力.ToString();
+		if (统兵对象) 统兵对象.text = 本将领信息.详细信息.剩余兵力.ToString();
 		血条位置对象 = 血条信息对象.transform.GetChild(3);
 		血条位置对象.localPosition = new Vector2(3f, -0.15f);
 		进度条位置对象 = 血条信息对象.transform.GetChild(5);
@@ -760,7 +759,7 @@ public class 将领功能 : MonoBehaviour
 
 	private void 更新显示统兵()
 	{
-		统兵对象.text = 本将领信息.详细信息.剩余兵力.ToString();
+		if (统兵对象) 统兵对象.text = 本将领信息.详细信息.剩余兵力.ToString();
 	}
 
 	private void 更新名字位置()
@@ -829,23 +828,43 @@ public class 将领功能 : MonoBehaviour
 		}
 	}
 
+	// 自动死亡、战斗结束和原单将撤退按钮共用同一退场路径。
+	public void 退出战场(bool 主动撤退 = false, bool 播放死亡动画 = true)
+	{
+		if (已退出战场) return;
+		已退出战场 = true;
+		if (本将领信息 != null && 本将领信息.详细信息 != null)
+		{
+			double 剩余 = 本将领信息.详细信息.剩余兵力;
+			if (!double.IsNaN(剩余) && !double.IsInfinity(剩余))
+			{
+				剩余 = System.Math.Max(0, 剩余);
+				本将领信息.详细信息.剩余兵力 = 剩余;
+				if (本将领信息.将领配兵 != null)
+					本将领信息.将领配兵.数量 = System.Math.Min(本将领信息.将领配兵.数量, 剩余);
+			}
+			else 剩余 = 0;
+			bool 驻防接管 = 和平驻防规则.接管战后返回(本将领信息, TIME.getTime(), 主动撤退);
+			if (!驻防接管 && 本将领信息.详细信息.状态 == 1.0)
+				本将领信息.详细信息.状态 = 0.0;
+			if (战斗系统脚本对象)
+			{
+				if (本将领信息.详细信息.坑位颜色 == 0.0)
+					战斗系统脚本对象.攻方兵力 = System.Math.Max(0, 战斗系统脚本对象.攻方兵力 - 剩余);
+				else if (本将领信息.详细信息.坑位颜色 == 1.0)
+					战斗系统脚本对象.守方兵力 = System.Math.Max(0, 战斗系统脚本对象.守方兵力 - 剩余);
+			}
+			更新显示统兵();
+		}
+		if (播放死亡动画) 设置死亡状态();
+		UnityEngine.Object.Destroy(base.gameObject, 播放死亡动画 ? 0.5f : 0f);
+	}
+
 	private void FixedUpdate()
 	{
+		if (已退出战场 || !战斗系统脚本对象 || 本将领信息 == null || 本将领信息.详细信息 == null) return;
+		bool 攻方撤退 = 战斗系统脚本对象.全军撤退 && 本将领信息.详细信息.坑位颜色 == 0.0;
 		if (战斗系统脚本对象.全军撤退 || 战斗系统脚本对象.战斗结束)
-		{
-			if (本将领信息.详细信息.状态 == 1.0)
-			{
-				本将领信息.详细信息.状态 = 0.0;
-			}
-			if (本将领信息.详细信息.坑位颜色 == 0.0)
-			{
-				战斗系统脚本对象.攻方兵力 -= 本将领信息.详细信息.剩余兵力;
-			}
-			else if (本将领信息.详细信息.坑位颜色 == 1.0)
-			{
-				战斗系统脚本对象.守方兵力 -= 本将领信息.详细信息.剩余兵力;
-			}
-			UnityEngine.Object.Destroy(base.gameObject);
-		}
+			退出战场(攻方撤退, false);
 	}
 }

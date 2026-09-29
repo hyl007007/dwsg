@@ -24,13 +24,25 @@ public class 创建角色脚本 : MonoBehaviour
     public Text 说明文本;
 
     public Text 群号文本;
-        
-    private void Start()
+
+    private bool 正在编辑君主名;
+
+    private InputField 获取君主名输入框()
     {
-        if (全局变量.是否为登录==false)
-        {
-            君主名对象.text = "";
-        }
+        return 君主名输入结果 == null ? null : 君主名输入结果.GetComponentInParent<InputField>(true);
+    }
+
+    private string 读取君主名()
+    {
+        var 输入框 = 获取君主名输入框();
+        if (正在编辑君主名 && 输入框 != null) return 输入框.text.Trim();
+        return 君主名对象 == null ? "" : 君主名对象.text.Trim();
+    }
+
+    private void 显示创建提示(string 内容)
+    {
+        if (说明文本 != null) 说明文本.text = 内容;
+        else 存档脚本.显示操作提示(内容);
     }
 
     public void 创建角色进入游戏()
@@ -39,20 +51,39 @@ public class 创建角色脚本 : MonoBehaviour
         {
             return;
         }
-        string 名字 = 君主名对象.text.Trim();
-        if (名字.Length == 0 || 名字.Length > 20 || 名字.IndexOfAny(new[] { '<', '>', '\r', '\n' }) >= 0)
+        string 名字 = 读取君主名();
+        if (!Dwsg.Social.LocalSocialAdapter.ValidName(名字, 20))
         {
-            说明文本.text = "请输入 1 到 20 字的君主名，不能包含换行或尖括号。";
+            显示创建提示("请输入 1 到 20 字的君主名，不能包含尖括号、换行或不可见控制字符。");
             return;
         }
-        if (!(国家名对象.text != ""))
+        string 国号 = 国家名对象 == null ? "" : 国家名对象.text.Trim();
+        if (国号.Length == 0)
         {
+            显示创建提示("请先选择要加入的国家。");
+            return;
+        }
+        var 国家 = 全局方法类.获取指定名字的国家(国号);
+        if (国家 == null)
+        {
+            显示创建提示("所选国家已不存在，请重新选择国家。");
+            return;
+        }
+        if (所有城池界面脚本.根据坐标获取指定城池(国家.国都x, 国家.国都y) == null)
+        {
+            显示创建提示("所选国家的国都不存在，暂时无法加入，请重新选择国家。");
+            return;
+        }
+        if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count ||
+            全局变量.所有玩家数据表[第几个玩家] == null || 全局变量.所有玩家数据表[第几个玩家].基础信息 == null)
+        {
+            显示创建提示("角色数据尚未初始化，请返回开始页后重试。");
             return;
         }
         var 玩家 = 全局变量.所有玩家数据表[第几个玩家];
         string 原名字 = 玩家.基础信息.名字;
         玩家.基础信息.名字 = 名字;
-        if (全局变量.所有玩家数据表[第几个玩家].加入指定国家(国家名对象.text))
+        if (玩家.加入指定国家(国号))
         {
             #if UNITY_EDITOR
             #region 测试账号
@@ -104,6 +135,7 @@ public class 创建角色脚本 : MonoBehaviour
         else
         {
             玩家.基础信息.名字 = 原名字;
+            显示创建提示("加入国家失败，请重新选择国家后重试。");
             return;
         }
         界面扩展存档.新建世界();
@@ -192,18 +224,25 @@ public class 创建角色脚本 : MonoBehaviour
     public void 随机君主名()
     {
         string text = 随机姓名.生成随机姓名();
+        正在编辑君主名 = false;
+        var 输入框 = 获取君主名输入框();
+        if (输入框 != null) 输入框.SetTextWithoutNotify("");
         君主名对象.text = text;
     }
 
     public void 正在修改君主名()
     {
+        正在编辑君主名 = true;
         君主名对象.text = "";
+        if (君主名输入结果 != null) 君主名输入结果.gameObject.SetActive(true);
     }
 
     public void 修改君主名()
     {
-        君主名对象.text = 君主名输入结果.text;
-        君主名输入结果.gameObject.SetActive(value: false);
+        var 输入框 = 获取君主名输入框();
+        君主名对象.text = 输入框 == null ? 君主名输入结果.text : 输入框.text;
+        正在编辑君主名 = false;
+        if (君主名输入结果 != null) 君主名输入结果.gameObject.SetActive(value: false);
     }
 
     public void 创建武将()

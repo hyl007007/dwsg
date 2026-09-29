@@ -1,249 +1,175 @@
+using System;
+using System.Globalization;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using 玩家数据结构;
+using Dwsg.Window3;
 
 public class 调整数量脚本 : MonoBehaviour
 {
-	public 显示背包物品 显示背包物品脚本对象;
+    public 显示背包物品 显示背包物品脚本对象;
+    public 兵营脚本 兵营脚本对象;
+    public 封地信息界面UI脚本 封地信息界面UI脚本对象;
+    public 市场脚本 市场脚本对象;
+    public Text 数量显示对象;
+    public Text 输入数量对象;
+    public Slider 数量滑条对象;
+    public int 调整类型;
+    public int 兵种ID;
+    public double 兵种数量;
+    public int 第几个玩家;
+    public int 第几个封地;
+    public int 第几个建筑 = -1;
+    public Text 说明文本;
+    private double 调整数量, 数量上限;
+    private bool 更新输入中, 已提交;
+    private 玩家数据 打开时玩家;
+    private 封地信息 打开时封地;
+    private 建筑信息 打开时兵营;
+    private string 打开时道具, 基础说明;
 
-	public 兵营脚本 兵营脚本对象;
-
-	public 封地信息界面UI脚本 封地信息界面UI脚本对象;
-
-	public 市场脚本 市场脚本对象;
-
-	public Text 数量显示对象;
-
-	public Text 输入数量对象;
-
-	public Slider 数量滑条对象;
-
-	public int 调整类型;
-
-	public int 兵种ID;
-
-	public double 兵种数量;
-
-	public int 第几个玩家;
-
-	public int 第几个封地;
-
-	public Text 说明文本;
-
-	private double 调整数量;
-
-	private double 已占人口;
-
-	private double 人口上限;
-
-	private double 剩余人口;
-
-	public void 滑条改变购买数量()
-	{
-		数量显示对象.text = 数量滑条对象.value.ToString();
-		调整数量 = 数量滑条对象.value;
-	}
-
-	public void 输入改变购买数量()
-	{
-		if (输入数量对象.text != null && !(输入数量对象.text == ""))
-		{
-			float num = float.Parse(输入数量对象.text);
-			if (num<=0)
-			{
-				Application.Quit();
-				print("你TMD");
-			}
-			UnityEngine.Debug.Log("输入数量:" + num.ToString());
-			if (num > 数量滑条对象.maxValue)
-			{
-				num = 数量滑条对象.maxValue;
-			}
-			调整数量 = num;
-			数量显示对象.text = num.ToString();
-			数量滑条对象.value = num;
-		}
-	}
-
-	public void 显示说明文本()
-	{
-		if (调整类型 == 1)
-		{
-			已占人口 = 全局变量.所有玩家数据表[第几个玩家].获取已占用人口();
-			人口上限 = 全局变量.所有玩家数据表[第几个玩家].获取人口上限();
-			剩余人口 = 人口上限 - 已占人口;
-			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(兵种ID);
-			if (兵种属性库类 != null)
-			{
-				double num = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 / 兵种属性库类.需要铜钱;
-				double num2 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 / 兵种属性库类.需要粮食;
-				double num3 = 全局变量.所有玩家数据表[第几个玩家].获取指定兵种ID总数(兵种ID);
-				double num4 = 剩余人口 / 兵种属性库类.占用人口;
-				double num5 = 0.0;
-				num5 = ((!(num <= num2)) ? num2 : num);
-				num5 = Mathf.Floor((float)num5);
-				num4 = Mathf.Floor((float)num4);
-				if (num4 < 0.0)
-				{
-					num4 = 0.0;
-				}
-				if (num5 < 0.0)
-				{
-					num5 = 0.0;
-				}
-				说明文本.text = "【招募数量输入】\r\n当前空闲:" + 兵种属性库类.名称 + " " + num3.ToString() + "\r\n资源可招:" + num5.ToString() + "\r\n人口可招:" + num4.ToString();
-				数量滑条对象.maxValue = 0f;
-				if (num5 <= num4)
-				{
-					数量滑条对象.maxValue = (int)num5;
-				}
-				if (num4 <= num5)
-				{
-					数量滑条对象.maxValue = (int)num4;
-				}
-				数量滑条对象.value = 数量滑条对象.maxValue;
-			}
-		}
-		else if (调整类型 != 2)
-		{
-			if (调整类型 == 3)
-			{
-				说明文本.text = "【批量使用道具】\r\n调整使用 " + 显示背包物品脚本对象.已选择道具名字.text + " 的数量";
-				数量滑条对象.maxValue = (float)显示背包物品脚本对象.获取选中物品数量();
-				数量滑条对象.value = 数量滑条对象.maxValue;
-			}
-			else if (调整类型 == 4)
-			{
-				说明文本.text = "【治疗伤兵】\r\n治疗数量:" + 兵种数量.ToString();
-				数量滑条对象.maxValue = (float)兵种数量;
-				数量滑条对象.value = 数量滑条对象.maxValue;
-			}
-			else if (调整类型 == 5)
-			{
-				说明文本.text = "【现有资源】\r\n黄金:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金.ToString() + "\r\n白银:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.白银.ToString();
-				数量滑条对象.maxValue = (float)(全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 * 市场脚本对象.铜钱单价);
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 6)
-			{
-				说明文本.text = "【现有资源】\r\n黄金:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金.ToString() + "\r\n白银:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.白银.ToString();
-				数量滑条对象.maxValue = (float)(全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 * 市场脚本对象.粮食单价);
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 7)
-			{
-				说明文本.text = "【现有资源】\r\n铜钱:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱.ToString() + "\r\n粮食:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食.ToString();
-				数量滑条对象.maxValue = Mathf.Floor((float)(全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 * 2.5));
-				数量滑条对象.value = 0f;
-			}
-			else if (调整类型 == 8)
-			{
-				说明文本.text = "【现有资源】\r\n铜钱:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱.ToString() + "\r\n粮食:" + 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食.ToString();
-				数量滑条对象.maxValue = Mathf.Floor((float)(全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 * 0.3));
-				数量滑条对象.value = 0f;
-			}
-		}
-	}
-
-	public void 确认调整()
-	{
-		if (调整类型 == 1)
-		{
-			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(兵种ID);
-			全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 - 兵种属性库类.需要铜钱 * 调整数量;
-			全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 - 兵种属性库类.需要粮食 * 调整数量;
-			if (全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 < 0.0)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 0.0;
-			}
-			if (全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 < 0.0)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 0.0;
-			}
-			全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].添加闲兵(兵种ID, 调整数量);
-			base.gameObject.SetActive(value: false);
-			兵营脚本对象.刷新显示();
-		}
-		else if (调整类型 == 3)
-		{
-			if (全局变量.所有玩家数据表[第几个玩家].背包道具列表.批量使用道具(显示背包物品脚本对象.已选择道具名字.text, (int)调整数量, 0, 0) != "使用失败")
-			{
-				全局变量.提示类.显示信息("批量使用成功!");
-			}
-			else
-			{
-				全局变量.提示类.显示信息("批量使用失败!");
-			}
-			base.gameObject.SetActive(value: false);
-			显示背包物品脚本对象.刷新显示();
-			int index = int.Parse(显示背包物品脚本对象.已选中道具.text);
-			if (显示背包物品脚本对象.物品列表对象.transform.GetChild(index).GetChild(9).gameObject.activeSelf)
-			{
-				显示背包物品脚本对象.物品列表对象.transform.GetChild(index).GetChild(9).GetComponent<Toggle>()
-					.isOn = true;
-				}
-			}
-			else if (调整类型 == 4)
-			{
-				兵种属性库类 兵种属性库类2 = 全局兵种库.查询指定ID的数据(兵种ID);
-				if (兵种属性库类2 != null)
-				{
-					double num = 调整数量 * (兵种属性库类2.需要铜钱 / 2.0);
-					double num2 = 调整数量 * (兵种属性库类2.需要粮食 / 2.0);
-					if (全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 >= num && 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 >= num2)
-					{
-						全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 - num;
-						全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 - num2;
-						全局变量.提示类.显示信息("治疗成功!\n花费铜钱:" + num.ToString() + "\n花费粮食:" + num2.ToString());
-						全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].添加闲兵(兵种ID, 调整数量);
-						全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].删除伤兵(兵种ID, 调整数量);
-						封地信息界面UI脚本对象.显示伤兵列表();
-						base.gameObject.SetActive(value: false);
-					}
-					else
-					{
-						全局变量.提示类.显示信息("治疗失败!\n需要铜钱:" + num.ToString() + "\n需要粮食:" + num2.ToString());
-					}
-				}
-			}
-			else if (调整类型 == 5)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 = 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 - (double)Mathf.Floor((float)(调整数量 / 市场脚本对象.铜钱单价));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 6)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 = 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 - (double)Mathf.Floor((float)(调整数量 / 市场脚本对象.粮食单价));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 7)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 - (double)Mathf.Floor((float)(调整数量 / 2.5));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-			else if (调整类型 == 8)
-			{
-				全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 + 调整数量;
-				全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 - (double)Mathf.Floor((float)(调整数量 / 0.3));
-				base.gameObject.SetActive(value: false);
-				市场脚本对象.刷新显示();
-			}
-		}
-
-		public void 调整最大数量()
-		{
-			数量显示对象.text = 数量滑条对象.maxValue.ToString();
-			调整数量 = 数量滑条对象.maxValue;
-			数量滑条对象.value = 数量滑条对象.maxValue;
-		}
-
-		public void 显示调整界面()
-		{
-			base.gameObject.SetActive(value: true);
-		}
-	}
+    private void OnEnable() { 已提交 = false; 设置数量(0); }
+    private void 提示(string value) { if (全局变量.提示类 != null) 全局变量.提示类.显示信息(value); }
+    private InputField 获取数量输入框()
+    {
+        return 输入数量对象 == null ? null : 输入数量对象.GetComponentInParent<InputField>(true);
+    }
+    private void 设置数量(double value)
+    {
+        调整数量 = Math.Min(数量上限, FiefActions.Whole(value));
+        更新输入中 = true;
+        string text = 调整数量.ToString("0", CultureInfo.InvariantCulture);
+        if (数量显示对象 != null) 数量显示对象.text = text;
+        if (数量滑条对象 != null) 数量滑条对象.SetValueWithoutNotify((float)调整数量);
+        var input = 获取数量输入框();
+        if (input != null) input.SetTextWithoutNotify(text);
+        else if (输入数量对象 != null) 输入数量对象.text = text;
+        更新输入中 = false;
+        更新费用说明();
+    }
+    public void 滑条改变购买数量()
+    {
+        if (!更新输入中 && 数量滑条对象 != null) 设置数量(数量滑条对象.value);
+    }
+    public void 输入改变购买数量()
+    {
+        if (!更新输入中) 同步当前输入(false);
+    }
+    private bool 同步当前输入(bool 提示错误)
+    {
+        var input = 获取数量输入框();
+        int number;
+        string error;
+        if (input == null) error = "未找到数量输入框，请重新打开页面。";
+        else if (!int.TryParse((input.text ?? "").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out number) || number <= 0)
+            error = "请输入大于0的整数数量，且不超过当前可用上限。";
+        else
+        {
+            数量上限 = Math.Min(int.MaxValue, 获取当前上限());
+            if (number <= 数量上限) { 设置数量(number); return true; }
+            error = "数量超过当前可用上限：" + 数量上限.ToString("0") + "。";
+        }
+        // 保留用户正在编辑的原始输入，清空预览；确认时不能沿用上次有效数量。
+        调整数量 = 0;
+        if (数量显示对象 != null) 数量显示对象.text = "0";
+        if (数量滑条对象 != null) 数量滑条对象.SetValueWithoutNotify(0);
+        更新费用说明(error);
+        if (提示错误) 提示(error);
+        return false;
+    }
+    private double 获取当前上限()
+    {
+        if (调整类型 == 1) return FiefActions.RecruitLimit(第几个玩家, 第几个封地, 第几个建筑, 兵种ID);
+        if (调整类型 == 3) return 显示背包物品脚本对象 == null ? 0 : FiefActions.Whole(显示背包物品脚本对象.获取选中物品数量());
+        if (调整类型 == 4) return FiefActions.HealLimit(第几个玩家, 第几个封地, 兵种ID);
+        if (调整类型 >= 5 && 调整类型 <= 8) return FiefActions.TradeLimit(第几个玩家, 调整类型);
+        return 0;
+    }
+    public void 显示说明文本()
+    {
+        第几个玩家 = 全局变量.本机身份;
+        打开时玩家 = FiefActions.Player(第几个玩家);
+        打开时封地 = 调整类型 == 1 || 调整类型 == 4 ? FiefActions.Fief(第几个玩家, 第几个封地) : null;
+        打开时兵营 = 调整类型 == 1 ? FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑) : null;
+        打开时道具 = 显示背包物品脚本对象 == null ? null : 显示背包物品脚本对象.已选择道具名字.text;
+        已提交 = false; 数量上限 = Math.Min(int.MaxValue, 获取当前上限());
+        if (数量滑条对象 != null)
+        { 数量滑条对象.wholeNumbers = true; 数量滑条对象.minValue = 0; 数量滑条对象.maxValue = (float)数量上限; }
+        var u = 全局兵种库.查询指定ID的数据(兵种ID);
+        if (打开时玩家 == null) 基础说明 = "角色不存在，请重新打开页面。";
+        else if (调整类型 == 1)
+        {
+            string error = FiefActions.RecruitmentError(第几个玩家, 第几个封地, 第几个建筑, 兵种ID);
+            double idle = 打开时封地 == null ? 0 : 打开时封地.闲兵信息表.Where(x => x.ID == 兵种ID).Sum(x => x.数量);
+            基础说明 = error ?? "招募" + u.名称 + " · 本封地闲兵" + idle.ToString("0") + "\n可招募" + 数量上限.ToString("0") + " · 空余人口" + Math.Max(0, 打开时玩家.获取人口上限() - 打开时玩家.获取已占用人口()).ToString("0");
+        }
+        else if (调整类型 == 3) 基础说明 = "批量使用：" + 打开时道具 + "\n现有" + 数量上限.ToString("0") + "件";
+        else if (调整类型 == 4) 基础说明 = "治疗" + (u == null ? "伤兵" : u.名称) + "\n资源可治疗" + 数量上限.ToString("0") + "名，治疗后返回本封地闲兵。";
+        else if (调整类型 >= 5 && 调整类型 <= 8)
+            基础说明 = "获得" + (调整类型 == 5 || 调整类型 == 8 ? "铜钱" : "粮食") + "数量 · 最多" + 数量上限.ToString("0") + "\n现有" + (调整类型 == 5 || 调整类型 == 6 ? "黄金" : 调整类型 == 7 ? "铜钱" : "粮食") + FiefActions.TradeBalance(第几个玩家, 调整类型).ToString("0.##");
+        else 基础说明 = "请重新选择操作。";
+        设置数量(调整类型 >= 5 ? 0 : 数量上限);
+    }
+    private void 更新费用说明(string error = null)
+    {
+        if (说明文本 == null || 基础说明 == null) return;
+        if (error != null) { 说明文本.text = 基础说明 + "\n" + error; return; }
+        string fee = "";
+        if (调整类型 == 1 || 调整类型 == 4)
+        {
+            var u = 全局兵种库.查询指定ID的数据(兵种ID);
+            if (u != null)
+            {
+                double factor = 调整类型 == 4 ? .5 : 1;
+                fee = "\n消耗铜钱" + (调整数量 * u.需要铜钱 * factor).ToString("0.##") + "、粮食" + (调整数量 * u.需要粮食 * factor).ToString("0.##");
+            }
+        }
+        else if (调整类型 >= 5 && 调整类型 <= 8)
+        {
+            double cost = FiefActions.TradeCost(第几个玩家, 调整类型, 调整数量);
+            fee = "\n消耗" + (调整类型 == 5 || 调整类型 == 6 ? "黄金" : 调整类型 == 7 ? "铜钱" : "粮食") + (FiefActions.Finite(cost) ? cost.ToString("0") : "—") + "（不足1按1计）";
+        }
+        说明文本.text = 基础说明 + fee;
+    }
+    public void 确认调整()
+    {
+        if (已提交) return;
+        if (打开时玩家 == null || !ReferenceEquals(打开时玩家, FiefActions.Player(第几个玩家)) ||
+            ((调整类型 == 1 || 调整类型 == 4) && !ReferenceEquals(打开时封地, FiefActions.Fief(第几个玩家, 第几个封地))) ||
+            (调整类型 == 1 && !ReferenceEquals(打开时兵营, FiefActions.Building(第几个玩家, 第几个封地, 第几个建筑))))
+        { 提示("角色或封地已变化，请重新选择操作。"); return; }
+        if (!同步当前输入(true)) return;
+        CityResult result;
+        if (调整类型 == 1) result = FiefActions.Recruit(第几个玩家, 第几个封地, 第几个建筑, 兵种ID, 调整数量);
+        else if (调整类型 == 4) result = FiefActions.Heal(第几个玩家, 第几个封地, 兵种ID, 调整数量);
+        else if (调整类型 >= 5 && 调整类型 <= 8) result = FiefActions.Trade(第几个玩家, 调整类型, 调整数量);
+        else if (调整类型 == 3)
+        {
+            if (显示背包物品脚本对象 == null || 打开时道具 != 显示背包物品脚本对象.已选择道具名字.text || 调整数量 > 获取当前上限())
+            { 提示("道具或数量已变化，请重新选择。"); return; }
+            string use = 打开时玩家.背包道具列表.批量使用道具(打开时道具, (int)调整数量, 0, 0);
+            result = use == "使用失败" ? CityResult.Fail("批量使用失败。") : CityResult.Ok("批量使用成功。");
+        }
+        else { 提示("请重新选择操作。"); return; }
+        提示(result.Message);
+        if (!result.Success) return;
+        已提交 = true; 设置数量(0); gameObject.SetActive(false);
+        if (调整类型 == 1 && 兵营脚本对象 != null) 兵营脚本对象.刷新显示();
+        else if (调整类型 == 4 && 封地信息界面UI脚本对象 != null) 封地信息界面UI脚本对象.显示伤兵列表();
+        else if (调整类型 >= 5 && 市场脚本对象 != null) 市场脚本对象.刷新显示();
+        else if (调整类型 == 3 && 显示背包物品脚本对象 != null)
+        {
+            显示背包物品脚本对象.刷新显示();
+            int index;
+            if (int.TryParse(显示背包物品脚本对象.已选中道具.text, out index) && index >= 0 && index < 显示背包物品脚本对象.物品列表对象.transform.childCount)
+            {
+                var row = 显示背包物品脚本对象.物品列表对象.transform.GetChild(index);
+                if (row.childCount > 9 && row.GetChild(9).gameObject.activeSelf)
+                { var toggle = row.GetChild(9).GetComponent<Toggle>(); if (toggle != null) toggle.isOn = true; }
+            }
+        }
+    }
+    public void 调整最大数量() { 数量上限 = Math.Min(int.MaxValue, 获取当前上限()); 设置数量(数量上限); }
+    public void 显示调整界面() { gameObject.SetActive(true); }
+}

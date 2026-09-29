@@ -138,11 +138,11 @@ namespace 缺失界面.窗口2
 
         public static string Description()
         {
-            return "本工程已有的本地俸禄规则\n官职随当前战功确定，领取后扣除对应战功；国王身份以国家记录为准。\n" +
-                "校尉：2000 战功 / 10万黄金 / 国库铜粮50%\n监军：3000 / 20万 / 55%\n中郎将：5000 / 30万 / 60%\n" +
+            return "官职 / 所需战功 / 黄金 / 国库铜粮比例\n" +
+                "校尉：2000 / 10万 / 50%\n监军：3000 / 20万 / 55%\n中郎将：5000 / 30万 / 60%\n" +
                 "卫将军：7000 / 40万 / 70%\n大将军：8000 / 45万 / 75%\n大都督：15000 / 50万 / 90%\n" +
-                "国王：不扣战功 / 5万黄金 / 国库铜粮95%\n领取间隔300秒；共用当前本机角色的俸禄倒计时。铜粮按领取时国库余额取整。\n" +
-                "国家任命是独立的本地职务记录，不提高上述俸禄官职。当前轮选计时只更新周期，没有自动投票或国王更替规则。";
+                "国王：不扣战功 / 5万 / 95%\n按当前战功确定官职，领取扣除所需战功。\n" +
+                "每5分钟可领取一次；铜粮按国库余额取整。\n国家任命不影响俸禄档位；国王身份保留。";
         }
     }
 
@@ -300,7 +300,7 @@ namespace 缺失界面.窗口2
                 return NationActionResult.Fail(NationError.InvalidInput, "内容包含不支持的控制字符。");
             if (kind == NationNoticeKind.公告) nation.公告 = text; else nation.宣言 = text;
             // Existing country fields are already part of the world save. Saving remains the main window's responsibility.
-            return NationActionResult.Ok("已" + (text.Length == 0 ? "清空" : "更新") + kind + "（本地世界，随世界存档保存）。");
+            return NationActionResult.Ok("已" + (text.Length == 0 ? "清空" : "更新") + kind + "。");
         }
 
         private static int OfficeId(国家信息库类 nation, NationOffice office)
@@ -339,7 +339,7 @@ namespace 缺失界面.窗口2
             if (memberId >= 0) foreach (NationOffice old in Enum.GetValues(typeof(NationOffice)))
                 if (OfficeId(nation, old) == memberId) SetOffice(nation, old, -1);
             SetOffice(nation, office, memberId);
-            return NationActionResult.Ok(memberId < 0 ? "已免去" + office + "（本地国家职务）。" : "已任命" + FindPlayer(memberId).基础信息.名字 + "为" + office + "（本地国家职务）。");
+            return NationActionResult.Ok(memberId < 0 ? "已免去" + office + "。" : "已任命" + FindPlayer(memberId).基础信息.名字 + "为" + office + "。");
         }
 
         private static bool Valid(double value) { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0; }
@@ -363,7 +363,7 @@ namespace 缺失界面.窗口2
             actor.财产信息.黄金 += gold; actor.财产信息.铜钱 += copper; actor.财产信息.粮食 += grain;
             actor.基础信息.战功 -= cost; actor.基础信息.官职 = NationSalaryRules.Office(actor.基础信息.战功, nation.国王 == ActorId);
             setSalaryRemaining(300);
-            return NationActionResult.Ok("本地俸禄已领取：黄金" + gold + "，铜钱" + NationDataSource.Number(copper) + "，粮食" + NationDataSource.Number(grain) + "；扣除战功" + cost + "。");
+            return NationActionResult.Ok("俸禄已领取：黄金" + gold + "，铜钱" + NationDataSource.Number(copper) + "，粮食" + NationDataSource.Number(grain) + "；扣除战功" + cost + "。");
         }
     }
 }

@@ -1,93 +1,67 @@
-using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using 缺失界面.窗口2;
 
 public class 建国脚本 : MonoBehaviour
 {
-	public Text 国名对象;
+    public Text 国名对象;
+    public Text 国号对象;
+    public Text 国都对象;
+    public Text 国家宣言对象;
+    public Text 国名输入对象;
+    public Text 国号输入对象;
+    public Text 宣言输入对象;
+    public 城池信息库类 国都城池信息;
+    public GameObject 国家列表布局;
+    private int 打开时角色 = -1;
 
-	public Text 国号对象;
+    private void OnEnable()
+    {
+        打开时角色 = NationDataSource.Current.ActorId;
+        配置输入(国名输入对象, 国名对象, 16); 配置输入(国号输入对象, 国号对象, 1); 配置输入(宣言输入对象, 国家宣言对象, 100);
+        if (!NationBasicActions.Current.CanUseCapital(国都城池信息))
+        { 国都城池信息 = null; if (国都对象 != null) 国都对象.text = "请选择国都"; }
+        NationOriginalControls.Fit(国都对象);
+        配置备注();
+    }
 
-	public Text 国都对象;
+    private void 配置备注()
+    {
+        var 备注对象 = transform.Find("备注说明文本"); if (备注对象 == null) return;
+        var 备注 = 备注对象.GetComponent<Text>(); if (备注 == null) return;
+        备注.text = "国名3-16字符；国号1个汉字\n国都：自有未交战县城及以上，现有国都除外\n材料：玉玺*1，虎符*10\n印绶*100，令牌*1000";
+    }
 
-	public Text 国家宣言对象;
+    private static void 配置输入(Text 输入, Text 显示, int 上限)
+    {
+        if (输入 == null) return;
+        var 编辑框 = 输入.GetComponentInParent<InputField>(); if (编辑框 == null) return;
+        编辑框.characterLimit = 上限; 输入.fontSize = 18; 输入.fontStyle = FontStyle.Normal; 输入.supportRichText = false;
+        输入.horizontalOverflow = HorizontalWrapMode.Overflow; 输入.verticalOverflow = VerticalWrapMode.Truncate;
+        if (显示 != null && 显示 != 输入) { 输入.color = 显示.color; 显示.gameObject.SetActive(false); }
+        if (编辑框.GetComponent<RectMask2D>() == null) 编辑框.gameObject.AddComponent<RectMask2D>();
+        编辑框.ForceLabelUpdate();
+    }
 
-	public Text 国名输入对象;
+    private static string 读取(Text 输入, Text 显示)
+    {
+        var 编辑框 = 输入 == null ? null : 输入.GetComponentInParent<InputField>();
+        return (编辑框 != null ? 编辑框.text : 输入 != null ? 输入.text : 显示 != null ? 显示.text : "") ?? "";
+    }
 
-	public Text 国号输入对象;
+    public void 输入国家名字() { if (国名对象 != null) 国名对象.text = 读取(国名输入对象, 国名对象).Trim(); }
+    public void 输入国家国号() { if (国号对象 != null) 国号对象.text = 读取(国号输入对象, 国号对象).Trim(); }
+    public void 输入国家宣言() { if (国家宣言对象 != null) 国家宣言对象.text = 读取(宣言输入对象, 国家宣言对象).Trim(); }
 
-	public Text 宣言输入对象;
+    public void 确定建国()
+    {
+        if (国都城池信息 == null) { 提示("请先选择自己拥有的国都城池。"); return; }
+        var 结果 = NationBasicActions.Current.Found(读取(国名输入对象, 国名对象), 读取(国号输入对象, 国号对象),
+            读取(宣言输入对象, 国家宣言对象), 国都城池信息.坐标x, 国都城池信息.坐标y, 打开时角色);
+        提示(结果.Message); if (!结果.Success) return;
+        gameObject.SetActive(false); if (国家列表布局 != null) 国家列表布局.SetActive(false);
+        NationOriginalControls.ReturnToNation(this, NationDataSource.Current.OwnNationCode);
+    }
 
-	public 城池信息库类 国都城池信息;
-
-	public GameObject 国家列表布局;
-
-	public void 输入国家名字()
-	{
-		if (国名输入对象.text != null && !(国名输入对象.text == ""))
-		{
-			if (Encoding.Default.GetBytes(国名输入对象.text).Length < 17)
-			{
-				string text = 国名输入对象.text;
-				UnityEngine.Debug.Log(text);
-				国名对象.text = text;
-			}
-			else
-			{
-				全局变量.提示类.显示信息("国名错误,重新输入!");
-			}
-		}
-	}
-
-	public void 输入国家国号()
-	{
-		if (国号输入对象.text != null && !(国号输入对象.text == ""))
-		{
-			if (Encoding.Default.GetBytes(国号输入对象.text).Length > 3)
-			{
-				全局变量.提示类.显示信息("国号错误,重新输入!");
-				return;
-			}
-			string text = 国号输入对象.text;
-			UnityEngine.Debug.Log(text);
-			国号对象.text = text;
-		}
-	}
-
-	public void 输入国家宣言()
-	{
-		if (宣言输入对象.text != null && !(宣言输入对象.text == ""))
-		{
-			string text = 宣言输入对象.text;
-			UnityEngine.Debug.Log(text);
-			国家宣言对象.text = text;
-		}
-	}
-
-	public void 确定建国()
-	{
-		if (!(国名对象.text == "") && 国名对象.text != null && !(国号对象.text == "") && 国号对象.text != null && !(国都对象.text == "") && 国都对象.text != null && !(国家宣言对象.text == "") && 国家宣言对象.text != null && 国都城池信息 != null)
-		{
-			int 本机身份 = 全局变量.本机身份;
-			if (全局变量.所有玩家数据表[本机身份].财产信息.铜钱 > 10000000.0 && 全局变量.所有玩家数据表[本机身份].背包道具列表.获取指定道具数量("玉玺") > 0.0 && 全局变量.所有玩家数据表[本机身份].背包道具列表.获取指定道具数量("印绶") > 99.0 && 全局变量.所有玩家数据表[本机身份].背包道具列表.获取指定道具数量("虎符") > 9.0 && 全局变量.所有玩家数据表[本机身份].背包道具列表.获取指定道具数量("令牌") > 999.0 && 全局变量.所有玩家数据表[本机身份].背包道具列表.使用道具("玉玺", 0, 0) != "使用失败" && 全局变量.所有玩家数据表[本机身份].背包道具列表.批量使用道具("虎符", 10, 0, 0) != "使用失败" && 全局变量.所有玩家数据表[本机身份].背包道具列表.批量使用道具("印绶", 100, 0, 0) != "使用失败" && 全局变量.所有玩家数据表[本机身份].背包道具列表.批量使用道具("令牌", 1000, 0, 0) != "使用失败")
-			{
-				全局变量.所有玩家数据表[本机身份].财产信息.铜钱 = 全局变量.所有玩家数据表[本机身份].财产信息.铜钱 - 10000000.0;
-				国家信息库类 国家信息库类 = new 国家信息库类();
-				国家信息库类.初始化国家(国名对象.text, 国号对象.text, 国都城池信息.坐标x, 国都城池信息.坐标y);
-				国都城池信息.规模 = 4;
-				全局变量.所有国家列表.Add(国家信息库类);
-				全局变量.所有玩家数据表[本机身份].加入指定国家(国号对象.text);
-				国都城池信息.更换指定城主(全局变量.所有玩家数据表[本机身份].基础信息.名字);
-				国家信息库类.国王 = 全局变量.所有玩家数据表[本机身份].基础信息.ID;
-				全局变量.所有玩家数据表[本机身份].基础信息.官阶 = "国王";
-				全局变量.提示类.显示信息("建国成功!");
-				base.gameObject.SetActive(value: false);
-				国家列表布局.SetActive(value: false);
-			}
-			else
-			{
-				全局变量.提示类.显示信息("建国失败,材料不足!");
-			}
-		}
-	}
+    private static void 提示(string 内容) { if (全局变量.提示类 != null) 全局变量.提示类.显示信息(内容); }
 }
