@@ -59,7 +59,11 @@ public class 战斗界面UI脚本 : MonoBehaviour
 		if (战斗系统脚本对象.攻身份!=全局变量.本机身份)
             全局变量.提示类.显示信息("不要走 决战到天亮");
         else
-			战斗系统脚本对象.全军撤退 = true;
+        {
+            if (战斗系统脚本对象.服务器战场)
+                Dwsg.Combat.CombatClient.Withdraw(战斗系统脚本对象.服务器战场ID);
+            else 战斗系统脚本对象.全军撤退 = true;
+        }
 	}
 
 	public void 显示兵力()
@@ -78,7 +82,9 @@ public class 战斗界面UI脚本 : MonoBehaviour
 				上次显示兵力 = true;
 			}
 			long time = (long)Mathf.Floor(Time.time - 战斗计时开始时间);
-			战斗时间.text = TIME.ToTimeFormat(time);
+            if (战斗系统脚本对象.服务器战场 && Dwsg.Network.GameNetwork.CurrentSnapshot != null)
+                time = System.Math.Max(0, Dwsg.Network.GameNetwork.CurrentSnapshot.ServerUtcMs / 1000 - 战斗系统脚本对象.创建时间);
+            战斗时间.text = TIME.ToTimeFormat(time);
 			攻方兵力文本.text = 战斗系统脚本对象.攻方兵力.ToString();
 			守方兵力文本.text = 战斗系统脚本对象.守方兵力.ToString();
 		}

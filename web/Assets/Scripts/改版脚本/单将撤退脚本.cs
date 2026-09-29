@@ -40,6 +40,18 @@ public class 单将撤退脚本 : MonoBehaviour
     {
         if (被选中将领 != null)
         {
+            将领功能 将领 = 被选中将领.GetComponent<将领功能>();
+            if (将领.战斗系统脚本对象.服务器战场)
+            {
+                Dwsg.Combat.CombatClient.WithdrawGeneral(将领.战斗系统脚本对象.服务器战场ID,
+                    Dwsg.Combat.CombatClient.GeneralId(将领.本将领信息.ID), result =>
+                    {
+                        if (this == null || result.Code != Dwsg.Shared.GameCodes.Ok) return;
+                        撤退布局.SetActive(false);
+                        被选中将领 = null;
+                    });
+                return;
+            }
             被选中将领.GetComponent<将领功能>().战斗系统脚本对象.攻方兵力 -= 被选中将领.GetComponent<将领功能>().本将领信息.将领配兵.数量;
             被选中将领.GetComponent<将领功能>().设置死亡状态();
             Destroy(被选中将领, 0.5f);

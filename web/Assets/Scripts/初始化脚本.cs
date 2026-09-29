@@ -8,6 +8,17 @@ public class 初始化脚本 : MonoBehaviour
     {
         Application.targetFrameRate = 60;
         开始初始化();
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            所有城池界面脚本.地图W = 全局大地图库.大地图表.GetLength(1);
+            所有城池界面脚本.地图H = 全局大地图库.大地图表.GetLength(0);
+            Dwsg.Network.GameNetwork.SnapshotReceived -= EconomyClient.ApplyCatalog;
+            Dwsg.Network.GameNetwork.SnapshotReceived += EconomyClient.ApplyCatalog;
+            if (Dwsg.Network.GameNetwork.CurrentSnapshot != null)
+                EconomyClient.ApplyCatalog(Dwsg.Network.GameNetwork.CurrentSnapshot);
+            Dwsg.Network.GameNetwork.ApplyInitialSnapshot();
+            return;
+        }
         初始化游戏数据();
         初始化驻防将领();
     }

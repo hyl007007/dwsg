@@ -64,7 +64,7 @@ public class 城池信息显示脚本 : MonoBehaviour
 		城主显示.text = 全局变量.所有城池列表[第几个城池].获取城主名字();
 		天赋显示.text = 全局变量.所有城池列表[第几个城池].获取天赋类型名称() + 全局变量.所有城池列表[第几个城池].天赋加成.ToString() + "%";
 		税率显示.text = 全局变量.所有城池列表[第几个城池].税率.ToString() + "%";
-		封地显示.text = 全局变量.所有城池列表[第几个城池].城池封地列表.Count.ToString() + "/" + 全局变量.所有城池列表[第几个城池].获取封地上限().ToString();
+		封地显示.text = Dwsg.Network.GameNetwork.GetCityFiefCount(第几个城池).ToString() + "/" + 全局变量.所有城池列表[第几个城池].获取封地上限().ToString();
 		开辟封地按钮.SetActive(value: false);
 		进入封地按钮.SetActive(value: false);
 		修筑城池按钮.SetActive(value: false);

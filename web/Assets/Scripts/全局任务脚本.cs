@@ -63,6 +63,17 @@ public class 全局任务脚本 : MonoBehaviour
     private void Start()
     {
         UnityEngine.Debug.Log("任务初始化");
+        全局变量.提示类 = 提示类对象;
+        军情通知角标.装配(提示);
+        聊天系统.初始化();
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            Dwsg.Combat.CombatClient.Bind(战斗地图列表.transform);
+            StartCoroutine(刷新大地图列表());
+            StartCoroutine(刷新基础信息());
+            UnityEngine.Debug.Log("初始化结束");
+            return;
+        }
         附近山贼.生成山贼数据列表();
         StartCoroutine(检测军情列表());
         StartCoroutine(刷新大地图列表());
@@ -77,10 +88,6 @@ public class 全局任务脚本 : MonoBehaviour
         StartCoroutine(Ai军情检测());
         StartCoroutine(赌场());
         StartCoroutine(刷新商城());
-        全局变量.提示类 = 提示类对象;
-        军情通知角标.装配(提示);
-        // 聊天系统：世界/封地界面挂「主界面_国家」后面的聊天按钮，战斗界面挂左下角播报条
-        聊天系统.初始化();
         UnityEngine.Debug.Log("初始化结束");
     }
 
@@ -343,12 +350,9 @@ public class 全局任务脚本 : MonoBehaviour
     {
         while (true)
         {
-            if (全局变量.所有玩家数据表[全局变量.本机身份].基础信息.粮食增加 >= 0)
-            {
-                double 科技等级 = 全局方法类.获取指定名字的国家(全局变量.所有玩家数据表[0].基础信息.国家).资源科技;
-                double 加成 = 全局变量.所有玩家数据表[全局变量.本机身份].基础信息.粮食增加 * (科技等级 > 0 ? 科技等级 / 100 : 0);
-                全局变量.所有玩家数据表[全局变量.本机身份].财产信息.粮食 += 全局变量.所有玩家数据表[全局变量.本机身份].基础信息.粮食增加 + 加成;
-            }
+            var player = 全局变量.所有玩家数据表[全局变量.本机身份];
+            var nation = 全局方法类.获取指定名字的国家(player.基础信息.国家);
+            ProductionClient.ProduceOffline(player, nation != null ? nation.资源科技 : 0);
 
             for (int i = 0; i < 全局变量.画册列表.Count; i++)
             {
@@ -481,7 +485,7 @@ public class 全局任务脚本 : MonoBehaviour
                 string text3;
                 if (粮食 >= 10000.0)
                 {
-                    if (粮食 > 300000000.0)
+                    if (!Dwsg.Network.GameNetwork.Enabled && 粮食 > 300000000.0)
                     {
                         全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 300000000.0;
                     }
@@ -495,7 +499,7 @@ public class 全局任务脚本 : MonoBehaviour
                 string text2;
                 if (铜钱 >= 10000.0)
                 {
-                    if (铜钱 > 100000000.0)
+                    if (!Dwsg.Network.GameNetwork.Enabled && 铜钱 > 100000000.0)
                     {
                         全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 100000000.0;
                     }
@@ -512,16 +516,16 @@ public class 全局任务脚本 : MonoBehaviour
                 人口信息对象.text = str2 + "/" + str3;
                 粮食信息对象.text = text3;
                 铜钱信息对象.text = text2;
-                if (全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 > 6666666.0)
+                if (!Dwsg.Network.GameNetwork.Enabled && 全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 > 6666666.0)
                 {
                     全局变量.所有玩家数据表[第几个玩家].财产信息.黄金 = 6666666.0;
                 }
-                if (全局变量.所有玩家数据表[第几个玩家].财产信息.白银 > 6666666.0)
+                if (!Dwsg.Network.GameNetwork.Enabled && 全局变量.所有玩家数据表[第几个玩家].财产信息.白银 > 6666666.0)
                 {
                     全局变量.所有玩家数据表[第几个玩家].财产信息.白银 = 6666666.0;
                 }
                 bool flag = false;
-                if (全局变量.所有玩家数据表[第几个玩家].基础信息.ID < 2)
+                if (!Dwsg.Network.GameNetwork.Enabled && 全局变量.所有玩家数据表[第几个玩家].基础信息.ID < 2)
                 {
                     if (全局变量.所有玩家数据表[第几个玩家].科技信息.工程设计 > 15.0)
                     {
@@ -600,7 +604,7 @@ public class 全局任务脚本 : MonoBehaviour
             {
                 时间信息对象.text = TIME.转时间格式2();
             }
-            if (TIME.getTime() - 全局变量.酒馆刷新时间 > 3600)
+            if (!Dwsg.Network.GameNetwork.Enabled && TIME.getTime() - 全局变量.酒馆刷新时间 > 3600)
             {
                 招募将领脚本对象.自动刷新招募将领();
                 全局变量.酒馆刷新时间 = TIME.getTime();

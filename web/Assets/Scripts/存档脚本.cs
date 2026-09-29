@@ -14,6 +14,11 @@ public class 存档脚本 : MonoBehaviour
 
     private bool 可以操作()
     {
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            if (全局变量.提示类 != null) 全局变量.提示类.显示信息("联机进度由服务器自动保存，重新登录后恢复。");
+            return false;
+        }
         if (全局变量.当局赌场下注列表.Count == 0) return true;
         全局变量.提示类.显示信息("请等待赌场结束");
         return false;
