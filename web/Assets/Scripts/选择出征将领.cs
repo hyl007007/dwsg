@@ -170,6 +170,26 @@ public class 选择出征将领 : MonoBehaviour
             .GetComponent<战斗系统>();
 		if (战斗系统对象.攻身份 != 全局变量.本机身份)
 			return;
+		if (Dwsg.Network.GameNetwork.Enabled && 战斗系统对象.服务器战场)
+		{
+			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
+			Newtonsoft.Json.Linq.JArray 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
+			foreach (返回将领索引 选中 in 已选中将领列表)
+			{
+				将领信息 将领 = 全局变量.所有玩家数据表[第几个玩家].封地信息表[选中.第几个封地].将领信息表[选中.第几个将领];
+				string 将领ID = Dwsg.Combat.CombatClient.GeneralId(将领.ID);
+				if (将领ID == null) { 全局变量.提示类.显示信息("请等待将领同步后增援"); return; }
+				将领ID列表.Add(将领ID);
+			}
+			正在提交山贼出征 = true;
+			Dwsg.Network.GameNetwork.SendCommand("combat.bandit.reinforce", new Newtonsoft.Json.Linq.JObject {
+				["battleId"] = 战斗系统对象.服务器战场ID, ["generalIds"] = 将领ID列表 }, 结果 => {
+				正在提交山贼出征 = false;
+				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
+				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("增援成功!");
+			});
+			return;
+		}
 		List<将领信息> list = new List<将领信息>();
 		int count = 已选中将领列表.Count;
 		for (int i = 0; i < count; i++)

@@ -13,7 +13,7 @@ namespace Dwsg.Server.Modules.Combat
 {
     public sealed class CombatModule : IGameModule, IGameTickModule
     {
-        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "combat.bandit.dispatch", "combat.bandit.advance", "combat.bandit.withdraw" };
+        public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "combat.bandit.dispatch", "combat.bandit.reinforce", "combat.bandit.advance", "combat.bandit.withdraw" };
 
         public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
         {
@@ -25,6 +25,7 @@ namespace Dwsg.Server.Modules.Combat
             {
                 WorldState working = candidate.Clone();
                 GameResult result = command.Type == "combat.bandit.dispatch" ? Dispatch(working, context, command.Payload)
+                    : command.Type == "combat.bandit.reinforce" ? Reinforce(working, context, command.Payload)
                     : command.Type == "combat.bandit.advance" ? Advance(working, context, command.Payload)
                     : command.Type == "combat.bandit.withdraw" ? Withdraw(working, context, command.Payload)
                     : GameResult.Reject(GameCodes.InvalidArgument, "战斗命令无效");
@@ -42,7 +43,7 @@ namespace Dwsg.Server.Modules.Combat
         {
             var battles = state.Data["战斗运行"] as JObject;
             if (battles == null) yield break;
-            foreach (JProperty entry in battles.Properties().OrderBy(item => item.Name, StringComparer.Ordinal))
+            foreach (JProperty entry in battles.Properties().OrderBy(item => item.Value.Value<long>("NextTickUtcMs")).ThenBy(item => item.Name, StringComparer.Ordinal))
             {
                 JObject battle = (JObject)entry.Value;
                 if (battle.Value<bool>("SettlementApplied") || battle.Value<long>("NextTickUtcMs") > serverUtcMs) continue;
@@ -62,8 +63,8 @@ namespace Dwsg.Server.Modules.Combat
                 return GameResult.Reject(GameCodes.InvalidArgument, "请选择1至5名不同将领和有效山贼坐标");
             JObject camp = Camp(world, x, y);
             if (camp == null) return GameResult.Reject(GameCodes.NotFound, "山贼不存在");
-            var battles = world.Data["战斗运行"] as JObject;
-            if (battles != null && battles.Properties().Any(entry => entry.Value.Value<int>("X") == x && entry.Value.Value<int>("Y") == y && !entry.Value.Value<bool>("SettlementApplied")))
+            BanditBattle existing = ActiveAt(world, x, y);
+            if (existing != null && existing.PlayerId != context.Actor.PlayerId)
                 return GameResult.Reject(GameCodes.Conflict, "该山贼已有出征军队");
             string battleId = "battle_" + Guid.NewGuid().ToString("N");
             string armyId = "army_" + Guid.NewGuid().ToString("N");
@@ -72,9 +73,9 @@ namespace Dwsg.Server.Modules.Combat
             if (occupied.Code != GameCodes.Ok) return occupied;
             string npcPlayerId = NpcPlayerId(world);
             var battle = new BanditBattle { BattleId = battleId, ArmyId = armyId, PlayerId = context.Actor.PlayerId, NpcPlayerId = npcPlayerId,
-                X = x, Y = y, ArrivalUtcMs = checked(context.ServerUtcMs + 10000), NextTickUtcMs = checked(context.ServerUtcMs + 10000), RandomState = Seed() };
-            for (int i = 0; i < generals.Count; i++)
-                battle.Attackers.Add(BanditBattleRules.CreateUnit(generalIds[i], generals[i], Troop(world, generals[i]["将领配兵"].Value<int>("ID")), 0));
+                X = x, Y = y, JoinBattleId = existing?.BattleId, ArrivalUtcMs = checked(context.ServerUtcMs + 10000),
+                NextTickUtcMs = checked(context.ServerUtcMs + 10000), RandomState = Seed() };
+            AddArmy(world, battle, armyId, generalIds, generals, battle.ArrivalUtcMs);
             var defenders = (JArray)Camp(world, x, y)["将领数据列表"];
             if (defenders.Count < 1 || defenders.Count > 5 || !defenders.Any(item => item["将领配兵"].Value<double>("数量") > 0))
                 return GameResult.Reject(GameCodes.Unavailable, "原山贼部队数据无效");
@@ -82,6 +83,46 @@ namespace Dwsg.Server.Modules.Combat
                 battle.Defenders.Add(BanditBattleRules.CreateUnit(battleId + ":npc:" + i, (JObject)defenders[i], Troop(world, defenders[i]["将领配兵"].Value<int>("ID")), 1));
             Save(world, battle);
             return Updated(world, context, battle, "combat.bandit.dispatched");
+        }
+
+        private static GameResult Reinforce(WorldState world, CommandContext context, JObject payload)
+        {
+            if (!Keys(payload, "battleId", "generalIds") || !Id(payload["battleId"], out string id) ||
+                !(payload["generalIds"] is JArray ids) || ids.Count < 1 || ids.Count > 5 || ids.Any(item => !Id(item, out _)))
+                return GameResult.Reject(GameCodes.InvalidArgument, "增援参数无效");
+            BanditBattle battle = Load(world, id);
+            if (battle == null) return GameResult.Reject(GameCodes.NotFound, "战场不存在");
+            if (battle.PlayerId != context.Actor.PlayerId) return GameResult.Reject(GameCodes.Forbidden, "只能增援自己的战场");
+            if (battle.SettlementApplied || battle.Phase != "fighting") return GameResult.Reject(GameCodes.Conflict, "战场尚未到达或已经结束");
+            if (battle.NextTickUtcMs <= context.ServerUtcMs)
+            {
+                GameResult advanced = Advance(world, context, new JObject { ["battleId"] = id, ["tickUtcMs"] = battle.NextTickUtcMs });
+                if (advanced.Code != GameCodes.Ok) return advanced;
+                battle = Load(world, id);
+                if (battle.SettlementApplied) return GameResult.Reject(GameCodes.Conflict, "战场已经结束");
+                if (battle.NextTickUtcMs <= context.ServerUtcMs) return GameResult.Reject(GameCodes.Conflict, "战场正在同步，请稍后增援");
+            }
+            string armyId = "army_" + Guid.NewGuid().ToString("N");
+            string[] generalIds = ids.Values<string>().ToArray();
+            GameResult occupied = GeneralsModule.TryOccupy(world, battle.PlayerId, armyId, generalIds, out List<JObject> generals);
+            if (occupied.Code != GameCodes.Ok) return occupied;
+            BanditBattleRules.EnsureFormations(battle);
+            AddArmy(world, battle, armyId, generalIds, generals, context.ServerUtcMs);
+            Save(world, battle);
+            GameResult result = Updated(world, context, battle, "combat.bandit.reinforced");
+            result.Data["armyId"] = armyId;
+            return result;
+        }
+
+        private static void AddArmy(WorldState world, BanditBattle battle, string armyId, string[] ids, List<JObject> generals, long available)
+        {
+            for (int i = 0; i < generals.Count; i++)
+            {
+                CombatUnit unit = BanditBattleRules.CreateUnit(ids[i], generals[i], Troop(world, generals[i]["将领配兵"].Value<int>("ID")), 0);
+                unit.ArmyId = armyId; unit.UnitId = armyId + ":" + ids[i];
+                battle.Attackers.Add(unit);
+            }
+            battle.AttackFormations.Add(new CombatFormation { ArmyId = armyId, AvailableUtcMs = available });
         }
 
         private static GameResult Advance(WorldState world, CommandContext context, JObject payload)
@@ -95,13 +136,31 @@ namespace Dwsg.Server.Modules.Combat
                 return GameResult.Reject(GameCodes.Conflict, "行军尚未到达或推进已处理");
             if (battle.Phase == "marching")
             {
-                battle.Phase = "fighting";
-                battle.StartedUtcMs = battle.ArrivalUtcMs;
-                battle.NextTickUtcMs = checked(battle.ArrivalUtcMs + BanditBattleRules.TickMilliseconds);
+                BanditBattle target = ActiveAt(world, battle.X, battle.Y, battle.BattleId);
+                if (target != null && target.PlayerId == battle.PlayerId && target.ArrivalUtcMs <= battle.ArrivalUtcMs)
+                {
+                    if (target.Phase == "marching") StartBattle(world, target);
+                    BanditBattleRules.EnsureFormations(target);
+                    target.Attackers.AddRange(battle.Attackers);
+                    target.AttackFormations.AddRange(battle.AttackFormations);
+                    battle.Phase = "joined"; battle.SettlementApplied = true; battle.SettledUtcMs = context.ServerUtcMs;
+                    battle.JoinBattleId = target.BattleId;
+                    battle.Reward = new 战斗奖励();
+                    Save(world, battle); Save(world, target);
+                    return Updated(world, context, target, "combat.bandit.reinforced");
+                }
+                StartBattle(world, battle);
             }
+            long cutoff = context.ServerUtcMs;
+            var pending = world.Data["战斗运行"] as JObject;
+            if (pending != null)
+                foreach (JProperty entry in pending.Properties())
+                    if (entry.Name != battle.BattleId && !entry.Value.Value<bool>("SettlementApplied") && entry.Value.Value<string>("Phase") == "marching"
+                        && entry.Value.Value<int>("X") == battle.X && entry.Value.Value<int>("Y") == battle.Y)
+                        cutoff = Math.Min(cutoff, entry.Value.Value<long>("ArrivalUtcMs"));
             var hits = new List<CombatHit>();
             // 限制一次离线补算长度；未补完的NextTick仍到期，下一轮Tick继续，不跳过战斗。
-            for (int i = 0; i < 100 && context.ServerUtcMs >= battle.NextTickUtcMs && !battle.IsTerminal; i++)
+            for (int i = 0; i < 100 && cutoff >= battle.NextTickUtcMs && !battle.IsTerminal; i++)
             {
                 BanditBattleRules.Advance(battle, (unit, utc) => Profile(world, battle, unit, utc),
                     (unit, utc) => Recalculate(world, battle, unit, utc), GeneralExperienceRules.Add);
@@ -118,6 +177,17 @@ namespace Dwsg.Server.Modules.Combat
             return Updated(world, context, battle, battle.SettlementApplied ? "combat.bandit.settled" : "combat.bandit.updated");
         }
 
+        private static void StartBattle(WorldState world, BanditBattle battle)
+        {
+            battle.Phase = "fighting";
+            battle.StartedUtcMs = battle.ArrivalUtcMs;
+            battle.NextTickUtcMs = checked(battle.ArrivalUtcMs + BanditBattleRules.TickMilliseconds);
+            var defenders = (JArray)Camp(world, battle.X, battle.Y)["将领数据列表"];
+            battle.Defenders.Clear();
+            for (int i = 0; i < defenders.Count; i++)
+                battle.Defenders.Add(BanditBattleRules.CreateUnit(battle.BattleId + ":npc:" + i, (JObject)defenders[i], Troop(world, defenders[i]["将领配兵"].Value<int>("ID")), 1));
+        }
+
         private static GameResult Withdraw(WorldState world, CommandContext context, JObject payload)
         {
             bool single = payload?["generalId"] != null;
@@ -129,10 +199,12 @@ namespace Dwsg.Server.Modules.Combat
             if (single)
             {
                 if (!Id(payload["generalId"], out string generalId)) return GameResult.Reject(GameCodes.InvalidArgument, "撤退将领无效");
-                CombatUnit unit = battle.Attackers.SingleOrDefault(entry => entry.GeneralId == generalId);
-                if (unit == null) return GameResult.Reject(GameCodes.Forbidden, "只能撤退本军将领");
-                if (unit.Retired) return GameResult.Success(new JObject { ["battleId"] = id, ["generalId"] = generalId });
-                GameResult released = GeneralsModule.ApplyOutcome(world, battle.PlayerId, battle.ArmyId, new[] {
+                BanditBattleRules.EnsureFormations(battle);
+                CombatUnit unit = battle.Attackers.SingleOrDefault(entry => !entry.Retired && entry.GeneralId == generalId);
+                if (unit == null) return battle.Attackers.Any(entry => entry.GeneralId == generalId)
+                    ? GameResult.Success(new JObject { ["battleId"] = id, ["generalId"] = generalId })
+                    : GameResult.Reject(GameCodes.Forbidden, "只能撤退本军将领");
+                GameResult released = GeneralsModule.ApplyOutcome(world, battle.PlayerId, unit.ArmyId, new[] {
                     new GeneralOutcome { GeneralId = generalId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) } }, false);
                 if (released.Code != GameCodes.Ok) return released;
                 unit.Retired = true;
@@ -182,10 +254,13 @@ namespace Dwsg.Server.Modules.Combat
                 }));
             }
             Save(world, battle);
-            CombatUnit[] active = battle.Attackers.Where(unit => !unit.Retired).ToArray();
-            GameResult outcome = active.Length == 0 ? GameResult.Success() : GeneralsModule.ApplyOutcome(world, battle.PlayerId, battle.ArmyId, active.Select(unit => new GeneralOutcome {
-                GeneralId = unit.GeneralId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) }));
-            if (outcome.Code != GameCodes.Ok) return outcome;
+            BanditBattleRules.EnsureFormations(battle);
+            foreach (var army in battle.Attackers.Where(unit => !unit.Retired).GroupBy(unit => unit.ArmyId))
+            {
+                GameResult outcome = GeneralsModule.ApplyOutcome(world, battle.PlayerId, army.Key, army.Select(unit => new GeneralOutcome {
+                    GeneralId = unit.GeneralId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) }));
+                if (outcome.Code != GameCodes.Ok) return outcome;
+            }
             battle.SettlementApplied = true;
             battle.SettledUtcMs = utc;
             return GameResult.Success();
@@ -219,6 +294,14 @@ namespace Dwsg.Server.Modules.Combat
         private static JObject Camp(WorldState world, int x, int y)
         {
             return (world.Data["山贼列表"] as JArray)?.OfType<JObject>().SingleOrDefault(camp => camp.Value<int>("坐标x") == x && camp.Value<int>("坐标y") == y);
+        }
+        private static BanditBattle ActiveAt(WorldState world, int x, int y, string except = null)
+        {
+            var battles = world.Data["战斗运行"] as JObject;
+            return battles?.Properties().Where(entry => entry.Name != except && !entry.Value.Value<bool>("SettlementApplied")
+                && entry.Value.Value<int>("X") == x && entry.Value.Value<int>("Y") == y)
+                .OrderBy(entry => entry.Value.Value<long>("ArrivalUtcMs")).ThenBy(entry => entry.Name, StringComparer.Ordinal)
+                .Select(entry => entry.Value.ToObject<BanditBattle>()).FirstOrDefault();
         }
         private static JObject Troop(WorldState world, int id)
         {
