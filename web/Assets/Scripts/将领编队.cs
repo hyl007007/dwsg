@@ -1,3 +1,5 @@
+using Dwsg.Generals;
+using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -39,6 +41,7 @@ public class 将领编队 : MonoBehaviour
 
 	public void 获取要显示的将领列表()
 	{
+		第几个玩家 = 全局变量.本机身份;
 		int 本机身份 = 全局变量.本机身份;
 		int num = 显示第几个封地;
 		要显示的将领列表.Clear();
@@ -92,7 +95,6 @@ public class 将领编队 : MonoBehaviour
 	public void 编队列表读写()
 	{
 		编队列表操作();
-		刷新编队();
 	}
 
 	public void 刷新编队()
@@ -104,7 +106,6 @@ public class 将领编队 : MonoBehaviour
 	public void 点击列表将领(int 点击第几个)
 	{
 		列表将领加入编队(点击第几个);
-		刷新编队();
 	}
 
 	public void 点击加入选中将领到编队()
@@ -226,97 +227,46 @@ public class 将领编队 : MonoBehaviour
 									}
 								}
 
-								private void 列表将领加入编队(int 列表第几个将领)
-								{
-									int num = 0;
-									num = (选中列表第几个将领 = 第几页将领 * 4 + 列表第几个将领);
-									UnityEngine.Debug.Log("列表" + 列表第几个将领.ToString() + "将领" + 选中列表第几个将领.ToString() + "被单击");
-									int 第几个封地 = 要显示的将领列表[num].第几个封地;
-									int 第几个将领 = 要显示的将领列表[num].第几个将领;
-									if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 != 0.0)
-									{
-										return;
-									}
-									int num2 = 0;
-									while (true)
-									{
-										if (num2 < 5)
-										{
-											if (编队列表对象.transform.GetChild(num2).GetChild(2).gameObject.activeSelf)
-											{
-												break;
-											}
-											num2++;
-											continue;
-										}
-										return;
-									}
-									int num3 = 0;
-									while (true)
-									{
-										if (num3 < 5)
-										{
-											if ((double)全局变量.所有玩家数据表[第几个玩家].编队信息表[num2][num3] == -1.0)
-											{
-												break;
-											}
-											num3++;
-											continue;
-										}
-										return;
-									}
-									全局变量.所有玩家数据表[第几个玩家].编队信息表[num2][num3] = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].ID;
-									全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 = num2 + 1;
-								}
+	private void 列表将领加入编队(int 列表第几个将领)
+	{
+		选中列表第几个将领 = 第几页将领 * 4 + 列表第几个将领;
+		if (选中列表第几个将领 < 0 || 选中列表第几个将领 >= 要显示的将领列表.Count) return;
+		for (int team = 0; team < 5; team++)
+		{
+			if (!编队列表对象.transform.GetChild(team).GetChild(2).gameObject.activeSelf) continue;
+			for (int slot = 0; slot < 5; slot++)
+			{
+				if (全局变量.所有玩家数据表[第几个玩家].编队信息表[team][slot] != -1) continue;
+				写入编队(team, slot, false);
+				return;
+			}
+			全局变量.提示类.显示信息("编队已满");
+			return;
+		}
+	}
 
-								private void 编队列表操作()
-								{
-									int num = 0;
-									int 第几页将领2 = 第几页将领;
-									num = 选中列表第几个将领;
-									int 第几个封地 = 要显示的将领列表[num].第几个封地;
-									int 第几个将领 = 要显示的将领列表[num].第几个将领;
-									for (int i = 0; i < 5; i++)
-									{
-										for (int j = 0; j < 5; j++)
-										{
-											if (!编队列表对象.transform.GetChild(i).GetChild(1).GetChild(j)
-												.GetChild(3)
-												.gameObject.activeSelf)
-												{
-													continue;
-												}
-												UnityEngine.Debug.Log(j.ToString() + "lkjf");
-												if (全局变量.所有玩家数据表[第几个玩家].编队信息表[i] == null)
-												{
-													UnityEngine.Debug.Log("编队错误");
-													return;
-												}
-												if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领] == null)
-												{
-													UnityEngine.Debug.Log("编队将领错误");
-													return;
-												}
-												double num2 = 全局变量.所有玩家数据表[第几个玩家].编队信息表[i][j];
-												if (num2 == -1.0)
-												{
-													if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 == 0.0)
-													{
-														全局变量.所有玩家数据表[第几个玩家].编队信息表[i][j] = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].ID;
-														全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].详细信息.编队 = i + 1;
-														return;
-													}
-												}
-												else
-												{
-													返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[第几个玩家].获取指定ID标识的将领索引((int)num2);
-													if (返回将领索引.第几个封地 != -1)
-													{
-														全局变量.所有玩家数据表[第几个玩家].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领].详细信息.编队 = 0.0;
-													}
-													全局变量.所有玩家数据表[第几个玩家].编队信息表[i][j] = -1;
-												}
-											}
-										}
-									}
-								}
+	private void 编队列表操作()
+	{
+		for (int team = 0; team < 5; team++)
+			for (int slot = 0; slot < 5; slot++)
+			{
+				if (!编队列表对象.transform.GetChild(team).GetChild(1).GetChild(slot).GetChild(3).gameObject.activeSelf) continue;
+				写入编队(team, slot, 全局变量.所有玩家数据表[第几个玩家].编队信息表[team][slot] != -1);
+				return;
+			}
+	}
+	private void 写入编队(int team, int slot, bool remove)
+	{
+		if (第几个玩家 < 0 || 第几个玩家 >= 全局变量.所有玩家数据表.Count) return;
+		int? generalId = null;
+		if (!remove)
+		{
+			if (选中列表第几个将领 < 0 || 选中列表第几个将领 >= 要显示的将领列表.Count) return;
+			将领索引信息 index = 要显示的将领列表[选中列表第几个将领];
+			玩家数据 player = 全局变量.所有玩家数据表[第几个玩家];
+			if (index.第几个封地 < 0 || index.第几个封地 >= player.封地信息表.Count || index.第几个将领 < 0 || index.第几个将领 >= player.封地信息表[index.第几个封地].将领信息表.Count) return;
+			generalId = player.封地信息表[index.第几个封地].将领信息表[index.第几个将领].ID;
+		}
+		GeneralsClientAdapter.Execute(第几个玩家, generalId, "generals.setFormation", new JObject { ["teamIndex"] = team, ["slotIndex"] = slot }, 刷新编队);
+	}
+}

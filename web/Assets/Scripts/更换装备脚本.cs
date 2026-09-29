@@ -1,3 +1,5 @@
+using Dwsg.Generals;
+using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
@@ -100,24 +102,20 @@ public class 更换装备脚本 : MonoBehaviour
 		将领装备 将领装备 = 全局变量.所有玩家数据表[第几个玩家].背包装备列表.寻找指定将领的装备(第几个部位, 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].ID);
 		if (装备列表对象.transform.GetChild(第几个装备).GetChild(0).gameObject.activeSelf)
 		{
-			if (全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].将领属性.成长点数.等级 >= 已选中装备.获取装备等级())
-			{
-				if (将领装备 != null)
+			玩家数据 player = 全局变量.所有玩家数据表[第几个玩家];
+			int inventoryIndex = GeneralLegacyAdapter.Equipment(player, 第几个部位).IndexOf(已选中装备);
+			GeneralsClientAdapter.Execute(第几个玩家, player.封地信息表[第几个封地].将领信息表[第几个将领].ID, "generals.equip",
+				new JObject { ["equipmentSlot"] = 第几个部位, ["equipmentIndex"] = inventoryIndex, ["releaseTroops"] = 将领界面UI对象.activeSelf }, () =>
 				{
-					将领装备.将领ID = -1;
-				}
-				已选中装备.将领ID = 全局变量.所有玩家数据表[第几个玩家].封地信息表[第几个封地].将领信息表[第几个将领].ID;
-				全局变量.提示类.显示信息("穿戴成功!");
-			}
-			else
-			{
-				全局变量.提示类.显示信息("将领等级不足!");
-			}
-			base.gameObject.SetActive(value: false);
-			if (将领界面UI对象.activeSelf)
-			{
-				将领界面UI对象.GetComponent<将领列表显示>().解除配兵();
-			}
+					全局变量.提示类.显示信息("穿戴成功!");
+					gameObject.SetActive(false);
+					if (将领界面UI对象.activeSelf)
+					{
+						将领列表显示 list = 将领界面UI对象.GetComponent<将领列表显示>();
+						list.刷新将领属性信息();
+						list.刷新列表信息();
+					}
+				});
 			return;
 		}
 		int childCount = 装备列表对象.transform.childCount;
