@@ -38,9 +38,10 @@ public sealed class ChatModule : IGameModule
         JObject player;
         try { player = candidate.RequirePlayer(actor.PlayerId); }
         catch (InvalidOperationException) { return GameResult.Reject(GameCodes.Forbidden, "角色不存在于此世界。"); }
-        string name = player["基础信息"]?.Value<string>("名字"), nation = Nation(candidate, player);
+        string name = player["基础信息"]?.Value<string>("名字"), nation = Nation(candidate, actor.PlayerId);
         if (string.IsNullOrWhiteSpace(name)) return GameResult.Reject(GameCodes.RoleRequired, "请先创建角色。");
         if (channel == "nation" && nation == null) return GameResult.Reject(GameCodes.Forbidden, "加入国家后才能在国家频道发言。");
+        string nationId = channel == "nation" ? NationId(candidate, actor.PlayerId) : null;
         if (channel == "city" && !LivesInCity(candidate, actor.PlayerId, cityX, cityY))
             return GameResult.Reject(GameCodes.Forbidden, "只能在本人现有封地所在城池发言。");
 
@@ -55,6 +56,7 @@ public sealed class ChatModule : IGameModule
         var message = new JObject { ["messageId"] = Guid.NewGuid().ToString("N"), ["channel"] = channel,
             ["content"] = content, ["senderPlayerId"] = actor.PlayerId, ["senderName"] = name,
             ["nation"] = nation, ["serverUtcMs"] = context.ServerUtcMs };
+        if (channel == "nation") message["nationId"] = nationId;
         if (channel == "city") { message["cityX"] = cityX; message["cityY"] = cityY; }
         history.Add(message);
         while (history.Count > HistoryLimit) history.RemoveAt(0);
@@ -63,7 +65,7 @@ public sealed class ChatModule : IGameModule
         result.Events.Add(new GameEvent { EventId = message.Value<string>("messageId"), WorldId = candidate.WorldId,
             Type = "chat.message", ServerUtcMs = context.ServerUtcMs, Data = (JObject)message.DeepClone(),
             AudiencePlayerIds = channel == "world" ? null : ((JObject)candidate.EntityMappings["players"]).Properties()
-                .Where(p => channel == "nation" ? Nation(candidate, candidate.RequirePlayer(p.Name)) == nation :
+                .Where(p => channel == "nation" ? NationId(candidate, p.Name) == nationId :
                     LivesInCity(candidate, p.Name, cityX, cityY)).Select(p => p.Name).ToArray() });
         return result;
     }
@@ -72,11 +74,11 @@ public sealed class ChatModule : IGameModule
     public static JArray ReadHistory(WorldState state, AuthenticatedActor actor)
     {
         if (actor != null && (actor.IsSystem || actor.WorldId != state.WorldId)) return new JArray();
-        string nation = actor == null ? null : Nation(state, state.RequirePlayer(actor.PlayerId));
+        string nationId = actor == null ? null : NationId(state, actor.PlayerId);
         var cities = ReadCities(state, actor);
         return new JArray((state.Data["聊天消息"] as JArray ?? new JArray()).OfType<JObject>()
-            .Where(m => m.Value<string>("channel") == "world" || m.Value<string>("channel") == "rumor" || (nation != null && m.Value<string>("channel") == "nation" &&
-                m.Value<string>("nation") == nation) || (m.Value<string>("channel") == "city" &&
+            .Where(m => m.Value<string>("channel") == "world" || m.Value<string>("channel") == "rumor" || (nationId != null && m.Value<string>("channel") == "nation" &&
+                m.Value<string>("nationId") == nationId) || (m.Value<string>("channel") == "city" &&
                 Coordinate(m["cityX"], out int x) && Coordinate(m["cityY"], out int y) &&
                 cities.Any(c => c.Value<int>("x") == x && c.Value<int>("y") == y)))
             .Select(m => m.DeepClone()));
@@ -135,10 +137,20 @@ public sealed class ChatModule : IGameModule
         return value?.Type == JTokenType.Integer && int.TryParse(value.ToString(), out position) && position >= 0;
     }
 
-    private static string Nation(WorldState state, JObject player)
+    private static string Nation(WorldState state, string playerId)
     {
-        string nation = player["基础信息"]?.Value<string>("国家");
-        return !string.IsNullOrEmpty(nation) && ((JArray)state.Data["国家列表"]).OfType<JObject>()
-            .Any(n => n.Value<string>("国号") == nation) ? nation : null;
+        string nation = state.RequirePlayer(playerId)["基础信息"]?.Value<string>("国家");
+        int index = state.ResolvePlayerIndex(playerId);
+        var current = ((JArray)state.Data["国家列表"]).OfType<JObject>().FirstOrDefault(n => n.Value<string>("国号") == nation);
+        return !string.IsNullOrEmpty(nation) && current?["成员列表"] is JArray members &&
+            members.Any(m => m.Type == JTokenType.Integer && m.Value<int>() == index) ? nation : null;
+    }
+
+    private static string NationId(WorldState state, string playerId)
+    {
+        string tag = Nation(state, playerId);
+        if (tag == null) return null;
+        var nation = ((JArray)state.Data["国家列表"]).OfType<JObject>().First(n => n.Value<string>("国号") == tag);
+        return StableNationIds.RequireId(state, nation.Value<int>("ID"));
     }
 }

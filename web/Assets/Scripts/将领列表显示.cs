@@ -824,6 +824,8 @@ public class 将领列表显示 : MonoBehaviour
 		int num = 获取选中将领索引();
 		if (num != -1)
 		{
+			if (GameNetwork.Enabled && !Dwsg.Generals.GeneralsClientAdapter.CaptureExperienceBookTarget(使用道具脚本对象, 第几个玩家,
+				要显示的将领列表[num].第几个封地, 要显示的将领列表[num].第几个将领)) return;
 			使用道具脚本对象.第几个封地 = 要显示的将领列表[num].第几个封地;
 			使用道具脚本对象.第几个将领 = 要显示的将领列表[num].第几个将领;
 			使用道具脚本对象.要显示的列表 = 全局道具库.获取指定类型的道具列表("经验书");

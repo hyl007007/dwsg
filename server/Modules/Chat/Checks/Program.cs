@@ -3,6 +3,7 @@ using Dwsg.Persistence;
 using Dwsg.Runtime;
 using Dwsg.Server.Chat;
 using Dwsg.Shared;
+using Dwsg.Shared.Economy;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -11,14 +12,17 @@ var data = JObject.Parse(File.ReadAllText(args[0]));
 var directory = Path.Combine(Path.GetFullPath(args[1]), Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(directory);
 var players = (JArray)data["玩家列表"];
-var countries = ((JArray)data["国家列表"]).OfType<JObject>().Select(n => n.Value<string>("国号")).ToHashSet();
-var groups = players.Select((p, i) => new { Index = i, Nation = p["基础信息"].Value<string>("国家") })
-    .Where(p => countries.Contains(p.Nation)).GroupBy(p => p.Nation).ToArray();
-var sameNation = groups.First(g => g.Count() >= 2).Take(2).ToArray();
-int[] indexes = { sameNation[0].Index, sameNation[1].Index, groups.First(g => g.Key != sameNation[0].Nation).First().Index };
+var countries = ((JArray)data["国家列表"]).OfType<JObject>().Select(n => n.Value<string>("国号")).ToArray();
 var mappings = new JObject();
 for (int i = 0; i < players.Count; i++) mappings["check-player-" + i] = i;
 var state = new WorldState { WorldId = "chat-check", Data = data, EntityMappings = new JObject { ["players"] = mappings } };
+var indexes = new int[3];
+for (int i = 0; i < indexes.Length; i++)
+{
+    CheckResult(LegacyWorldRules.CreatePlayer(state, "聊天检查" + i, countries[i < 2 ? 0 : 1], DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), out indexes[i]));
+    mappings["check-player-" + indexes[i]] = indexes[i];
+}
+StableNationIds.EnsureMappings(state);
 var bindings = indexes.Select((i, n) => new RoleBinding { WorldId = state.WorldId, AccountId = "check-account-" + n,
     PlayerId = "check-player-" + i, LegacyPlayerIndex = i }).ToArray();
 var actors = bindings.Select((b, n) => new AuthenticatedActor(b.AccountId, b.PlayerId, state.WorldId, "check-connection-" + n)).ToArray();
@@ -47,10 +51,14 @@ using (var store = new SqliteWorldStore(database))
     Check(nationMessage.Code == GameCodes.Ok && published.Count == 2, "another authenticated runtime actor may speak immediately");
     Check(published[1].AudiencePlayerIds.Contains(actors[0].PlayerId) && published[1].AudiencePlayerIds.Contains(actors[1].PlayerId) &&
         !published[1].AudiencePlayerIds.Contains(actors[2].PlayerId), "national event recipient whitelist excludes other country");
+    var nonmember = new AuthenticatedActor("original-nonmember", "check-player-0", state.WorldId, "original-nonmember");
+    Check(!published[1].AudiencePlayerIds.Contains(nonmember.PlayerId), "original player-zero nationality text cannot grant membership or event reception");
+    Check(new ChatModule().Execute(store.Load(state.WorldId), new CommandContext(nonmember, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), Command("nonmember", "nation", "不可越权")).Code == GameCodes.Forbidden &&
+        ChatModule.ReadHistory(store.Load(state.WorldId), nonmember).Count == 1, "original nonmember cannot send or read national history");
     Check(ChatModule.ReadHistory(store.Load(state.WorldId), actors[2]).Count == 1 && ChatModule.ReadHistory(store.Load(state.WorldId), actors[0]).Count == 2,
         "authorized history filters national messages");
     Check(ChatModule.ReadHistory(store.Load(state.WorldId), null).Count == 1, "authenticated roleless projection exposes only world chat");
-    var spoof = Command("spoof", "world", "尝试冒充"); spoof.Payload["senderName"] = "管理员"; spoof.Payload["nation"] = sameNation[0].Nation;
+    var spoof = Command("spoof", "world", "尝试冒充"); spoof.Payload["senderName"] = "管理员"; spoof.Payload["nation"] = countries[0];
     Check(runtime.Execute(actors[2], spoof).Code == GameCodes.InvalidArgument, "client supplied sender and nation are rejected");
     Check(runtime.Execute(actors[2], Command("long", "world", new string('字', 41))).Code == GameCodes.InvalidArgument, "server enforces original forty character limit");
     Check(runtime.Execute(actors[2], Command("empty", "world", "  \n ")).Code == GameCodes.InvalidArgument, "empty message rejected");
@@ -90,6 +98,9 @@ Console.WriteLine($"PASS {assertions} chat/runtime/SQLite/client checks. Two rea
 GameCommand Command(string id, string channel, string content) => new() { WorldId = state.WorldId, RequestId = id, Type = "chat.send",
     Payload = new JObject { ["channel"] = channel, ["content"] = content } };
 static WorldSnapshot Snapshot(WorldState state, AuthenticatedActor actor) => new() { WorldId = state.WorldId, PlayerId = actor.PlayerId,
-    WorldRevision = state.Revision, PrivatePlayer = (JObject)state.RequirePlayer(actor.PlayerId).DeepClone() };
+    WorldRevision = state.Revision, PrivatePlayer = (JObject)state.RequirePlayer(actor.PlayerId).DeepClone(),
+    PublicWorld = new JObject { ["国家列表"] = new JArray(((JArray)state.Data["国家列表"]).OfType<JObject>().Select(n => new JObject {
+        ["国号"] = n["国号"].DeepClone(), ["nationId"] = StableNationIds.RequireId(state, n.Value<int>("ID")), ["成员列表"] = new JArray(((JArray)n["成员列表"]).Select(index =>
+            ((JObject)state.EntityMappings["players"]).Properties().Single(p => p.Value.Value<int>() == index.Value<int>()).Name)) })) } };
 void Check(bool pass, string description) { if (!pass) throw new Exception("FAIL: " + description); assertions++; Console.WriteLine("PASS " + description); }
 static void CheckResult(GameResult result) { if (result.Code != GameCodes.Ok) throw new Exception("History append failed: " + result.Message); }

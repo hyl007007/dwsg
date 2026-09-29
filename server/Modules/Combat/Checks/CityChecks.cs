@@ -148,6 +148,7 @@ internal static class CityChecks
         now += 1000; Tick();
         Check(Battle(battleId).Defenders.Count(unit => unit.Slot >= 0) > 0 && Battle(battleId).Attackers.All(unit => unit.Slot < 0), "city guards enter original nearby pits before far attackers");
         File.WriteAllText(Path.Combine(directory, "arrived-world.json"), store.Load(world.WorldId).Data.ToString());
+        File.WriteAllText(Path.Combine(directory, "arrived-snapshot.json"), JsonConvert.SerializeObject(store.Load(world.WorldId), Formatting.Indented));
         File.WriteAllText(Path.Combine(directory, "arrived-battle.json"), JObject.FromObject(Battle(battleId)).ToString());
         var nation = ((JArray)store.Load(world.WorldId).Data["国家列表"]).OfType<JObject>().Single(item => item.Value<string>("国号") == actorNation);
         double copper = nation.Value<double>("铜钱"), grain = nation.Value<double>("粮食"), war = world.RequirePlayer(actors[0].PlayerId)["基础信息"].Value<double>("战功");

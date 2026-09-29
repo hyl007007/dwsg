@@ -42,12 +42,27 @@ namespace Dwsg.Network
                 var visible = (JArray)cities.DeepClone();
                 foreach (JObject city in visible) city["城主"] = Index(indexes, city["城主"]);
                 ApplyValue(全局变量.所有城池列表, 全局变量.所有城池列表.GetType(), visible);
+                // JsonIgnore omits this field when a city DTO is first created by ToObject.
+                for (int i = 0; i < visible.Count; i++)
+                    全局变量.所有城池列表[i].正在交战 = visible[i]["正在交战"]?.Type == JTokenType.Boolean && visible[i].Value<bool>("正在交战");
             }
             if (publicChanges["山贼列表"] is JArray bandits)
                 ApplyValue(全局变量.所有山贼数据列表, 全局变量.所有山贼数据列表.GetType(), bandits);
+            if (snapshot.PublicWorld["商城商品"] is JArray catalog)
+                foreach (var category in new[] { 全局商城库.热卖商品列表, 全局商城库.特价商品列表, 全局商城库.装备商品列表,
+                    全局商城库.生产商品列表, 全局商城库.加速商品列表, 全局商城库.宝物商品列表, 全局商城库.宝箱商品列表, 全局商城库.其他商品列表 })
+                    foreach (var product in category)
+                        foreach (var entry in catalog)
+                            if (entry is JObject item && item.Value<string>("道具名") == product.道具名)
+                            {
+                                ApplyValue(product, typeof(商品属性类), item);
+                                break;
+                            }
             int own = -1;
             var hasOwner = snapshot.PlayerId != null && indexes.TryGetValue(snapshot.PlayerId, out own);
             if (!hasOwner) own = -1;
+            var salaryReadyUtcMs = hasOwner ? snapshot.PrivatePlayer.Value<long?>("salaryReadyUtcMs") ?? 0L : 0L;
+            全局变量.领取倒计时 = (int)Math.Min(int.MaxValue, Math.Ceiling(Math.Max(0m, (decimal)salaryReadyUtcMs - snapshot.ServerUtcMs) / 1000m));
             if (hasOwner)
             {
                 全局变量.本机身份 = own;

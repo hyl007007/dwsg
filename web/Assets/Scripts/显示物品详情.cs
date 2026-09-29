@@ -36,7 +36,7 @@ public class 显示物品详情 : MonoBehaviour
 			说明显示.color = 颜色类.GetColor("#FAFA00");
 			丢弃按钮对象.SetActive(value: true);
 			使用按钮对象.SetActive(value: false);
-			if (道具信息库类.分类 == "宝箱")
+			if (道具信息库类.分类 == "宝箱" || (Dwsg.Network.GameNetwork.Enabled && 道具信息库类.名字 == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName))
 			{
 				使用按钮对象.SetActive(value: true);
 			}

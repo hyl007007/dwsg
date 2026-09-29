@@ -1,4 +1,5 @@
 using System.Text;
+using System.Globalization;
 using Dwsg.Host;
 using Dwsg.Persistence;
 using Dwsg.Runtime;
@@ -23,6 +24,11 @@ if (args.Length == 2 && args[0] == "--backup")
     Console.WriteLine("SQLite world backup completed.");
     return;
 }
+var maxOnlinePlayers = 5;
+var configuredMaxOnlinePlayers = Environment.GetEnvironmentVariable("DWSG_MAX_ONLINE_PLAYERS");
+if (configuredMaxOnlinePlayers != null &&
+    (!int.TryParse(configuredMaxOnlinePlayers, NumberStyles.None, CultureInfo.InvariantCulture, out maxOnlinePlayers) || maxOnlinePlayers <= 0))
+    throw new InvalidOperationException("DWSG_MAX_ONLINE_PLAYERS must be a positive Int32.");
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
 builder.Logging.ClearProviders();
@@ -36,30 +42,35 @@ if (store.Load(worldId) == null)
     foreach (var key in new[] { "玩家列表", "国家列表", "城池列表", "商城商品", "道具配置" })
         if (!(data[key] is JArray || data[key] is JObject)) throw new InvalidDataException("Original world seed is incomplete");
     var mappings = new JObject();
-    foreach (var pair in new[] { ("players", "玩家列表"), ("nations", "国家列表"), ("cities", "城池列表") })
+    foreach (var pair in new[] { ("players", "玩家列表"), ("cities", "城池列表") })
     {
         var map = new JObject();
         for (var i = 0; i < ((JArray)data[pair.Item2]).Count; i++) map[Guid.NewGuid().ToString("N")] = i;
         mappings[pair.Item1] = map;
     }
     var imported = new WorldState { WorldId = worldId, Data = data, EntityMappings = mappings };
+    StableNationIds.EnsureMappings(imported);
     GeneralsModule.EnsureMappings(imported);
     store.ImportWorld(imported);
 }
-WorldRoleRegistration.Initialize(store, worldId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+WorldRoleRegistration.Initialize(store, worldId, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), PrepareNations);
 using var authentication = new PhpAuthentication(new Uri(authUrl, UriKind.Absolute));
 var leaseMs = 30000L;
 if (long.TryParse(Environment.GetEnvironmentVariable("DWSG_SESSION_LEASE_MS"), out var configuredLease) && configuredLease >= 1000 && configuredLease <= 300000)
     leaseMs = configuredLease;
-var sessions = new GameSessions(authentication, new AuthorizedWorldProjection(), LegacyWorldModule.CreatePlayer, worldId, leaseMs);
+var sessions = new GameSessions(authentication, new AuthorizedWorldProjection(), LegacyWorldModule.CreatePlayer, worldId, leaseMs, maxOnlinePlayers);
 var runtime = new WorldRuntime(store, sessions.Authorize, initializeEntities: GeneralsModule.EnsureMappings,
-    preparePlayer: ProductionModule.InitializePlayer);
+    preparePlayer: (state, playerId, now) => {
+        ProductionModule.InitializePlayer(state, playerId, now);
+        NationModule.InitializeSalary(state, playerId, now);
+    }, prepareCommit: StableNationIds.EnsureMappings);
 sessions.Runtime = runtime;
 runtime.Register(new EconomyModule(GeneralsModule.EnsureMappings));
 runtime.Register(new ProductionModule());
 runtime.Register(new TerritoryModule(GeneralsModule.EnsureMappings));
 runtime.Register(new MarketModule());
 runtime.Register(new TechnologyModule());
+runtime.Register(new NationModule(state => StableNationIds.RegisterCreated(state, state.Data.Value<int>("国家ID记录"))));
 runtime.Register(new GeneralsModule());
 runtime.Register(new ChatModule());
 runtime.Register(new CombatModule());
@@ -72,6 +83,27 @@ app.MapPost("/poll", PollRequest);
 app.MapPost("/disconnect", DisconnectRequest);
 app.Lifetime.ApplicationStarted.Register(() => _ = TickAsync(app.Lifetime.ApplicationStopping));
 await app.RunAsync();
+
+// The administrator pins an already qualified import proof. No current array index is evidence.
+void PrepareNations(WorldState state)
+{
+    if (state.EntityMappings["nationMappingVersion"] != null)
+    {
+        StableNationIds.EnsureMappings(state);
+        return;
+    }
+    var path = Environment.GetEnvironmentVariable("DWSG_NATION_IMPORT_PROOF")
+        ?? throw new InvalidDataException("Legacy nation mappings require a qualified original import proof");
+    var expectedHash = Environment.GetEnvironmentVariable("DWSG_NATION_IMPORT_PROOF_SHA256");
+    var bytes = File.ReadAllBytes(path);
+    if (string.IsNullOrWhiteSpace(expectedHash) || !Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))
+        .Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+        throw new InvalidDataException("Original nation import proof hash mismatch");
+    var proof = JObject.Parse(Encoding.UTF8.GetString(bytes));
+    if (proof.Value<string>("worldId") != state.WorldId)
+        throw new InvalidDataException("Original nation import proof belongs to another world");
+    StableNationIds.MigrateLegacy(state, proof["verifiedLegacyIdsByGuid"] as JObject);
+}
 
 Task ConnectRequest(HttpContext context) => Serve(context, body => sessions.ConnectAsync(body, context.RequestAborted));
 Task CommandRequest(HttpContext context) => Serve(context, body => sessions.CommandAsync(context.Request.Headers["X-Dwsg-Connection"].ToString(), body, context.RequestAborted));

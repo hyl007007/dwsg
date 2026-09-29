@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 public class 战斗界面UI脚本 : MonoBehaviour
@@ -55,15 +55,16 @@ public class 战斗界面UI脚本 : MonoBehaviour
 
 	public void 全军撤退()
 	{
-		
-		if (战斗系统脚本对象.攻身份!=全局变量.本机身份)
-            全局变量.提示类.显示信息("不要走 决战到天亮");
-        else
-        {
-            if (战斗系统脚本对象.服务器战场)
-                Dwsg.Combat.CombatClient.Withdraw(战斗系统脚本对象.服务器战场ID);
-            else 战斗系统脚本对象.全军撤退 = true;
-        }
+		if (战斗系统脚本对象.服务器战场)
+		{
+			if (Dwsg.Combat.CombatClient.HasActiveArmy(战斗系统脚本对象.服务器战场ID))
+				Dwsg.Combat.CombatClient.Withdraw(战斗系统脚本对象.服务器战场ID);
+			else 全局变量.提示类.显示信息("不要走 决战到天亮");
+			return;
+		}
+		if (战斗系统脚本对象.攻身份 != 全局变量.本机身份)
+			全局变量.提示类.显示信息("不要走 决战到天亮");
+		else 战斗系统脚本对象.全军撤退 = true;
 	}
 
 	public void 显示兵力()

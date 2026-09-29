@@ -2,6 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
+using Dwsg.Network;
+using Dwsg.Generals;
+using Newtonsoft.Json.Linq;
 
 public class 封地信息界面UI脚本 : MonoBehaviour
 {
@@ -18,6 +21,8 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 	public GameObject 伤兵列表对象;
 
 	private List<将领索引> 俘虏列表;
+
+	private List<string> 联机俘虏编号 = new List<string>();
 
 	public 调整数量脚本 调整数量脚本对象;
 
@@ -124,8 +129,12 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 		}
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
-		俘虏列表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表;
-		int count = 俘虏列表.Count;
+		HashSet<string> selected = new HashSet<string>(选中联机俘虏());
+		JArray online = GameNetwork.Enabled ? GeneralsClientAdapter.CaptiveRows(第几个封地) : null;
+		if (online == null) 俘虏列表 = 全局变量.所有玩家数据表[本机身份].封地信息表[第几个封地].俘虏信息表;
+		联机俘虏编号.Clear();
+		if (online != null) foreach (JObject row in online) 联机俘虏编号.Add(row.Value<string>("generalId"));
+		int count = online == null ? 俘虏列表.Count : online.Count;
 		int childCount = 俘虏列表对象.transform.childCount;
 		for (int i = 0; i < childCount; i++)
 		{
@@ -134,10 +143,19 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 		for (int j = 0; j < count; j++)
 		{
 			childCount = 俘虏列表对象.transform.childCount;
-			返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].获取指定ID标识的将领索引(俘虏列表[j].将领ID标识);
-			if (返回将领索引.第几个封地 == -1)
+			将领信息 将领信息;
+			if (online == null)
 			{
-				continue;
+				返回将领索引 返回将领索引 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].获取指定ID标识的将领索引(俘虏列表[j].将领ID标识);
+				if (返回将领索引.第几个封地 == -1) continue;
+				将领信息 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领];
+			}
+			else
+			{
+				JObject row = (JObject)online[j];
+				将领信息 = new 将领信息 { 将领属性 = new 将领属性 { 初始属性 = new 初始属性 { ID = row.Value<double>("configId"), 名字 = row.Value<string>("name"),
+					职业 = row.Value<int>("profession"), 成长 = row.Value<double>("growth") }, 成长点数 = new 成长点数 { 等级 = row.Value<double>("level") } },
+					详细信息 = new 详细信息 { 忠诚 = row.Value<double>("loyalty") } };
 			}
 			GameObject gameObject;
 			if (childCount <= j)
@@ -150,8 +168,8 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			{
 				gameObject = 俘虏列表对象.transform.GetChild(j).gameObject;
 			}
-			将领信息 将领信息 = 全局变量.所有玩家数据表[俘虏列表[j].第几个玩家].封地信息表[返回将领索引.第几个封地].将领信息表[返回将领索引.第几个将领];
 			gameObject.SetActive(value: true);
+			if (online != null) gameObject.transform.GetChild(6).gameObject.SetActive(selected.Contains(联机俘虏编号[j]));
 			将领属性库类 将领属性库类 = 全局将领库.查询指定ID的将领数据(将领信息.将领属性.初始属性.ID);
 			if (将领属性库类 != null)
 			{
@@ -169,10 +187,27 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 			gameObject.transform.GetChild(4).GetComponent<Text>().text = "成长:" + 将领信息.将领属性.初始属性.成长.ToString();
 			gameObject.transform.GetChild(5).GetComponent<Text>().text = "忠诚:" + 将领信息.详细信息.忠诚.ToString();
 		}
+		if (online != null) 选中高亮();
+	}
+
+	private List<string> 选中联机俘虏()
+	{
+		List<string> selected = new List<string>();
+		for (int i = 0; i < 联机俘虏编号.Count && i < 俘虏列表对象.transform.childCount; i++)
+		{
+			GameObject row = 俘虏列表对象.transform.GetChild(i).gameObject;
+			if (row.activeSelf && row.transform.GetChild(6).gameObject.activeSelf) selected.Add(联机俘虏编号[i]);
+		}
+		return selected;
 	}
 
 	public void 劝降俘虏()
 	{
+		if (GameNetwork.Enabled)
+		{
+			GeneralsClientAdapter.ManageCaptives(全局变量.第几个封地, 选中联机俘虏(), false, 显示俘虏列表);
+			return;
+		}
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		if (!(全局变量.所有玩家数据表[本机身份].获取将领总数() < 全局变量.所有玩家数据表[本机身份].基础信息.将领数上限))
@@ -316,6 +351,11 @@ public class 封地信息界面UI脚本 : MonoBehaviour
 
 	public void 释放俘虏()
 	{
+		if (GameNetwork.Enabled)
+		{
+			GeneralsClientAdapter.ManageCaptives(全局变量.第几个封地, 选中联机俘虏(), true, 显示俘虏列表);
+			return;
+		}
 		int 本机身份 = 全局变量.本机身份;
 		int 第几个封地 = 全局变量.第几个封地;
 		int childCount = 俘虏列表对象.transform.childCount;

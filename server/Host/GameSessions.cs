@@ -28,10 +28,13 @@ public sealed class GameSessions
     private readonly CreatePlayer create;
     private readonly string worldId;
     private readonly long leaseMs;
+    private readonly int maxOnlinePlayers;
     public WorldRuntime Runtime { get; set; }
-    public GameSessions(PhpAuthentication auth, IWorldProjection projection, CreatePlayer create, string worldId, long leaseMs = 30000)
+    public GameSessions(PhpAuthentication auth, IWorldProjection projection, CreatePlayer create, string worldId, long leaseMs = 30000, int maxOnlinePlayers = 5)
     {
+        if (maxOnlinePlayers <= 0) throw new ArgumentOutOfRangeException(nameof(maxOnlinePlayers));
         this.auth = auth; this.projection = projection; this.create = create; this.worldId = worldId; this.leaseMs = leaseMs;
+        this.maxOnlinePlayers = maxOnlinePlayers;
     }
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     public bool Authorize(AuthenticatedActor actor)
@@ -62,8 +65,8 @@ public sealed class GameSessions
         lock (connectionGate)
         {
             Sweep();
-            if (accounts.Values.Count(s => s.Actor.WorldId == worldId && s.Actor.AccountId != verified.AccountId) >= 5)
-                return Reply(GameResult.Reject(GameCodes.WorldFull, "当前世界已有5名真人在线，请稍后重试。"));
+            if (accounts.Values.Count(s => s.Actor.WorldId == worldId && s.Actor.AccountId != verified.AccountId) >= maxOnlinePlayers)
+                return Reply(GameResult.Reject(GameCodes.WorldFull, "当前世界已有" + maxOnlinePlayers + "名真人在线，请稍后重试。"));
             var connectionId = Guid.NewGuid().ToString("N");
             var result = Runtime.EnsureRole(verified.AccountId, worldId, connectionId, input.Value<string>("requestId"),
                 input.Value<string>("nickname"), input.Value<string>("nation"), create, out var binding);

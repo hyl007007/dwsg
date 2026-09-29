@@ -37,6 +37,8 @@ public class 调整数量脚本 : MonoBehaviour
 
 	private double 剩余人口;
 
+	private bool 正在服务器招兵;
+
 	private Newtonsoft.Json.Linq.JObject 市场报价;
 
 	private int 市场显示次数;
@@ -51,6 +53,33 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 输入改变购买数量()
 	{
+		if (调整类型 == 1 && Dwsg.Network.GameNetwork.Enabled)
+		{
+			double 数量;
+			if (!double.TryParse(输入数量对象.text, out 数量) || double.IsNaN(数量) || double.IsInfinity(数量) || 数量 <= 0 || 数量 > int.MaxValue || 数量 != System.Math.Truncate(数量))
+			{
+				数量滑条对象.value = 0f;
+				调整数量 = 0;
+				数量显示对象.text = "0";
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请输入有效的整数招兵数量");
+				return;
+			}
+			调整数量 = System.Math.Min(数量, 数量滑条对象.maxValue);
+			数量显示对象.text = 调整数量.ToString(); 数量滑条对象.value = (float)调整数量;
+			return;
+		}
+		if (调整类型 == 3 && Dwsg.Network.GameNetwork.Enabled && 显示背包物品脚本对象 != null && 显示背包物品脚本对象.已选择道具名字.text == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName)
+		{
+			double 数量;
+			if (!double.TryParse(输入数量对象.text, out 数量) || double.IsNaN(数量) || double.IsInfinity(数量) || 数量 <= 0 || 数量 > int.MaxValue || 数量 != System.Math.Truncate(数量))
+			{
+				if (全局变量.提示类 != null) 全局变量.提示类.显示信息("请输入有效的整数道具数量");
+				return;
+			}
+			调整数量 = System.Math.Min(数量, 数量滑条对象.maxValue);
+			数量显示对象.text = 调整数量.ToString(); 数量滑条对象.value = (float)调整数量;
+			return;
+		}
 		if (调整类型 == 3 && 显示背包物品脚本对象 != null && Dwsg.Economy.MaterialPackClient.Supports(显示背包物品脚本对象.已选择道具名字.text))
 		{
 			float 数量;
@@ -163,6 +192,17 @@ public class 调整数量脚本 : MonoBehaviour
 
 	public void 确认调整()
 	{
+		if (调整类型 == 3 && Dwsg.Network.GameNetwork.Enabled && 显示背包物品脚本对象.已选择道具名字.text == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName)
+		{
+			int 本次经验书显示 = 材料包显示次数;
+			显示背包物品脚本对象.使用经验书(调整数量, result =>
+			{
+				if (this == null || 调整类型 != 3 || 本次经验书显示 != 材料包显示次数) return;
+				if (result.Code == Dwsg.Shared.GameCodes.Ok) base.gameObject.SetActive(value: false);
+				else 说明文本.text = "【批量使用道具】\r\n" + result.Message;
+			});
+			return;
+		}
 		if (调整类型 == 3 && 显示背包物品脚本对象 != null && Dwsg.Economy.MaterialPackClient.Supports(显示背包物品脚本对象.已选择道具名字.text))
 		{
 			if (double.IsNaN(调整数量) || double.IsInfinity(调整数量) || 调整数量 < 1 || 调整数量 > int.MaxValue)
@@ -211,6 +251,24 @@ public class 调整数量脚本 : MonoBehaviour
 		}
 		if (调整类型 == 1)
 		{
+			if (Dwsg.Network.GameNetwork.Enabled)
+			{
+				if (正在服务器招兵) return;
+				int 操作身份 = 全局变量.本机身份, 本次招兵显示 = 材料包显示次数, 招兵封地 = 第几个封地, 招兵兵种 = 兵种ID;
+				if (第几个玩家 != 操作身份 || 操作身份 < 0 || 操作身份 >= 全局变量.所有玩家数据表.Count)
+				{ 全局变量.提示类.显示信息("只能招募本人封地的兵士"); return; }
+				正在服务器招兵 = true;
+				ProductionClient.Recruit(全局变量.所有玩家数据表[操作身份], 招兵封地, 兵营脚本对象.第几个建筑, 招兵兵种, 调整数量, 结果 =>
+				{
+					if (this == null) return;
+					正在服务器招兵 = false;
+					if (全局变量.本机身份 != 操作身份 || 第几个玩家 != 操作身份 || 调整类型 != 1 || 本次招兵显示 != 材料包显示次数 || 第几个封地 != 招兵封地 || 兵种ID != 招兵兵种) return;
+					全局变量.提示类.显示信息(结果?.Message ?? "服务器未确认招兵，请重试");
+					if (结果 != null && 结果.Code == Dwsg.Shared.GameCodes.Ok)
+					{ gameObject.SetActive(false); 兵营脚本对象.刷新显示(); }
+				});
+				return;
+			}
 			兵种属性库类 兵种属性库类 = 全局兵种库.查询指定ID的数据(兵种ID);
 			全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 = 全局变量.所有玩家数据表[第几个玩家].财产信息.铜钱 - 兵种属性库类.需要铜钱 * 调整数量;
 			全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 = 全局变量.所有玩家数据表[第几个玩家].财产信息.粮食 - 兵种属性库类.需要粮食 * 调整数量;

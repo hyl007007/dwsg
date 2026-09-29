@@ -50,12 +50,12 @@ namespace Dwsg.Shared.Combat
             return general;
         }
 
-        public static JObject SelectNamedGuard(JArray generals, int scale, Func<int, int, int> random)
+        public static JObject SelectNamedGuard(JArray generals, int scale, Func<int, int, int> random, Func<JObject, bool> available = null)
         {
             var eligible = new List<JObject>();
             foreach (JObject general in generals.OfType<JObject>())
             {
-                if (general["详细信息"].Value<double>("状态") != 0) continue;
+                if (general["详细信息"].Value<double>("状态") != 0 || (available != null && !available(general))) continue;
                 string series = general["将领属性"]["初始属性"].Value<string>("系列");
                 if (series != "名将" && scale < 3) continue;
                 if ((series == "君王" || series == "尊将" || series == "战将" || series == "禧将") && scale < 4) continue;

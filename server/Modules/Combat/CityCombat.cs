@@ -26,7 +26,8 @@ namespace Dwsg.Server.Modules.Combat
                 return GameResult.Reject(GameCodes.InvalidArgument, "请选择1至5名不同将领和有效城池坐标");
             JObject city = City(world, x, y);
             if (city == null) return GameResult.Reject(GameCodes.NotFound, "城池不存在");
-            if (!NpcCity(world, city)) return GameResult.Reject(GameCodes.Conflict, "当前只开放进攻原NPC城池");
+            GameResult targetValidation = ValidateCitySiegeTarget(world, context.Actor.PlayerId, city);
+            if (targetValidation.Code != GameCodes.Ok) return targetValidation;
             JObject player = world.RequirePlayer(context.Actor.PlayerId);
             if (city.Value<string>("国家") == player["基础信息"].Value<string>("国家"))
                 return GameResult.Reject(GameCodes.Conflict, "不能进攻本国城池");
@@ -62,7 +63,7 @@ namespace Dwsg.Server.Modules.Combat
             if (occupied.Code != GameCodes.Ok) return occupied;
             var battle = new BanditBattle { Kind = "city", BattleId = battleId, ArmyId = armyId, PlayerId = context.Actor.PlayerId,
                 X = x, Y = y, JoinBattleId = existing?.BattleId, ArrivalUtcMs = arrival, NextTickUtcMs = arrival, RandomState = Seed(),
-                CityName = city.Value<string>("名称"), CityNation = city.Value<string>("国家"), CityScale = city.Value<int>("规模"),
+                CityName = city.Value<string>("名称"), CityNation = city.Value<string>("国家"), CityScale = city.Value<int>("规模"), CityOwnerPlayerId = CityHumanDefender(world, city),
                 AttackFormationX = -40.25f, DefenseFormationX = -24f };
             AddArmy(world, battle, armyId, generalIds, generals, arrival);
             Save(world, battle);
@@ -84,9 +85,12 @@ namespace Dwsg.Server.Modules.Combat
 
         private static void StartCityBattle(WorldState world, BanditBattle battle)
         {
+            if (IsOriginalAiBattle(world, battle)) { StartOriginalAiCityBattle(world, battle); return; }
             JObject city = City(world, battle.X, battle.Y);
-            if (city == null || !NpcCity(world, city) || city.Value<string>("国家") == world.RequirePlayer(battle.PlayerId)["基础信息"].Value<string>("国家"))
+            battle.CityOwnerPlayerId = null;
+            if (ValidateCitySiegeTarget(world, battle.PlayerId, city).Code != GameCodes.Ok)
             { battle.Phase = "withdrawn"; return; }
+            battle.CityOwnerPlayerId = CityHumanDefender(world, city);
             battle.Phase = "fighting"; battle.StartedUtcMs = battle.ArrivalUtcMs;
             battle.NextTickUtcMs = checked(battle.StartedUtcMs + BanditBattleRules.TickMilliseconds);
             battle.CityName = city.Value<string>("名称"); battle.CityNation = city.Value<string>("国家"); battle.CityScale = city.Value<int>("规模");
@@ -96,21 +100,22 @@ namespace Dwsg.Server.Modules.Combat
             int npcIndex = country?.Value<int>("国王") ?? 2;
             battle.NpcPlayerId = NpcPlayerId(world, npcIndex);
             JObject npc = world.RequirePlayer(battle.NpcPlayerId);
+            JObject militiaPlayer = CityMilitiaPlayer(world, battle.NpcPlayerId);
             var units = new List<CombatUnit>();
             foreach (JObject general in CityGarrisonRules.CreateMilitia(battle.CityScale, world.RequirePlayer(battle.PlayerId)["基础信息"].Value<string>("名字"), random.Next,
-                level => CityGarrisonRules.CreateMilitiaGeneral(level, npc, (JArray)world.Data["将领配置"], (JObject)world.Data["姓名配置"], world.Data.Value<double>("难度"), battle.StartedUtcMs / 1000, random.Next)))
+                level => CityGarrisonRules.CreateMilitiaGeneral(level, militiaPlayer, (JArray)world.Data["将领配置"], (JObject)world.Data["姓名配置"], world.Data.Value<double>("难度"), battle.StartedUtcMs / 1000, random.Next)))
             {
                 CombatUnit unit = BanditBattleRules.CreateUnit(battle.BattleId + ":militia:" + units.Count, general, Troop(world, general["将领配兵"].Value<int>("ID")), 1);
                 unit.GeneralOwnerId = battle.NpcPlayerId; unit.Ephemeral = true; units.Add(unit);
             }
             void InsertGuard(string ownerId, JObject general)
             {
-                if (!OriginalNpc(world, world.ResolvePlayerIndex(ownerId))) throw new InvalidOperationException("当前城防含真实玩家守将");
+                if (!CanUseCityGuard(world, battle, ownerId, general)) return;
                 string id = ((JObject)world.EntityMappings["generals"]).Properties().Single(entry => entry.Value.Value<string>("playerId") == ownerId && entry.Value.Value<int>("legacyId") == general.Value<int>("ID")).Name;
                 if (units.Any(unit => !unit.Ephemeral && unit.GeneralId == id)) return;
                 general["详细信息"]["坑位颜色"] = 1.0; general["详细信息"]["状态"] = 1.0;
                 CombatUnit guard = BanditBattleRules.CreateUnit(id, general, Troop(world, 104), 1);
-                guard.GeneralOwnerId = ownerId; units.Insert(random.Next(0, units.Count), guard);
+                guard.GeneralOwnerId = ownerId; guard.HumanOwner = IsHumanCityPlayer(world, ownerId); units.Insert(random.Next(0, units.Count), guard);
             }
             int chance = random.Next(0, 101);
             if (chance <= city.Value<double>("协防几率") && country != null)
@@ -118,7 +123,7 @@ namespace Dwsg.Server.Modules.Combat
                 int count = (int)random.NextFloat(city.Value<float>("协防数量f"), city.Value<float>("协防数量m"));
                 for (int index = 0; index < count; index++)
                 {
-                    JObject guard = CityGarrisonRules.SelectNamedGuard((JArray)npc["封地信息表"][0]["将领信息表"], battle.CityScale, random.Next);
+                    JObject guard = CityGarrisonRules.SelectNamedGuard((JArray)npc["封地信息表"][0]["将领信息表"], battle.CityScale, random.Next, general => CanUseCityGuard(world, battle, battle.NpcPlayerId, general));
                     if (guard == null) break;
                     InsertGuard(battle.NpcPlayerId, guard);
                 }
@@ -133,7 +138,7 @@ namespace Dwsg.Server.Modules.Combat
                     if (generals == null) continue;
                     JObject guard = generals.OfType<JObject>().FirstOrDefault(item => item["将领属性"]["初始属性"].Value<string>("名字") == name);
                     if (guard == null) continue;
-                    if (guard["详细信息"].Value<double>("状态") == 0) { CityGarrisonRules.EquipNamedGuard(guard); InsertGuard(owner.Name, guard); }
+                    if (CanUseCityGuard(world, battle, owner.Name, guard)) { CityGarrisonRules.EquipNamedGuard(guard); InsertGuard(owner.Name, guard); }
                     break;
                 }
             }
@@ -152,7 +157,7 @@ namespace Dwsg.Server.Modules.Combat
 
         private static void RecalculateCityOwner(WorldState world, BanditBattle battle, CombatUnit actor, long utc)
         {
-            if (actor.Side == 1 && actor.Ephemeral) return; // 原临时ID0守军已从owner封地移走。
+            if (actor.Ephemeral) return; // 原临时ID0部队不在owner正式封地中。
             string owner = actor.GeneralOwnerId ?? battle.PlayerId;
             JObject player = (JObject)world.RequirePlayer(owner).DeepClone();
             CombatUnit[] active = battle.Attackers.Concat(battle.Defenders).Where(unit => !unit.Retired && !unit.Ephemeral && (unit.GeneralOwnerId ?? battle.PlayerId) == owner).ToArray();
@@ -185,7 +190,7 @@ namespace Dwsg.Server.Modules.Combat
 
         private static GameResult SettleDefenders(WorldState world, BanditBattle battle)
         {
-            foreach (var owner in battle.Defenders.Where(unit => !unit.Ephemeral).GroupBy(unit => unit.GeneralOwnerId))
+            foreach (var owner in battle.Defenders.Where(unit => !unit.Ephemeral && !unit.PlayerGarrison).GroupBy(unit => unit.GeneralOwnerId))
             {
                 GameResult result = GeneralsModule.ApplyCityDefenderOutcome(world, owner.Key, battle.BattleId,
                     owner.Select(unit => new GeneralOutcome { GeneralId = unit.GeneralId, General = unit.General,
@@ -197,13 +202,18 @@ namespace Dwsg.Server.Modules.Combat
 
         private static void Capture(WorldState world, BanditBattle battle, CombatUnit attacker, CombatUnit defender, CombatRandom random, long utc)
         {
-            JObject player = world.RequirePlayer(battle.PlayerId);
+            if (attacker.Ephemeral) return; // 原临时ID0攻军没有可关押俘虏的正式封地。
+            string killer = attacker.GeneralOwnerId ?? battle.PlayerId;
+            if (OriginalNpc(world, world.ResolvePlayerIndex(killer))) return;
+            JObject player = world.RequirePlayer(killer);
             int draw = random.Next(0, 311);
             int threshold = CityGarrisonRules.CaptureThreshold(player["基础信息"].Value<double>("抓将几率"), CombatEconomy.GetActiveBonus(player, "抓将几率", utc), defender.General["将领属性"]["初始属性"].Value<double>("突围"));
             string hash;
             using (MD5 md5 = MD5.Create()) hash = BitConverter.ToString(md5.ComputeHash(Encoding.Default.GetBytes(player["基础信息"].Value<string>("名字")))).Replace("-", "");
             bool captured = hash == "E586D0FD6B8E898AFA3B640A861EEBAB" || draw <= threshold;
-            GameResult result = GeneralsModule.CaptureGeneral(world, defender.GeneralOwnerId, defender.GeneralId, battle.PlayerId, attacker.GeneralId, battle.BattleId, captured);
+            string targetArmy = defender.Side == 1 && !defender.PlayerGarrison ? battle.BattleId : defender.ArmyId;
+            string killerArmy = attacker.Side == 1 && !attacker.PlayerGarrison ? battle.BattleId : attacker.ArmyId;
+            GameResult result = GeneralsModule.CaptureGeneral(world, defender.GeneralOwnerId, defender.GeneralId, killer, attacker.GeneralId, targetArmy, killerArmy, captured);
             if (result.Code != GameCodes.Ok) throw new InvalidOperationException(result.Message);
             JObject fief;
             JObject original = GeneralsModule.ResolveGeneral(world, defender.GeneralOwnerId, defender.GeneralId, out fief);
@@ -212,25 +222,31 @@ namespace Dwsg.Server.Modules.Combat
 
         private static GameResult SettleCity(WorldState world, BanditBattle battle, long utc)
         {
-            battle.Reward = BanditBattleRules.CalculateRewards(battle, CombatEconomy.GetActiveBonus(world.RequirePlayer(battle.PlayerId), "资源声望", utc));
-            GameResult rewarded = CombatEconomy.ApplyCombatRewards(world, battle.PlayerId, battle.BattleId, battle.Reward.声望, battle.Reward.国库铜钱, battle.Reward.国库粮食);
-            if (rewarded.Code != GameCodes.Ok) return rewarded;
-            BanditBattleRules.EnsureFormations(battle);
-            foreach (var army in battle.Attackers.Where(unit => !unit.Retired).GroupBy(unit => unit.ArmyId))
+            bool earnsReward = !IsOriginalAiBattle(world, battle) || IsHumanCityPlayer(world, battle.PlayerId);
+            battle.Reward = earnsReward ? BanditBattleRules.CalculateRewards(battle, CombatEconomy.GetActiveBonus(world.RequirePlayer(battle.PlayerId), "资源声望", utc)) : new 战斗奖励();
+            if (earnsReward)
             {
-                GameResult outcome = GeneralsModule.ApplyOutcome(world, battle.PlayerId, army.Key, army.Select(unit => new GeneralOutcome {
+                GameResult rewarded = CombatEconomy.ApplyCombatRewards(world, battle.PlayerId, battle.BattleId, battle.Reward.声望, battle.Reward.国库铜钱, battle.Reward.国库粮食);
+                if (rewarded.Code != GameCodes.Ok) return rewarded;
+            }
+            BanditBattleRules.EnsureFormations(battle);
+            foreach (var army in battle.Attackers.Where(unit => !unit.Retired && !unit.Ephemeral).GroupBy(unit => new { Owner = unit.GeneralOwnerId ?? battle.PlayerId, unit.ArmyId }))
+            {
+                GameResult outcome = GeneralsModule.ApplyCityDefenderOutcome(world, army.Key.Owner, army.Key.ArmyId, army.Select(unit => new GeneralOutcome {
                     GeneralId = unit.GeneralId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) }));
                 if (outcome.Code != GameCodes.Ok) return outcome;
             }
             GameResult defenders = SettleDefenders(world, battle);
             if (defenders.Code != GameCodes.Ok) return defenders;
+            GameResult garrisons = SettleGarrisons(world, battle, utc);
+            if (garrisons.Code != GameCodes.Ok) return garrisons;
             if (battle.StartedUtcMs != 0)
             {
                 JObject city = City(world, battle.X, battle.Y); city["城墙"] = battle.Wall; city["正在交战"] = false;
                 var random = new CombatRandom(battle.RandomState);
                 if (battle.Phase == "won")
                 {
-                    battle.WarReward = CityGarrisonRules.WarReward(battle.CityScale);
+                    battle.WarReward = earnsReward ? CityGarrisonRules.WarReward(battle.CityScale) : 0;
                     JObject player = world.RequirePlayer(battle.PlayerId);
                     string nationName = player["基础信息"].Value<string>("国家");
                     if (((JArray)world.Data["国家列表"]).OfType<JObject>().Any(nation => nation.Value<string>("国号") == nationName))
@@ -241,9 +257,12 @@ namespace Dwsg.Server.Modules.Combat
                 }
                 if (battle.Phase == "won" || battle.Phase == "withdrawn") RefreshNamedCityGuards(world, battle.X, battle.Y, random.Next);
                 battle.RandomState = random.State;
-                JObject basics = (JObject)world.RequirePlayer(battle.PlayerId)["基础信息"];
-                double war = basics.Value<double>("战功") + Math.Floor((float)battle.WarReward);
-                basics["战功"] = war; basics["官职"] = CityGarrisonRules.Rank(war);
+                if (earnsReward)
+                {
+                    JObject basics = (JObject)world.RequirePlayer(battle.PlayerId)["基础信息"];
+                    double war = basics.Value<double>("战功") + Math.Floor((float)battle.WarReward);
+                    basics["战功"] = war; basics["官职"] = CityGarrisonRules.Rank(war);
+                }
             }
             battle.SettlementApplied = true; battle.SettledUtcMs = utc;
             Save(world, battle);

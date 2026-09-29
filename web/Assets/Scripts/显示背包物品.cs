@@ -348,6 +348,8 @@ public class 显示背包物品 : MonoBehaviour
 		{
 			if (Dwsg.Economy.MaterialPackClient.Supports(已选择道具名字.text))
 				调整数量脚本对象.第几个玩家 = 全局变量.本机身份;
+			if (Dwsg.Network.GameNetwork.Enabled && 已选择道具名字.text == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName &&
+				!Dwsg.Generals.GeneralsClientAdapter.CaptureExperienceBookTarget(this, 全局变量.本机身份, 0, 0)) return;
 			调整数量脚本对象.调整类型 = 3;
 			调整数量脚本对象.gameObject.SetActive(value: true);
 			调整数量脚本对象.显示说明文本();
@@ -358,6 +360,11 @@ public class 显示背包物品 : MonoBehaviour
 	{
 		if (!(已选择道具名字.text != ""))
 		{
+			return;
+		}
+		if (Dwsg.Network.GameNetwork.Enabled && 已选择道具名字.text == Dwsg.Shared.Generals.GeneralExperienceBookRules.ItemName)
+		{
+			if (Dwsg.Generals.GeneralsClientAdapter.CaptureExperienceBookTarget(this, 全局变量.本机身份, 0, 0)) 使用经验书(1);
 			return;
 		}
 		if (Dwsg.Economy.MaterialPackClient.Supports(已选择道具名字.text))
@@ -382,6 +389,23 @@ public class 显示背包物品 : MonoBehaviour
 		{
 			全局变量.提示类.显示信息("使用失败!");
 		}
+	}
+
+	public void 使用经验书(double 数量, System.Action<Dwsg.Shared.GameResult> 完成 = null)
+	{
+		int 选中;
+		if (!int.TryParse(已选中道具.text, out 选中)) 选中 = 0;
+		Dwsg.Generals.GeneralsClientAdapter.UseExperienceBook(this, 已选择道具名字.text, 数量, result =>
+		{
+			if (this == null) return;
+			if (result.Code == Dwsg.Shared.GameCodes.Ok)
+			{
+				刷新显示();
+				if (选中 >= 0 && 选中 < 物品列表对象.transform.childCount && 物品列表对象.transform.GetChild(选中).GetChild(9).gameObject.activeSelf)
+					物品列表对象.transform.GetChild(选中).GetChild(9).GetComponent<Toggle>().isOn = true;
+			}
+			完成?.Invoke(result);
+		});
 	}
 
 	public void 使用材料包(int 数量, System.Action<Dwsg.Shared.GameResult> 完成 = null)

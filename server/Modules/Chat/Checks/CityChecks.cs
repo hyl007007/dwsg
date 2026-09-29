@@ -22,6 +22,7 @@ internal static class CityChecks
         GameResult accepted = null;
         using (var store = new SqliteWorldStore(path))
         {
+            StableNationIds.EnsureMappings(original);
             store.ImportWorld(original);
             for (int i = 0; i < 3; i++)
             {

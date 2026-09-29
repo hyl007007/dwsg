@@ -60,9 +60,26 @@ namespace Dwsg.Server.Modules.Generals
 			catch (GeneralRuleException failure) { return Rejection(failure); }
 		}
 
-		public static GameResult ApplyCityDefenderOutcome(WorldState candidate, string targetOwnerId, string battleId, IEnumerable<GeneralOutcome> outcomes)
+		public static GameResult CaptureGeneral(WorldState candidate, string targetOwnerId, string targetGeneralId, string killerPlayerId, string killerGeneralId, string targetArmyId, string killerArmyId, bool captured)
 		{
-			return ApplyOutcomes(candidate, targetOwnerId, battleId, outcomes, true, true);
+			try
+			{
+				StableId(new JValue(targetArmyId)); StableId(new JValue(killerArmyId));
+				StableId(new JValue(targetGeneralId)); StableId(new JValue(killerGeneralId));
+				JObject targetBinding = candidate.EntityMappings["generalOccupancy"]?[targetGeneralId] as JObject;
+				JObject killerBinding = candidate.EntityMappings["generalOccupancy"]?[killerGeneralId] as JObject;
+				if (targetBinding == null || killerBinding == null
+					|| targetBinding.Value<string>("playerId") != targetOwnerId || targetBinding.Value<string>("armyId") != targetArmyId
+					|| killerBinding.Value<string>("playerId") != killerPlayerId || killerBinding.Value<string>("armyId") != killerArmyId)
+					throw new GeneralRuleException(GeneralFailure.Conflict, "捕将双方与当前军队占用不匹配");
+				return CaptureGeneral(candidate, targetOwnerId, targetGeneralId, killerPlayerId, killerGeneralId, targetArmyId, captured);
+			}
+			catch (GeneralRuleException failure) { return Rejection(failure); }
+		}
+
+		public static GameResult ApplyCityDefenderOutcome(WorldState candidate, string targetOwnerId, string battleId, IEnumerable<GeneralOutcome> outcomes, bool completeArmy = true)
+		{
+			return ApplyOutcomes(candidate, targetOwnerId, battleId, outcomes, completeArmy, true);
 		}
 	}
 }

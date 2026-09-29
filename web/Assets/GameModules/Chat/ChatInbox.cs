@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dwsg.Shared;
 using Newtonsoft.Json.Linq;
 
@@ -11,7 +12,7 @@ namespace Dwsg.Client.Chat
         private readonly Queue<string> order = new Queue<string>();
         private readonly HashSet<string> seenNotifications = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> permittedNotifications = new HashSet<string>(StringComparer.Ordinal);
-        private string worldId, playerId, nation, cities, selectedCity;
+        private string worldId, playerId, nation, nationId, cities, selectedCity;
 
         public bool SetSession(WorldSnapshot snapshot, int selectedFiefIndex = 0)
         {
@@ -20,13 +21,18 @@ namespace Dwsg.Client.Chat
             if (snapshot.PrivatePlayer["notifications"] is JObject notices)
                 foreach (var entry in notices.Properties()) permittedNotifications.Add(entry.Name);
             string nextNation = snapshot.PrivatePlayer["基础信息"]?.Value<string>("国家");
+            var currentNation = (snapshot.PublicWorld["国家列表"] as JArray)?.OfType<JObject>()
+                .FirstOrDefault(n => n.Value<string>("国号") == nextNation);
+            if (!(currentNation?["成员列表"] is JArray members) || !members.Any(m => m.Type == JTokenType.String && m.Value<string>() == snapshot.PlayerId))
+                nextNation = null;
+            string nextNationId = nextNation == null ? null : currentNation.Value<string>("nationId");
             var locations = new SortedSet<string>(StringComparer.Ordinal);
             var permitted = snapshot.PrivatePlayer["chatCities"] as JArray;
             if (permitted != null) foreach (var city in permitted) { string key = CityKey(city as JObject, "x", "y"); if (key != null) locations.Add(key); }
             string nextCities = string.Join(";", locations), nextSelected = CityKey(SelectedCity(snapshot, selectedFiefIndex), "x", "y");
             if (nextSelected != null && !locations.Contains(nextSelected)) nextSelected = null;
-            if (worldId == snapshot.WorldId && playerId == snapshot.PlayerId && nation == nextNation && cities == nextCities && selectedCity == nextSelected) return false;
-            worldId = snapshot.WorldId; playerId = snapshot.PlayerId; nation = nextNation; cities = nextCities; selectedCity = nextSelected;
+            if (worldId == snapshot.WorldId && playerId == snapshot.PlayerId && nation == nextNation && nationId == nextNationId && cities == nextCities && selectedCity == nextSelected) return false;
+            worldId = snapshot.WorldId; playerId = snapshot.PlayerId; nation = nextNation; nationId = nextNationId; cities = nextCities; selectedCity = nextSelected;
             seen.Clear(); order.Clear(); seenNotifications.Clear();
             return true;
         }
@@ -42,7 +48,10 @@ namespace Dwsg.Client.Chat
             bool notice = channel == "system" && message.Value<string>("notificationId") == message.Value<string>("messageId") &&
                 message.Value<string>("senderPlayerId") == "server" && permittedNotifications.Contains(message.Value<string>("messageId"));
             bool rumor = channel == "rumor" && message.Value<string>("senderPlayerId") == "server";
-            if (channel != "world" && !notice && !rumor && !(channel == "nation" && !string.IsNullOrEmpty(nation) && message.Value<string>("nation") == nation) &&
+            bool national = channel == "nation" && !string.IsNullOrEmpty(nation) && (nationId != null
+                ? message["nationId"]?.Type == JTokenType.String && message.Value<string>("nationId") == nationId
+                : message["nationId"] == null && message.Value<string>("nation") == nation);
+            if (channel != "world" && !notice && !rumor && !national &&
                 !(channel == "city" && selectedCity != null && CityKey(message, "cityX", "cityY") == selectedCity)) return false;
             string id = message.Value<string>("messageId"), content = message.Value<string>("content");
             if (string.IsNullOrEmpty(id) || content.Length == 0 || (!notice && content.Length > (rumor ? 512 : 40))) return false;

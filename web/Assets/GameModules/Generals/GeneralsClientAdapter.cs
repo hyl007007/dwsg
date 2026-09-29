@@ -10,7 +10,7 @@ using 玩家数据结构;
 
 namespace Dwsg.Generals
 {
-	public static class GeneralsClientAdapter
+	public static partial class GeneralsClientAdapter
 	{
 		static bool pending;
 
@@ -41,6 +41,17 @@ namespace Dwsg.Generals
 						GeneralLegacyAdapter.ApplyEnhancement(player, slot, index, candidate, result.Data.Value<string>("materialName"), result.Data.Value<int>("consumedCount"));
 						提示(result.Message);
 					}
+					else if (type == "generals.refineEquipment" || type == "generals.setSoulLocks")
+					{
+						int slot = LegacyGenerals.Integer(payload["equipmentSlot"]), index = LegacyGenerals.Integer(payload["equipmentIndex"]);
+						GameResult result = null;
+						JObject candidate = type == "generals.setSoulLocks"
+							? EquipmentSoulRules.Lock(JObject.FromObject(player), slot, index, payload["lockedIndices"] as JArray)
+							: EquipmentSoulRules.Execute(JObject.FromObject(player), slot, index, LegacyGenerals.Integer(payload["mode"]), LegacyGenerals.Integer(payload["count"]),
+								payload["lockedIndices"] as JArray, JArray.FromObject(全局道具库.道具列表), UnityEngine.Random.Range, UnityEngine.Random.Range, TIME.getTime(), out result);
+						GeneralLegacyAdapter.ApplySoulChange(player, slot, index, candidate, result?.Data["materials"] as JObject);
+						if (!string.IsNullOrEmpty(result?.Message)) 提示(result.Message);
+					}
 					else
 					{
 						JObject candidate = GeneralRules.Execute(JObject.FromObject(player), type, payload, JArray.FromObject(全局兵种库.属性表), TIME.getTime());
@@ -54,7 +65,7 @@ namespace Dwsg.Generals
 				if (playerIndex != 全局变量.本机身份 || snapshot == null || string.IsNullOrEmpty(snapshot.PlayerId))
 					throw new GeneralRuleException(GeneralFailure.Conflict, "请先连接当前角色");
 				if (generalId.HasValue) payload["generalId"] = FindMapping(snapshot, "generals", m => m.Value<int>("legacyId") == generalId.Value);
-				if (type == "generals.equip" || type == "generals.enhanceEquipment")
+				if (type == "generals.equip" || type == "generals.enhanceEquipment" || type == "generals.refineEquipment" || type == "generals.setSoulLocks")
 				{
 					int slot = LegacyGenerals.Integer(payload["equipmentSlot"]);
 					int index = LegacyGenerals.Integer(payload["equipmentIndex"]);
@@ -71,7 +82,7 @@ namespace Dwsg.Generals
 					if (latest == null || latest.PlayerId != snapshot.PlayerId || latest.WorldId != snapshot.WorldId) { 提示("角色连接已改变，请重新刷新"); return; }
 					GeneralLegacyAdapter.Apply(player, latest.PrivatePlayer);
 					if (type == "generals.dismiss") 提示(result.Data.Value<bool>("returnedToNature") ? "名将已回归大自然!" : "已解雇!");
-					if (type == "generals.cultivate" || type == "generals.enhanceEquipment") 提示(result.Message);
+					if ((type == "generals.cultivate" || type == "generals.enhanceEquipment" || type == "generals.refineEquipment") && !string.IsNullOrEmpty(result.Message)) 提示(result.Message);
 					success?.Invoke();
 				});
 			}
@@ -112,13 +123,29 @@ namespace Dwsg.Generals
 
 		public static void EnhanceEquipment(将领装备 equipment, int count, Action success)
 		{
+			ExecuteEquipment(equipment, "generals.enhanceEquipment", new JObject { ["count"] = count }, success);
+		}
+
+		public static void RefineEquipment(将领装备 equipment, int mode, int count, IEnumerable<int> lockedIndices, Action success)
+		{
+			ExecuteEquipment(equipment, "generals.refineEquipment", new JObject { ["mode"] = mode, ["count"] = count, ["lockedIndices"] = JArray.FromObject(lockedIndices) }, success);
+		}
+
+		public static void SetSoulLocks(将领装备 equipment, IEnumerable<int> lockedIndices, Action success)
+		{
+			ExecuteEquipment(equipment, "generals.setSoulLocks", new JObject { ["lockedIndices"] = JArray.FromObject(lockedIndices) }, success);
+		}
+
+		static void ExecuteEquipment(将领装备 equipment, string type, JObject arguments, Action success)
+		{
 			int playerIndex = 全局变量.本机身份;
 			if (equipment == null || playerIndex < 0 || playerIndex >= 全局变量.所有玩家数据表.Count) return;
 			for (int slot = 0; slot < 4; slot++)
 			{
 				int index = GeneralLegacyAdapter.Equipment(全局变量.所有玩家数据表[playerIndex], slot).IndexOf(equipment);
 				if (index < 0) continue;
-				Execute(playerIndex, null, "generals.enhanceEquipment", new JObject { ["equipmentSlot"] = slot, ["equipmentIndex"] = index, ["count"] = count }, success);
+				arguments["equipmentSlot"] = slot; arguments["equipmentIndex"] = index;
+				Execute(playerIndex, null, type, arguments, success);
 				return;
 			}
 			提示("装备不存在或不属于当前角色");

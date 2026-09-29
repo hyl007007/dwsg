@@ -9,10 +9,11 @@ namespace Dwsg.Host;
 
 public static class WorldRoleRegistration
 {
-    public static void Initialize(SqliteWorldStore store, string worldId, long serverUtcMs)
+    public static void Initialize(SqliteWorldStore store, string worldId, long serverUtcMs, Action<WorldState> prepareState = null)
     {
         var original = store.Load(worldId) ?? throw new InvalidOperationException("World missing");
         var candidate = original.Clone();
+        prepareState?.Invoke(candidate);
         var humans = new JObject();
         foreach (var role in store.ListRoles(worldId))
         {
@@ -23,7 +24,10 @@ public static class WorldRoleRegistration
         candidate.EntityMappings["humanPlayers"] = humans;
         GeneralsModule.EnsureMappings(candidate);
         foreach (var human in humans.Properties())
+        {
             ProductionModule.InitializePlayer(candidate, human.Name, serverUtcMs);
+            Dwsg.Server.World.NationModule.InitializeSalary(candidate, human.Name, serverUtcMs);
+        }
         if (JToken.DeepEquals(original.Data, candidate.Data) && JToken.DeepEquals(original.EntityMappings, candidate.EntityMappings)) return;
         candidate.Revision = checked(original.Revision + 1);
         var command = new GameCommand { WorldId = worldId, RequestId = "host-role-registration:" + original.Revision,

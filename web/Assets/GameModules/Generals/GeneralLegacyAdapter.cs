@@ -100,5 +100,28 @@ namespace Dwsg.Generals
 			List<道具信息> items = player.背包道具列表.获取道具分类列表(material);
 			for (int i = 0; i < consumed; i++) ItemStackRules.ConsumeOne(items, material, item => item.名字, item => item.数量, (item, quantity) => item.数量 = quantity);
 		}
+
+		public static void ApplySoulChange(玩家数据 player, int slot, int index, JObject document, JObject materials)
+		{
+			Apply(player, document);
+			将领装备 equipment = Equipment(player, slot)[index];
+			List<炼魂属性> existing = new List<炼魂属性>(equipment.炼魂属性), rows = new List<炼魂属性>();
+			foreach (JObject changed in LegacyGenerals.Array(LegacyGenerals.Equipment(document, slot)[index]["炼魂属性"]))
+			{
+				double type = changed.Value<double>("类型"), value = changed.Value<double>("炼魂值"); bool locked = changed.Value<bool>("锁定");
+				炼魂属性 row = existing.Find(s => s.类型 == type && s.炼魂值 == value && s.锁定 == locked)
+					?? existing.Find(s => s.类型 == type && s.炼魂值 == value) ?? new 炼魂属性();
+				existing.Remove(row); row.类型 = type; row.炼魂值 = value; row.锁定 = locked; rows.Add(row);
+			}
+			equipment.炼魂属性.Clear(); equipment.炼魂属性.AddRange(rows);
+			player.财产信息.黄金 = document["财产信息"].Value<double>("黄金");
+			if (materials == null) return;
+			foreach (JProperty material in materials.Properties())
+			{
+				List<道具信息> items = player.背包道具列表.获取道具分类列表(material.Name);
+				for (int i = 0; i < material.Value.Value<int>(); i++)
+					ItemStackRules.ConsumeOne(items, material.Name, item => item.名字, item => item.数量, (item, quantity) => item.数量 = quantity);
+			}
+		}
 	}
 }

@@ -48,7 +48,10 @@ namespace Dwsg.Server.Modules.Generals
 				else if (command.Type == "generals.recruit") result = Recruit(working, playerId, player, command.Payload, context.ServerUtcMs);
 				else if (command.Type == "generals.healWounded") result = HealWounded(working, playerId, player, command.Payload);
 				else if (command.Type == "generals.cultivate") result = Cultivate(working, playerId, player, command.Payload, context.ServerUtcMs);
+				else if (command.Type == "generals.useExperienceBook") result = UseExperienceBook(working, playerId, player, command.Payload, context.ServerUtcMs);
 				else if (command.Type == "generals.enhanceEquipment") result = EnhanceEquipment(working, playerId, player, command.Payload, context.ServerUtcMs);
+				else if (command.Type == "generals.refineEquipment" || command.Type == "generals.setSoulLocks") result = RefineEquipment(working, playerId, player, command.Payload, command.Type, context.ServerUtcMs);
+				else if (command.Type == "generals.persuadeCaptive" || command.Type == "generals.releaseCaptive") result = ManageCaptive(working, playerId, player, command.Payload, command.Type, context.ServerUtcMs);
 				else result = Dismiss(working, playerId, player, command.Payload, context.ServerUtcMs);
 				if (result.Code != GameCodes.Ok) return result;
 				candidate.Data = working.Data;

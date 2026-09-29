@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 if (args.Length == 3 && args[0] == "--city") { CityChecks.Run(args[1], args[2]); return; }
+if (args.Length == 3 && args[0] == "--garrison") { GarrisonChecks.Run(args[1], args[2]); return; }
 if (args.Length != 2) throw new ArgumentException("Pass the actual Unity export and an ignored audit output directory.");
 string directory = Path.GetFullPath(args[1]);
 if (!directory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("audit", StringComparer.OrdinalIgnoreCase)) throw new ArgumentException("Check output must stay in audit.");

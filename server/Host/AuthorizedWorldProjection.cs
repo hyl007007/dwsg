@@ -38,6 +38,7 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
         foreach (var original in ((JArray)state.Data["国家列表"]).Cast<JObject>())
         {
             var item = Select(original, "国名", "国号", "国都x", "国都y", "城池列表", "效率", "科技等级", "攻击科技", "防御科技", "资源科技", "公告", "宣言");
+            item["nationId"] = StableNationIds.RequireId(state, original.Value<int>("ID"));
             item["国王"] = PlayerId(original["国王"]);
             item["成员列表"] = new JArray(((JArray)original["成员列表"]).Select(PlayerId));
             foreach (var office in new[] { "大都督", "丞相", "奋武将军", "征东将军", "都尉", "侍郎" }) item[office] = PlayerId(original[office]);
@@ -46,12 +47,16 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
             nations.Add(item);
         }
         var cities = new JArray();
+        var fightingCities = new HashSet<(int, int)>((state.Data["战斗运行"] as JObject ?? new JObject()).Properties().Select(p => p.Value).OfType<JObject>()
+            .Where(b => b.Value<string>("Kind") == "city" && b.Value<string>("Phase") == "fighting" && !b.Value<bool>("SettlementApplied"))
+            .Select(b => (b.Value<int>("X"), b.Value<int>("Y"))));
         foreach (var original in ((JArray)state.Data["城池列表"]).Cast<JObject>())
         {
             var item = Select(original, "名称", "坐标x", "坐标y", "规模", "国家", "天赋类型", "天赋加成", "税率", "图腾类型", "图腾加成", "公告",
                 "城墙", "道路", "炮塔", "战功", "协防几率", "协防数量f", "协防数量m");
             item["城主"] = PlayerId(original["城主"]);
             item["封地数量"] = (original["城池封地列表"] as JArray)?.Count ?? 0;
+            item["正在交战"] = fightingCities.Contains((original.Value<int>("坐标x"), original.Value<int>("坐标y")));
             cities.Add(item);
         }
         var world = new JObject { ["玩家列表"] = publicPlayers, ["国家列表"] = nations, ["城池列表"] = cities };
@@ -80,6 +85,8 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
                 entities[kind] = own;
             }
         privatePlayer["entityMappings"] = entities;
+        privatePlayer["captives"] = actor == null ? new JArray() : Dwsg.Server.Modules.Generals.GeneralsModule.ReadCaptives(state, actor.PlayerId);
+        privatePlayer["salaryReadyUtcMs"] = actor == null ? 0L : state.EntityMappings["nationSalary"]?[actor.PlayerId]?.Value<long>("readyUtcMs") ?? 0L;
         privatePlayer["chatCities"] = Dwsg.Server.Chat.ChatModule.ReadCities(state, actor);
         if (actor != null)
             privatePlayer["marketQuote"] = Dwsg.Shared.Economy.MarketRules.Quote(state.RequirePlayer(actor.PlayerId));
@@ -93,11 +100,10 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
                 var battle = (JObject)entry.Value;
                 if (!battle.Value<bool>("SettlementApplied"))
                     publicMarches.Add(Select(battle, "BattleId", "X", "Y", "Phase", "ArrivalUtcMs", "PlayerId"));
-                if (actor != null && battle.Value<string>("PlayerId") == actor.PlayerId)
+                if (actor != null)
                 {
-                    var own = (JObject)battle.DeepClone();
-                    own.Remove("RandomState");
-                    ownBattles[entry.Name] = own;
+                    var own = Dwsg.Shared.Combat.CombatBattleProjection.ProjectBattle(battle, actor.PlayerId);
+                    if (own != null) ownBattles[entry.Name] = own;
                 }
             }
         privatePlayer["战斗运行"] = ownBattles;

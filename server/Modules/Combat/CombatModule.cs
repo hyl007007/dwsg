@@ -15,13 +15,13 @@ namespace Dwsg.Server.Modules.Combat
     public sealed partial class CombatModule : IGameModule, IGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "combat.bandit.dispatch", "combat.bandit.reinforce", "combat.bandit.advance", "combat.bandit.withdraw",
-            "combat.city.dispatch", "combat.city.reinforce", "combat.city.advance", "combat.city.withdraw" };
+            "combat.city.dispatch", "combat.city.reinforce", "combat.city.advance", "combat.city.withdraw", "combat.city.garrison.dispatch", "combat.city.garrison.withdraw", OriginalAiTick };
 
         public GameResult Execute(WorldState candidate, CommandContext context, GameCommand command)
         {
             if (context?.Actor == null || context.Actor.WorldId != candidate.WorldId || command.WorldId != candidate.WorldId)
                 return GameResult.Reject(GameCodes.Forbidden, "战斗角色或世界无效");
-            if (context.Actor.IsSystem != (command.Type == "combat.bandit.advance" || command.Type == "combat.city.advance"))
+            if (context.Actor.IsSystem != (command.Type == "combat.bandit.advance" || command.Type == "combat.city.advance" || command.Type == OriginalAiTick))
                 return GameResult.Reject(GameCodes.Forbidden, "战斗推进只能由服务器执行");
             try
             {
@@ -32,8 +32,11 @@ namespace Dwsg.Server.Modules.Combat
                     if (requested != null && command.Type.StartsWith("combat.city.", StringComparison.Ordinal) != (requested.Kind == "city"))
                         return GameResult.Reject(GameCodes.InvalidArgument, "战场类型不匹配");
                 }
-                GameResult result = command.Type == "combat.bandit.dispatch" ? Dispatch(working, context, command.Payload)
+                GameResult result = command.Type == OriginalAiTick ? ExecuteOriginalAi(working, context, command)
+                    : command.Type == "combat.bandit.dispatch" ? Dispatch(working, context, command.Payload)
                     : command.Type == "combat.city.dispatch" ? DispatchCity(working, context, command.Payload)
+                    : command.Type == "combat.city.garrison.dispatch" ? DispatchGarrison(working, context, command.Payload)
+                    : command.Type == "combat.city.garrison.withdraw" ? WithdrawGarrison(working, context, command.Payload)
                     : command.Type == "combat.bandit.reinforce" || command.Type == "combat.city.reinforce" ? Reinforce(working, context, command.Payload)
                     : command.Type == "combat.bandit.advance" || command.Type == "combat.city.advance" ? Advance(working, context, command.Payload)
                     : command.Type == "combat.bandit.withdraw" || command.Type == "combat.city.withdraw" ? Withdraw(working, context, command.Payload)
@@ -50,6 +53,7 @@ namespace Dwsg.Server.Modules.Combat
 
         public IEnumerable<GameCommand> CollectDueCommands(WorldState state, long serverUtcMs)
         {
+            foreach (GameCommand command in CollectOriginalAiCommands(state, serverUtcMs)) yield return command;
             var battles = state.Data["战斗运行"] as JObject;
             if (battles == null) yield break;
             foreach (JProperty entry in battles.Properties().OrderBy(item => item.Value.Value<long>("NextTickUtcMs")).ThenBy(item => item.Name, StringComparer.Ordinal))
@@ -148,17 +152,28 @@ namespace Dwsg.Server.Modules.Combat
             if (battle.Phase == "marching")
             {
                 BanditBattle target = ActiveAt(world, battle.X, battle.Y, battle.BattleId, battle.Kind);
+                if (JoinOriginalAiBattle(world, battle, target, context.ServerUtcMs))
+                    return Updated(world, context, target, "combat.city.reinforced");
                 if (target != null && target.PlayerId == battle.PlayerId && target.ArrivalUtcMs <= battle.ArrivalUtcMs)
                 {
                     if (target.Phase == "marching") StartBattle(world, target);
-                    BanditBattleRules.EnsureFormations(target);
-                    target.Attackers.AddRange(battle.Attackers);
-                    target.AttackFormations.AddRange(battle.AttackFormations);
-                    battle.Phase = "joined"; battle.SettlementApplied = true; battle.SettledUtcMs = context.ServerUtcMs;
-                    battle.JoinBattleId = target.BattleId;
-                    battle.Reward = new 战斗奖励();
-                    Save(world, battle); Save(world, target);
-                    return Updated(world, context, target, "combat.bandit.reinforced");
+                    if (target.IsTerminal)
+                    {
+                        GameResult returned = Settle(world, target, context.ServerUtcMs);
+                        if (returned.Code != GameCodes.Ok) return returned;
+                        Save(world, target);
+                    }
+                    else
+                    {
+                        BanditBattleRules.EnsureFormations(target);
+                        target.Attackers.AddRange(battle.Attackers);
+                        target.AttackFormations.AddRange(battle.AttackFormations);
+                        battle.Phase = "joined"; battle.SettlementApplied = true; battle.SettledUtcMs = context.ServerUtcMs;
+                        battle.JoinBattleId = target.BattleId; battle.CityOwnerPlayerId = target.CityOwnerPlayerId;
+                        battle.Reward = new 战斗奖励();
+                        Save(world, battle); Save(world, target);
+                        return Updated(world, context, target, "combat.bandit.reinforced");
+                    }
                 }
                 StartBattle(world, battle);
             }
@@ -174,6 +189,8 @@ namespace Dwsg.Server.Modules.Combat
             // 限制一次离线补算长度；未补完的NextTick仍到期，下一轮Tick继续，不跳过战斗。
             for (int i = 0; i < 100 && cutoff >= battle.NextTickUtcMs && !battle.IsTerminal; i++)
             {
+                GameResult garrisons = UpdateGarrisonArrivals(world, battle, battle.NextTickUtcMs);
+                if (garrisons.Code != GameCodes.Ok) return garrisons;
                 BanditBattleRules.Advance(battle, (unit, utc) => Profile(world, battle, unit, utc),
                     (unit, utc) => Recalculate(world, battle, unit, utc), GeneralExperienceRules.Add,
                     (actor, target, random, utc) => Capture(world, battle, actor, target, random, utc));
@@ -225,11 +242,13 @@ namespace Dwsg.Server.Modules.Combat
                 if (unit == null) return battle.Attackers.Any(entry => entry.GeneralId == generalId)
                     ? GameResult.Success(new JObject { ["battleId"] = id, ["generalId"] = generalId })
                     : GameResult.Reject(GameCodes.Forbidden, "只能撤退本军将领");
-                GameResult released = GeneralsModule.ApplyOutcome(world, battle.PlayerId, unit.ArmyId, new[] {
-                    new GeneralOutcome { GeneralId = generalId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) } }, false);
+                var outcomes = new[] { new GeneralOutcome { GeneralId = generalId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) } };
+                GameResult released = battle.Kind == "city"
+                    ? GeneralsModule.ApplyCityDefenderOutcome(world, battle.PlayerId, unit.ArmyId, outcomes, false)
+                    : GeneralsModule.ApplyOutcome(world, battle.PlayerId, unit.ArmyId, outcomes, false);
                 if (released.Code != GameCodes.Ok) return released;
                 unit.Retired = true;
-                unit.General["详细信息"]["状态"] = 0.0;
+                if (unit.General["详细信息"].Value<int>("状态") != 3) unit.General["详细信息"]["状态"] = 0.0;
                 if (battle.Attackers.Any(entry => !entry.Retired && entry.Remaining > 0))
                 {
                     Save(world, battle);
@@ -316,7 +335,7 @@ namespace Dwsg.Server.Modules.Combat
                 if (unit.Retired || unit.Ephemeral || (unit.Side == 1 && battle.Kind != "city")) continue;
                 JObject binding = world.EntityMappings["generalOccupancy"]?[unit.GeneralId] as JObject;
                 string owner = unit.GeneralOwnerId ?? battle.PlayerId;
-                string army = unit.Side == 1 ? battle.BattleId : unit.ArmyId ?? battle.ArmyId;
+                string army = unit.Side == 1 && !unit.PlayerGarrison ? battle.BattleId : unit.ArmyId ?? battle.ArmyId;
                 if (binding?.Value<string>("playerId") == owner && binding.Value<string>("armyId") == army) yield return unit;
             }
         }
@@ -329,7 +348,8 @@ namespace Dwsg.Server.Modules.Combat
                 JObject source = GeneralsModule.ResolveGeneral(world, unit.GeneralOwnerId ?? battle.PlayerId, unit.GeneralId, out fief);
                 unit.General["将领属性"] = source["将领属性"].DeepClone();
                 unit.General["将领培养"] = source["将领培养"].DeepClone();
-                unit.General["详细信息"]["剩余体力"] = source["详细信息"]["剩余体力"].DeepClone();
+                foreach (string field in new[] { "经验", "升级需要经验", "剩余体力" })
+                    unit.General["详细信息"][field] = source["详细信息"][field].DeepClone();
             }
         }
 
@@ -388,9 +408,10 @@ namespace Dwsg.Server.Modules.Combat
             GameResult notification = NotificationRules.RecordBattleLifecycle(world, battle.BattleId, type, context.ServerUtcMs);
             if (notification.Code != GameCodes.Ok) return notification;
             result.Events.AddRange(notification.Events);
-            JObject state = JObject.FromObject(battle); state.Remove("RandomState");
-            result.Events.Add(new GameEvent { WorldId = world.WorldId,
-                Type = type, ServerUtcMs = context.ServerUtcMs, AudiencePlayerIds = new[] { battle.PlayerId }, Data = state });
+            JObject state = JObject.FromObject(battle);
+            foreach (string owner in CombatBattleProjection.Participants(state))
+                result.Events.Add(new GameEvent { WorldId = world.WorldId,
+                    Type = type, ServerUtcMs = context.ServerUtcMs, AudiencePlayerIds = new[] { owner }, Data = CombatBattleProjection.ProjectBattle(state, owner) });
             return result;
         }
         private static ulong Seed()

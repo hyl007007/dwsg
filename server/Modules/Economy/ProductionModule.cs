@@ -10,7 +10,7 @@ namespace Dwsg.Server.Economy
     public sealed class ProductionModule : IGameModule, IGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[]
-            { "fief.construct", "fief.upgrade", "fief.demolish", "world.production.resume", "world.production.tick" };
+            { "fief.construct", "fief.upgrade", "fief.demolish", "fief.recruitTroops", "world.production.resume", "world.production.tick" };
         private readonly string instanceId = Guid.NewGuid().ToString("N");
 
         public static void InitializePlayer(WorldState candidate, string stablePlayerId, long serverUtcMs)
@@ -118,12 +118,13 @@ namespace Dwsg.Server.Economy
                 candidate.Data["生产下次结算UTC"] = checked(context.ServerUtcMs + 1000);
                 return result;
             }
-            if (command.Type != "fief.construct" && command.Type != "fief.upgrade" && command.Type != "fief.demolish")
+            if (command.Type != "fief.construct" && command.Type != "fief.upgrade" && command.Type != "fief.demolish" && command.Type != "fief.recruitTroops")
                 return GameResult.Reject(GameCodes.NotFound, "命令不存在");
             string playerId = context.Actor.PlayerId;
             if (context.Actor.IsSystem || candidate.EntityMappings["humanPlayers"]?[playerId]?.Type != JTokenType.Boolean ||
                 candidate.EntityMappings["humanPlayers"].Value<bool>(playerId) != true)
                 return GameResult.Reject(GameCodes.Forbidden, "此连接没有可经营的角色");
+            if (command.Type == "fief.recruitTroops") return RecruitTroops(candidate, context, command.Payload);
             var payload = command.Payload;
             bool construct = command.Type == "fief.construct";
             if (payload == null || payload.Properties().Any(p => p.Name != "fiefId" && p.Name != "plot" && (!construct || p.Name != "buildingType")) ||
@@ -155,6 +156,31 @@ namespace Dwsg.Server.Economy
                     ServerUtcMs = context.ServerUtcMs, Data = changed.Data, AudiencePlayerIds = new[] { playerId } });
             }
             return changed;
+        }
+
+        private GameResult RecruitTroops(WorldState candidate, CommandContext context, JObject payload)
+        {
+            int plot, troopTypeId, count;
+            if (payload == null || payload.Properties().Any(p => p.Name != "fiefId" && p.Name != "plot" && p.Name != "troopTypeId" && p.Name != "count") ||
+                payload["fiefId"]?.Type != JTokenType.String || payload["plot"]?.Type != JTokenType.Integer || payload["troopTypeId"]?.Type != JTokenType.Integer || payload["count"]?.Type != JTokenType.Integer ||
+                !int.TryParse(payload["plot"].ToString(), out plot) || !int.TryParse(payload["troopTypeId"].ToString(), out troopTypeId) || !int.TryParse(payload["count"].ToString(), out count) || count <= 0)
+                return GameResult.Reject(GameCodes.InvalidArgument, "招兵参数无效");
+            string playerId = context.Actor.PlayerId, fiefId = payload.Value<string>("fiefId");
+            var mapping = candidate.EntityMappings["fiefs"]?[fiefId] as JObject;
+            if (mapping == null || mapping.Value<string>("playerId") != playerId) return GameResult.Reject(GameCodes.Forbidden, "无权招募此封地的兵士");
+            var working = candidate.Clone(); var player = working.RequirePlayer(playerId);
+            var fief = (player["封地信息表"] as JArray)?.OfType<JObject>().SingleOrDefault(f => f.Value<int>("ID") == mapping.Value<int>("legacyId"));
+            if (fief == null) return GameResult.Reject(GameCodes.NotFound, "封地不存在");
+            Resume(working, context.ServerUtcMs);
+            var accrued = Settle(working, playerId, context.ServerUtcMs); if (accrued.Code != GameCodes.Ok) return accrued;
+            var result = TroopRecruitmentRules.Recruit(player, fief, plot, troopTypeId, count, working.Data["兵种配置"] as JArray);
+            if (result.Code == GameCodes.Ok)
+            {
+                result.Data["fiefId"] = fiefId; result.Data["plot"] = plot;
+                candidate.Data = working.Data; candidate.EntityMappings = working.EntityMappings;
+                result.Events.Add(new GameEvent { WorldId = candidate.WorldId, Type = "fief.troopsRecruited", ServerUtcMs = context.ServerUtcMs, Data = result.Data, AudiencePlayerIds = new[] { playerId } });
+            }
+            return result;
         }
     }
 }

@@ -176,64 +176,12 @@ namespace 玩家数据结构
 
 		public double 获取炼魂加成上限(double 类型)
 		{
-			if (类型 == 1.0)
-			{
-				if (装备信息.类型 == "武器")
-				{
-					return 60.0;
-				}
-				return 20.0;
-			}
-			if (类型 == 2.0)
-			{
-				if (装备信息.类型 == "铠甲")
-				{
-					return 30.0;
-				}
-				return 10.0;
-			}
-			if (类型 == 3.0)
-			{
-				if (装备信息.类型 == "头盔")
-				{
-					return 60.0;
-				}
-				return 20.0;
-			}
-			if (类型 == 4.0)
-			{
-				if (装备信息.类型 == "坐骑")
-				{
-					return 60.0;
-				}
-				return 20.0;
-			}
-			if (类型 == 4.0)
-			{
-				return 50.0;
-			}
-			return 1.0;
+			return Dwsg.Shared.Generals.EquipmentSoulRules.Limit(装备信息.类型, 类型);
 		}
 
 		public string 获取装备炼魂材料名字()
 		{
-			if (装备信息.类型 == "坐骑")
-			{
-				return "山海精华";
-			}
-			if (装备信息.类型 == "武器")
-			{
-				return "昆仑玄铁";
-			}
-			if (装备信息.类型 == "头盔")
-			{
-				return "天魂灵石";
-			}
-			if (装备信息.类型 == "铠甲")
-			{
-				return "地魄灵石";
-			}
-			return "未知";
+			return Dwsg.Shared.Generals.EquipmentSoulRules.Material(装备信息.类型);
 		}
 
 		public double 获取装备强化消耗数量()

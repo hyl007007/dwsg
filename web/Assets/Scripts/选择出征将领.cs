@@ -103,7 +103,6 @@ public class 选择出征将领 : MonoBehaviour
 	{
 		if (Dwsg.Network.GameNetwork.Enabled)
 		{
-			if (index == 1) { 全局变量.提示类.显示信息("城池驻防尚未接入服务器，操作未提交"); return; }
 			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
 			var 将领ID列表 = new Newtonsoft.Json.Linq.JArray();
 			foreach (返回将领索引 选中 in 已选中将领列表)
@@ -114,7 +113,7 @@ public class 选择出征将领 : MonoBehaviour
 				将领ID列表.Add(将领ID);
 			}
 			var 参数 = new Newtonsoft.Json.Linq.JObject { ["x"] = 城池坐标x, ["y"] = 城池坐标y, ["generalIds"] = 将领ID列表 };
-			if (精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
+            if (index != 1 && 精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
 			{
 				if (!int.TryParse(精准到达_时.text, out int 时) || !int.TryParse(精准到达_分.text, out int 分) || !int.TryParse(精准到达_秒.text, out int 秒)
 					|| 时 < 0 || 时 > 23 || 分 < 0 || 分 > 59 || 秒 < 0 || 秒 > 59)
@@ -124,7 +123,7 @@ public class 选择出征将领 : MonoBehaviour
 				参数["arrivalUtcMs"] = TIME.DateTimeToTimeStamp(new DateTime(今天.Year, 今天.Month, 今天.Day, 时, 分, 秒)) * 1000;
 			}
 			正在提交山贼出征 = true;
-			Dwsg.Network.GameNetwork.SendCommand("combat.city.dispatch", 参数, 结果 => {
+            Dwsg.Network.GameNetwork.SendCommand(index == 1 ? "combat.city.garrison.dispatch" : "combat.city.dispatch", 参数, 结果 => {
 				正在提交山贼出征 = false;
 				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
 				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");

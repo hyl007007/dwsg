@@ -70,6 +70,21 @@ public class 使用道具脚本 : MonoBehaviour
 			{
 				continue;
 			}
+			if (Dwsg.Network.GameNetwork.Enabled && 要显示的列表[i].类型 == "经验书")
+			{
+				if (!显示列表对象.transform.GetChild(i).gameObject.activeSelf) continue;
+				Dwsg.Generals.GeneralsClientAdapter.UseExperienceBook(this, 要显示的列表[i].名字, 1, result =>
+				{
+					if (this == null) return;
+					if (result.Code == Dwsg.Shared.GameCodes.Ok && 将领列表对象.activeSelf)
+					{
+						将领列表显示 list = 将领列表对象.GetComponent<将领列表显示>();
+						list.刷新列表信息(); list.刷新将领属性信息();
+					}
+					刷新显示();
+				});
+				return;
+			}
 			UnityEngine.Debug.Log("使用道具:" + 要显示的列表[i].名字);
 			if (Dwsg.Economy.MaterialPackClient.Supports(要显示的列表[i].名字))
 			{

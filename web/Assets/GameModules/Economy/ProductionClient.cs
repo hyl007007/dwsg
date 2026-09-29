@@ -7,6 +7,33 @@ using 玩家数据结构;
 
 public static class ProductionClient
 {
+    public static void Recruit(玩家数据 player, int fiefIndex, int plot, int troopTypeId, double count, Action<GameResult> completed)
+    {
+        if (fiefIndex < 0 || fiefIndex >= player.封地信息表.Count || double.IsNaN(count) || double.IsInfinity(count) || count <= 0 || count > int.MaxValue || count != Math.Truncate(count))
+        { completed(GameResult.Reject(GameCodes.InvalidArgument, "招兵封地或数量无效")); return; }
+        var fief = player.封地信息表[fiefIndex];
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            var snapshot = Dwsg.Network.GameNetwork.CurrentSnapshot;
+            int identity = 全局变量.本机身份;
+            if (identity < 0 || identity >= 全局变量.所有玩家数据表.Count || !ReferenceEquals(player, 全局变量.所有玩家数据表[identity]))
+            { completed(GameResult.Reject(GameCodes.Forbidden, "只能招募本人封地的兵士")); return; }
+            var mappings = snapshot?.PrivatePlayer?["entityMappings"]?["fiefs"] as JObject;
+            var mapping = mappings?.Properties().FirstOrDefault(p => p.Value is JObject && p.Value.Value<string>("playerId") == snapshot.PlayerId && p.Value.Value<int>("legacyId") == fief.ID);
+            if (mapping == null) { completed(GameResult.Reject(GameCodes.Unavailable, "封地身份尚未同步，请重试")); return; }
+            Dwsg.Network.GameNetwork.SendCommand("fief.recruitTroops", new JObject { ["fiefId"] = mapping.Name, ["plot"] = plot, ["troopTypeId"] = troopTypeId, ["count"] = (int)count }, completed);
+            return;
+        }
+        var state = JObject.FromObject(player);
+        var result = TroopRecruitmentRules.Recruit(state, (JObject)state["封地信息表"][fiefIndex], plot, troopTypeId, (int)count, JArray.FromObject(全局兵种库.属性表));
+        if (result.Code == GameCodes.Ok)
+        {
+            player.财产信息.铜钱 = state["财产信息"].Value<double>("铜钱"); player.财产信息.粮食 = state["财产信息"].Value<double>("粮食");
+            fief.添加闲兵(troopTypeId, count);
+        }
+        completed(result);
+    }
+
     public static void Execute(string commandType, 玩家数据 player, int fiefIndex, int plot, int? buildingType, Action<GameResult> completed)
     {
         if (fiefIndex < 0 || fiefIndex >= player.封地信息表.Count)

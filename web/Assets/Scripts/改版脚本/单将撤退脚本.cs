@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class 单将撤退脚本 : MonoBehaviour
 {
@@ -26,7 +26,14 @@ public class 单将撤退脚本 : MonoBehaviour
                 if (ray.transform.GetComponentInChildren<将领功能>())
                 {
                     被选中将领 = ray.transform.GetComponentInChildren<将领功能>().gameObject;
-                    if (被选中将领.GetComponent<将领功能>().战斗系统脚本对象.攻身份==全局变量.本机身份)
+                    将领功能 选中将领 = 被选中将领.GetComponent<将领功能>();
+                    if (选中将领.战斗系统脚本对象.服务器战场)
+                    {
+                        bool 可以撤退 = 可以撤退联机将领(选中将领);
+                        撤退布局.SetActive(可以撤退);
+                        if (!可以撤退) 被选中将领 = null;
+                    }
+                    else if (选中将领.战斗系统脚本对象.攻身份 == 全局变量.本机身份)
                     {
                         撤退布局.SetActive(true);
                     }
@@ -36,6 +43,13 @@ public class 单将撤退脚本 : MonoBehaviour
         }
     }
 
+    private bool 可以撤退联机将领(将领功能 将领)
+    {
+        return 将领.本将领信息.详细信息.身份 == 全局变量.本机身份
+            && Dwsg.Combat.CombatClient.CanWithdrawUnit(将领.战斗系统脚本对象.服务器战场ID,
+                Dwsg.Combat.CombatClient.GeneralId(将领.本将领信息.ID));
+    }
+
     public void 撤退选中将领()
     {
         if (被选中将领 != null)
@@ -43,6 +57,7 @@ public class 单将撤退脚本 : MonoBehaviour
             将领功能 将领 = 被选中将领.GetComponent<将领功能>();
             if (将领.战斗系统脚本对象.服务器战场)
             {
+                if (!可以撤退联机将领(将领)) return;
                 Dwsg.Combat.CombatClient.WithdrawGeneral(将领.战斗系统脚本对象.服务器战场ID,
                     Dwsg.Combat.CombatClient.GeneralId(将领.本将领信息.ID), result =>
                     {

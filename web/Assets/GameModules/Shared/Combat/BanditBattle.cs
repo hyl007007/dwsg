@@ -42,7 +42,8 @@ namespace Dwsg.Shared.Combat
         public string GeneralId;
         public string UnitId, ArmyId;
         public string GeneralOwnerId;
-        public bool Ephemeral;
+        public bool Ephemeral, HumanOwner;
+        public bool PlayerGarrison;
         public JObject General;
         public JObject Troop;
         public int Side;
@@ -80,6 +81,14 @@ namespace Dwsg.Shared.Combat
         public double DefenseBonus(int career) => CombatModifiers.DefenseTechnology(DefenseTechnology, CavalryTechnology, InfantryTechnology, career);
     }
 
+    public sealed class CombatGarrisonArmy
+    {
+        public string PlayerId, ArmyId, Nation;
+        public List<string> GeneralIds = new List<string>();
+        public long ArrivalUtcMs, JoinedUtcMs, SettledUtcMs;
+        public string Phase = "marching";
+    }
+
     public sealed class CombatHit
     {
         public long Frame;
@@ -92,7 +101,7 @@ namespace Dwsg.Shared.Combat
     {
         public string BattleId, ArmyId, PlayerId, NpcPlayerId, JoinBattleId;
         public string Kind = "bandit";
-        public string CityNation, CityName;
+        public string CityNation, CityName, CityOwnerPlayerId;
         public int CityScale;
         public double Wall, WallMaximum, WarReward;
         public int X, Y;
@@ -107,6 +116,7 @@ namespace Dwsg.Shared.Combat
         public List<CombatUnit> Defenders = new List<CombatUnit>();
         public List<CombatFormation> AttackFormations = new List<CombatFormation>();
         public List<CombatFormation> DefenseFormations = new List<CombatFormation>();
+        public List<CombatGarrisonArmy> GarrisonArmies = new List<CombatGarrisonArmy>();
         public List<CombatHit> LastHits = new List<CombatHit>();
         public 战斗奖励 Reward;
         public bool IsTerminal => Phase == "won" || Phase == "lost" || Phase == "withdrawn";
@@ -189,7 +199,7 @@ namespace Dwsg.Shared.Combat
         {
             if (battle.Kind != "city") return battle.Defenders.Sum(unit => unit.Remaining);
             var available = new HashSet<string>(battle.DefenseFormations.Where(formation => formation.AvailableUtcMs <= utc).Select(formation => formation.ArmyId));
-            return battle.Defenders.Where(unit => available.Contains(unit.ArmyId)).Sum(unit => unit.Remaining);
+            return battle.Defenders.Where(unit => !unit.Retired && available.Contains(unit.ArmyId)).Sum(unit => unit.Remaining);
         }
 
         private static void EnterDefenders(BanditBattle battle, long utc)
@@ -359,9 +369,9 @@ namespace Dwsg.Shared.Combat
             target.General["详细信息"]["剩余兵力"] = target.Remaining - damage;
             target.General["将领配兵"]["数量"] = target.Remaining;
             if (target.Remaining <= 0 && target.VacateFrame == 0) target.VacateFrame = battle.Frame + 30;
-            if (target.Side == 0) target.Wounded += 战斗规则.伤兵数量(damage, battle.Kind == "city" ? 1 : 0);
+            if (target.Side == 0 || target.PlayerGarrison || target.HumanOwner) target.Wounded += 战斗规则.伤兵数量(damage, battle.Kind == "city" ? 1 : 0);
             grantExperience(actor.General, 战斗规则.将领经验(damage, target.Troop.Value<double>("攻击力"), defenderProfile.ExperienceState));
-            if (battle.Kind == "city" && actor.Side == 0 && target.Remaining <= 0 && !target.Ephemeral && target.General.Value<int>("ID") != 0)
+            if (battle.Kind == "city" && (actor.Side == 0 || actor.PlayerGarrison || actor.HumanOwner) && target.Remaining <= 0 && !target.Ephemeral && target.General.Value<int>("ID") != 0)
                 capture?.Invoke(actor, target, random, utc);
             battle.LastHits.Add(new CombatHit { Frame = battle.Frame, AttackerId = actor.CombatId, DefenderId = target.CombatId,
                 Damage = damage, Pierce = pierce, Block = block, Dodge = dodge });
