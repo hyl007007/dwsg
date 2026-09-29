@@ -141,7 +141,7 @@ namespace Dwsg.Server.Modules.Generals
 			catch (GeneralRuleException failure) { return Rejection(failure); }
 		}
 
-		public static GameResult ApplyOutcome(WorldState candidate, string playerId, string armyId, IEnumerable<GeneralOutcome> outcomes)
+		public static GameResult ApplyOutcome(WorldState candidate, string playerId, string armyId, IEnumerable<GeneralOutcome> outcomes, bool completeArmy = true)
 		{
 			try
 			{
@@ -151,7 +151,8 @@ namespace Dwsg.Server.Modules.Generals
 				WorldState working = candidate.Clone();
 				JObject occupancy = Map(working, "generalOccupancy");
 				string[] reserved = occupancy.Properties().Where(p => p.Value.Value<string>("playerId") == playerId && p.Value.Value<string>("armyId") == armyId).Select(p => p.Name).ToArray();
-				if (reserved.Length != entries.Length || !reserved.OrderBy(s => s).SequenceEqual(entries.Select(e => e.GeneralId).OrderBy(s => s)))
+				if (completeArmy ? reserved.Length != entries.Length || !reserved.OrderBy(s => s).SequenceEqual(entries.Select(e => e.GeneralId).OrderBy(s => s))
+					: entries.Any(e => !reserved.Contains(e.GeneralId)))
 					throw new GeneralRuleException(GeneralFailure.Conflict, "军队与将领占用不匹配或已结算");
 				foreach (GeneralOutcome outcome in entries)
 				{
