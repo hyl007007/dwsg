@@ -9,7 +9,6 @@ using 缺失界面.窗口4;
 
 namespace Dwsg.Window3
 {
-    public enum 资源点类型 { 铜矿 = 0, 牧场 = 1 }
     public enum 资源出征阶段 { 前往 = 0, 参战 = 1, 已结束 = 2 }
 
     // 外部只能持有并传回；不暴露可修改的目录或世界引用。
@@ -22,45 +21,11 @@ namespace Dwsg.Window3
         internal bool 接入;
     }
 
-    public sealed class 资源点配置
-    {
-        public string 标识;
-        public 资源点类型 类型;
-        public int 坐标x, 坐标y;
-    }
-
-    // 独立快照，不复制玩家、城池或军情。十秒节奏余秒与 /3600 产出余数都保存。
-    public sealed class 资源点状态
-    {
-        [JsonProperty(Required = Required.Always)] public string 标识;
-        [JsonProperty(Required = Required.Always)] public 资源点类型 类型;
-        [JsonProperty(Required = Required.Always)] public int 坐标x;
-        [JsonProperty(Required = Required.Always)] public int 坐标y;
-        [JsonProperty(Required = Required.Always)] public int 时产;
-        [JsonProperty(Required = Required.Always)] public int 剩余库存;
-        [JsonProperty(Required = Required.Always)] public int 占领玩家ID = -1;
-        [JsonProperty(Required = Required.Always)] public long 结算时间;
-        [JsonProperty(Required = Required.Always)] public int 节奏余秒;
-        [JsonProperty(Required = Required.Always)] public int 产出余数;
-        [JsonProperty(Required = Required.Always)] public long 恢复时间;
-        [JsonProperty(Required = Required.Always)] public int 批次;
-        internal 资源点状态 副本() { return (资源点状态)MemberwiseClone(); }
-    }
-
-    public sealed class 资源点存档
-    {
-        [JsonProperty(Required = Required.Always)] public int 版本 = 1;
-        [JsonProperty(Required = Required.Always)] public int 配置版本 = 1;
-        [JsonProperty(Required = Required.Always)] public string 世界标识;
-        [JsonProperty(Required = Required.Always)] public bool 待生成;
-        [JsonProperty(Required = Required.Always)] public List<资源点状态> 点位 = new List<资源点状态>();
-    }
-
     // root 的行军 DTO 保存这些附加字段，队列仍由行军存档绑定真实将领引用。
     public sealed class 资源点军情信息 : 军情信息
     {
         public const int 资源战场类型 = 2;
-        public string 世界标识, 资源点标识;
+        public string 世界标识, 资源点标识, 服务器战场ID;
         public int 所属玩家ID, 出发封地ID, 目标批次;
         public int 出发坐标x, 出发坐标y;
         public long 出发时间;
@@ -85,7 +50,8 @@ namespace Dwsg.Window3
         private 资源点存档 状态;
         private object 玩家锚点, 城池锚点;
         // 默认关闭；root 完成军情调度、战果分支和存读 hook 后才开启。
-        public bool 战斗接入完成 { get; set; }
+        private bool 离线战斗接入;
+        public bool 战斗接入完成 { get { return Dwsg.Network.GameNetwork.Enabled ? Dwsg.Combat.ResourceClient.Ready : 离线战斗接入; } set { 离线战斗接入 = value; } }
         public long 载入号 { get; private set; }
 
         // 不透明运行时快照仅用于同步加载事务，允许尚未绑定和正在交战的世界。
@@ -156,35 +122,9 @@ namespace Dwsg.Window3
                 .OrderBy(x => x.ID).FirstOrDefault();
             var 结果 = new List<资源点配置>();
             if (地 == null || 图 == null) return 结果;
-            int 起x = (int)地.所在城池.x, 起y = (int)地.所在城池.y;
-            int 宽 = 图.GetLength(1), 高 = 图.GetLength(0);
-            if (起x < 1 || 起y < 1 || 起x > 宽 || 起y > 高 || 图[起y - 1, 起x - 1] < 2) return 结果;
-            var 距离 = new int[高, 宽];
-            for (int y = 0; y < 高; y++) for (int x = 0; x < 宽; x++) 距离[y, x] = -1;
-            var 队 = new Queue<int>(); 队.Enqueue((起y - 1) * 宽 + 起x - 1); 距离[起y - 1, 起x - 1] = 0;
-            int[] dx = { -1, 1, 0, 0 }, dy = { 0, 0, -1, 1 };
-            while (队.Count > 0)
-            {
-                int 项 = 队.Dequeue(), x = 项 % 宽, y = 项 / 宽;
-                for (int i = 0; i < 4; i++)
-                {
-                    int nx = x + dx[i], ny = y + dy[i];
-                    if (nx < 0 || ny < 0 || nx >= 宽 || ny >= 高 || 图[ny, nx] < 1 || 距离[ny, nx] >= 0) continue;
-                    距离[ny, nx] = 距离[y, x] + 1; 队.Enqueue(ny * 宽 + nx);
-                }
-            }
-            var 可用 = new List<int>();
-            for (int y = 0; y < 高; y++) for (int x = 0; x < 宽; x++)
-                if (距离[y, x] >= 0 && 可放点(x + 1, y + 1)) 可用.Add(y * 宽 + x);
-            可用 = 可用.OrderBy(i => 距离[i / 宽, i % 宽]).ThenBy(i => i).Take(2).ToList();
-            if (可用.Count != 2) return 结果;
-            for (int i = 0; i < 2; i++)
-            {
-                int x = 可用[i] % 宽 + 1, y = 可用[i] / 宽 + 1;
-                结果.Add(new 资源点配置 { 标识 = "local.v1." + x + "." + y + "." + i, 坐标x = x, 坐标y = y, 类型 = (资源点类型)i });
-            }
-            return 结果;
+            return Dwsg.Shared.Combat.ResourcePointRules.Generate(图, (int)地.所在城池.x, (int)地.所在城池.y, 可放点);
         }
+
         private static 资源点存档 新状态(string 世界, IEnumerable<资源点配置> 目录)
         {
             var 新 = new 资源点存档 { 世界标识 = 世界 };
@@ -262,6 +202,7 @@ namespace Dwsg.Window3
         }
         public List<资源点状态> 查询(string 搜索 = "")
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return Dwsg.Combat.ResourceClient.Read(搜索);
             if (!同世界()) return new List<资源点状态>();
             return 状态.点位.Where(x => string.IsNullOrEmpty(搜索) ||
                 (x.类型 + " " + x.坐标x + "," + x.坐标y).IndexOf(搜索, StringComparison.OrdinalIgnoreCase) >= 0).Select(x => x.副本()).ToList();
@@ -270,6 +211,7 @@ namespace Dwsg.Window3
         public int 已占数量(int 玩家ID) { return 查询().Count(x => x.占领玩家ID == 玩家ID); }
         public List<资源点军情信息> 军情()
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return Dwsg.Combat.ResourceClient.Armies();
             return !同世界() || 全局变量.军情列表 == null ? new List<资源点军情信息>() : 全局变量.军情列表
                 .OfType<资源点军情信息>().Where(x => x.世界标识 == 状态.世界标识 && x.阶段 != 资源出征阶段.已结束).ToList();
         }
@@ -294,6 +236,7 @@ namespace Dwsg.Window3
         }
         public CityResult 检查目标(string ID)
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return Dwsg.Combat.ResourceClient.CheckTarget(ID);
             if (!战斗接入完成) return CityResult.Fail("资源点战斗尚未接入。");
             var 点 = 找点(ID); var 主 = 当前玩家();
             if (点 == null || 主 == null || 主.基础信息 == null || 主.基础信息.ID < 0 ||
@@ -398,37 +341,15 @@ namespace Dwsg.Window3
             var 收入 = new Dictionary<int, long[]>();
             foreach (var 点 in 副本)
             {
-                if (点.占领玩家ID >= 0)
+                int 所属 = 点.占领玩家ID;
+                long 实得;
+                try { 实得 = Dwsg.Shared.Combat.ResourcePointRules.Advance(点, 现在, 点.标识 == 放弃ID); }
+                catch (InvalidOperationException e) { return CityResult.Fail(e.Message); }
+                if (所属 >= 0)
                 {
-                    if (现在 < 点.结算时间) continue; // 时钟回拨不回退进度，也不重复结算。
-                    long 总秒 = 现在 - 点.结算时间 + 点.节奏余秒;
-                    long 用秒 = 点.标识 == 放弃ID ? 总秒 : 总秒 / 结算间隔 * 结算间隔;
-                    long 分子 = 用秒 * 点.时产 + 点.产出余数;
-                    long 实得 = Math.Min(点.剩余库存, 分子 / 3600);
-                    long[] 账; if (!收入.TryGetValue(点.占领玩家ID, out 账)) 收入[点.占领玩家ID] = 账 = new long[2];
+                    long[] 账; if (!收入.TryGetValue(所属, out 账)) 收入[所属] = 账 = new long[2];
                     账[(int)点.类型] += 实得;
-                    if (实得 == 点.剩余库存)
-                    {
-                        long 需分子 = (long)点.剩余库存 * 3600 - 点.产出余数;
-                        long 需秒 = 点.标识 == 放弃ID ? (需分子 + 点.时产 - 1) / 点.时产 :
-                            ((需分子 + 点.时产 * 结算间隔 - 1) / (点.时产 * 结算间隔)) * 结算间隔;
-                        long 采尽秒 = 点.结算时间 + Math.Max(0, 需秒 - 点.节奏余秒);
-                        if (采尽秒 > 最大秒 - 恢复间隔) return CityResult.Fail("资源恢复时间溢出。");
-                        点.剩余库存 = 0; 点.占领玩家ID = -1; 点.恢复时间 = 采尽秒 + 恢复间隔;
-                        点.产出余数 = 点.节奏余秒 = 0; 点.结算时间 = 现在;
-                    }
-                    else
-                    {
-                        点.剩余库存 -= (int)实得; 点.产出余数 = (int)(分子 % 3600);
-                        点.节奏余秒 = (int)(总秒 - 用秒); 点.结算时间 = 现在;
-                    }
                 }
-                if (点.恢复时间 > 0 && 现在 >= 点.恢复时间)
-                {
-                    if (点.批次 == int.MaxValue - 1) return CityResult.Fail("资源点批次已达上限。");
-                    刷新库存(点);
-                }
-                if (点.标识 == 放弃ID) { 点.占领玩家ID = -1; 点.节奏余秒 = 0; }
             }
             // 先检查全部财产，再一次应用；任何负值/NaN/溢出都不消耗库存或时间。
             foreach (var 项 in 收入)

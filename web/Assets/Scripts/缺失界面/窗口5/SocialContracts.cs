@@ -121,4 +121,10 @@ namespace Dwsg.Social
         SocialResult ImportJson(string json);
         void Reset();
     }
+    // 联机命令只有收到服务器回执后才完成；离线适配器仍保持原有同步接口。
+    public interface IAsyncSocialAdapter
+    {
+        bool IsBusy { get; }
+        void ExecuteAsync(SocialCommand command, Action<SocialResult> completed);
+    }
 }

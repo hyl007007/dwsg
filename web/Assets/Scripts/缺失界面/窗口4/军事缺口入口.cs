@@ -354,14 +354,14 @@ namespace 缺失界面.窗口4
             {
                 页.说明("修炼需10体力和等级×100铜钱，获得本级升级经验的10%。最高99级。", 48);
                 页.操作行("本次修炼", "经验+" + 军事本地规则.修炼经验(将) + " · 铜钱-" + 军事本地规则.修炼费用(将) + " · 体力-10", "确认修炼",
-                    () => 完成操作(页, 军事本地规则.修炼(当前玩家(), 封地, 将)), 将.将领属性.成长点数.等级 < 99);
+                    () => 提交训练(页, 将, false), 将.将领属性.成长点数.等级 < 99);
             }
             else if (操作 == "恢复体力")
             {
                 double 丹数 = 玩家.背包道具列表.获取指定道具数量("活血丹");
                 页.说明("活血丹每个恢复50体力。背包：" + 丹数.ToString("0") + "个", 40);
                 页.操作行("活血丹", "恢复量受体力上限限制；确认时重新检查库存和将领状态。", "使用1个",
-                    () => 完成操作(页, 军事本地规则.恢复体力(当前玩家(), 封地, 将)), 丹数 >= 1 && 将.详细信息.剩余体力 < 将.将领属性.最终属性.体力上限,
+                    () => 提交训练(页, 将, true), 丹数 >= 1 && 将.详细信息.剩余体力 < 将.将领属性.最终属性.体力上限,
                     Resources.Load<Sprite>("道具头像/活血丹"));
             }
             else
@@ -374,9 +374,24 @@ namespace 缺失界面.窗口4
                 {
                     int 数量;
                     if (!int.TryParse(输入.text, out 数量)) { 页.提示(军事结果.拒绝(军事错误.数量无效, "请输入非负整数。")); return; }
-                    完成操作(页, 军事本地规则.配兵(当前玩家(), 封地, 将, 兵种, 数量));
+                    long 页面代次 = 页.展示代次;
+                    if (Dwsg.Network.GameNetwork.Enabled)
+                        Dwsg.Generals.GeneralsClientAdapter.Execute(全局变量.本机身份, 将.ID, "generals.allocateTroops",
+                            new Newtonsoft.Json.Linq.JObject { ["troopTypeId"] = 兵种, ["count"] = 数量 }, () => { if (页 != null && 页.isActiveAndEnabled && 页.展示代次 == 页面代次) 页.刷新(); });
+                    else 完成操作(页, 军事本地规则.配兵(当前玩家(), 封地, 将, 兵种, 数量));
                 });
             }
+        }
+        private void 提交训练(军事详情面板 页, 将领信息 将, bool 恢复)
+        {
+            long 页面代次 = 页.展示代次;
+            Action<Dwsg.Shared.GameResult> 完成 = result => {
+                if (this == null || 页 == null || !页.isActiveAndEnabled || 页.展示代次 != 页面代次) return;
+                if (result.Code == Dwsg.Shared.GameCodes.Ok) 页.刷新();
+                页.提示(result.Code == Dwsg.Shared.GameCodes.Ok ? 军事结果.通过(result.Message) : 军事结果.拒绝(军事错误.状态冲突, result.Message));
+            };
+            if (恢复) Dwsg.Progress.TrainingClient.RestoreStamina(将, 完成);
+            else Dwsg.Progress.TrainingClient.Train(将, 完成);
         }
         private void 完成操作(军事详情面板 页, 军事结果 结果)
         {
@@ -483,6 +498,12 @@ namespace 缺失界面.窗口4
                     string 名 = 情.队列将领列表.Count > 0 ? 情.队列将领列表[0].将领属性.初始属性.名字 : "将领";
                     页.数据行(名 + "等" + 情.队列将领列表.Count + "将", 和平驻防规则.状态说明(情), 情.阶段 == 驻防任务阶段.撤回 ? "返回中" : "撤回", () =>
                     {
+                        long 页面代次 = 页.展示代次;
+                        if (Dwsg.Network.GameNetwork.Enabled)
+                        {
+                            Dwsg.Combat.PeaceGarrisonClientBridge.Withdraw(当前, 服务器结果 => { if (页 == null || !页.isActiveAndEnabled || 页.展示代次 != 页面代次) return; 页.刷新(); 页.提示(服务器结果); });
+                            return;
+                        }
                         var 结果 = 和平驻防规则.撤回(当前玩家(), 当前, TIME.getTime());
                         页.刷新();
                         页.提示(结果);
@@ -554,6 +575,17 @@ namespace 缺失界面.窗口4
                     int 值 = i;
                     页.操作行(模式[i], i == 0 ? "优先攻击预计伤害最高的目标" : i == 1 ? "优先攻击攻击力最高的目标" : "优先追击损兵最多的目标", "应用", () =>
                     {
+                        long 页面代次 = 页.展示代次;
+                        if (Dwsg.Network.GameNetwork.Enabled)
+                        {
+                            Dwsg.Network.GameNetwork.SendCommand(Dwsg.Combat.CombatClient.CommandType(系统.服务器战场ID, "strategy"),
+                                new Newtonsoft.Json.Linq.JObject { ["battleId"] = 系统.服务器战场ID, ["mode"] = 值 }, result => {
+                                    if (页 == null || !页.isActiveAndEnabled || 页.展示代次 != 页面代次) return;
+                                    页.刷新();
+                                    页.提示(result.Code == Dwsg.Shared.GameCodes.Ok ? 军事结果.通过("服务器已更新本机部队战略") : 军事结果.拒绝(军事错误.状态冲突, result.Message));
+                                });
+                            return;
+                        }
                         int 数量 = 0;
                         foreach (var 将 in 本机参战)
                             if (将 != null && 将.本将领信息.详细信息.身份 == 全局变量.本机身份 && 将.本将领信息.详细信息.状态 == 1)

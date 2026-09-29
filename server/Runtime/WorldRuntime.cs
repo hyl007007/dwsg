@@ -14,6 +14,7 @@ namespace Dwsg.Runtime
         private readonly Action<WorldState> initializeEntities;
         private readonly Action<WorldState, string, long> preparePlayer;
         private readonly Action<WorldState> prepareCommit;
+        private readonly Action<WorldState, long> prepareTimedCommit;
         private readonly Dictionary<string, IGameModule> modules = new Dictionary<string, IGameModule>(StringComparer.Ordinal);
         private readonly List<IGameTickModule> ticks = new List<IGameTickModule>();
         // Five-player worlds serialize candidate evaluation and durable commit under one world gate.
@@ -21,7 +22,8 @@ namespace Dwsg.Runtime
         public event Action<GameResult> Committed;
         public WorldRuntime(IWorldStore store, Func<AuthenticatedActor, bool> authorize,
             Func<long> utcNow = null, Action<WorldState> initializeEntities = null,
-            Action<WorldState, string, long> preparePlayer = null, Action<WorldState> prepareCommit = null)
+            Action<WorldState, string, long> preparePlayer = null, Action<WorldState> prepareCommit = null,
+            Action<WorldState, long> prepareTimedCommit = null)
         {
             this.store = store ?? throw new ArgumentNullException(nameof(store));
             this.authorize = authorize ?? throw new ArgumentNullException(nameof(authorize));
@@ -29,6 +31,7 @@ namespace Dwsg.Runtime
             this.initializeEntities = initializeEntities;
             this.preparePlayer = preparePlayer;
             this.prepareCommit = prepareCommit;
+            this.prepareTimedCommit = prepareTimedCommit;
         }
         public void Register(IGameModule module)
         {
@@ -57,8 +60,13 @@ namespace Dwsg.Runtime
                 GameResult result;
                 try
                 {
-                    result = module.Execute(candidate, new CommandContext(actor, utcNow()), command);
-                    if (result != null && result.Code == GameCodes.Ok) prepareCommit?.Invoke(candidate);
+                    long now = utcNow();
+                    result = module.Execute(candidate, new CommandContext(actor, now), command);
+                    if (result != null && result.Code == GameCodes.Ok)
+                    {
+                        prepareCommit?.Invoke(candidate);
+                        prepareTimedCommit?.Invoke(candidate, now);
+                    }
                 }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "操作未提交，请稍后重试。"); }
                 if (result == null) return GameResult.Reject(GameCodes.Unavailable, "模块未提供结果。");
@@ -113,7 +121,7 @@ namespace Dwsg.Runtime
                 humans[playerId] = true;
                 initializeEntities?.Invoke(candidate);
                 preparePlayer?.Invoke(candidate, playerId, createdUtcMs);
-                try { prepareCommit?.Invoke(candidate); }
+                try { prepareCommit?.Invoke(candidate); prepareTimedCommit?.Invoke(candidate, createdUtcMs); }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "角色状态未提交，请稍后重试。"); }
                 binding = new RoleBinding { AccountId = accountId, WorldId = worldId, PlayerId = playerId, LegacyPlayerIndex = index };
                 candidate.Revision = checked(original.Revision + 1);

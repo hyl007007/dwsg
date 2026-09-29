@@ -17,6 +17,9 @@ namespace Dwsg.Combat
             var bridge = battlefieldParent.GetComponent<CombatClientBridge>();
             if (bridge == null) bridge = battlefieldParent.gameObject.AddComponent<CombatClientBridge>();
             bridge.Apply(GameNetwork.CurrentSnapshot);
+            var peace = battlefieldParent.GetComponent<PeaceGarrisonClientBridge>();
+            if (peace == null) peace = battlefieldParent.gameObject.AddComponent<PeaceGarrisonClientBridge>();
+            peace.Apply(GameNetwork.CurrentSnapshot);
         }
         public static string GeneralId(int legacyId)
         {
@@ -75,7 +78,7 @@ namespace Dwsg.Combat
         public static string CommandType(string battleId, string action)
         {
             string kind = GameNetwork.CurrentSnapshot?.PrivatePlayer?["战斗运行"]?[battleId]?.Value<string>("Kind");
-            return "combat." + (kind == "city" ? "city" : "bandit") + "." + action;
+            return "combat." + (kind == "city" ? "city" : kind == "resource" ? "resource" : "bandit") + "." + action;
         }
     }
 

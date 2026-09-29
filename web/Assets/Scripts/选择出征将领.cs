@@ -672,6 +672,7 @@ public class 选择出征将领 : MonoBehaviour
 
 	public void 城池_出征选中将领()
 	{
+        if (资源点标识 != null) { 资源点_出征选中将领(); return; }
         if (Dwsg.Network.GameNetwork.Enabled)
 		{
 			if (正在提交山贼出征 || 已选中将领列表.Count == 0) return;
@@ -684,7 +685,7 @@ public class 选择出征将领 : MonoBehaviour
 				将领ID列表.Add(将领ID);
 			}
 			var 参数 = new Newtonsoft.Json.Linq.JObject { ["x"] = 城池坐标x, ["y"] = 城池坐标y, ["generalIds"] = 将领ID列表 };
-            if (index != 1 && 精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
+            if (!和平驻防模式 && index != 1 && 精准到达_时.text != "" && 精准到达_分.text != "" && 精准到达_秒.text != "")
 			{
 				if (!int.TryParse(精准到达_时.text, out int 时) || !int.TryParse(精准到达_分.text, out int 分) || !int.TryParse(精准到达_秒.text, out int 秒)
 					|| 时 < 0 || 时 > 23 || 分 < 0 || 分 > 59 || 秒 < 0 || 秒 > 59)
@@ -694,7 +695,7 @@ public class 选择出征将领 : MonoBehaviour
 				参数["arrivalUtcMs"] = TIME.DateTimeToTimeStamp(new DateTime(今天.Year, 今天.Month, 今天.Day, 时, 分, 秒)) * 1000;
 			}
 			正在提交山贼出征 = true;
-            Dwsg.Network.GameNetwork.SendCommand(index == 1 ? "combat.city.garrison.dispatch" : "combat.city.dispatch", 参数, 结果 => {
+            Dwsg.Network.GameNetwork.SendCommand(和平驻防模式 ? "combat.city.peace.dispatch" : index == 1 ? "combat.city.garrison.dispatch" : "combat.city.dispatch", 参数, 结果 => {
 				正在提交山贼出征 = false;
 				if (结果.Code != Dwsg.Shared.GameCodes.Ok) { 全局变量.提示类.显示信息(结果.Message); return; }
 				已选中将领列表.Clear(); 显示编队将领列表(); 全局变量.提示类.显示信息("出征成功!");
@@ -730,7 +731,20 @@ public class 选择出征将领 : MonoBehaviour
 
     private void 资源点_出征选中将领()
     {
-        if (Dwsg.Network.GameNetwork.Enabled) { 全局变量.提示类.显示信息("资源点出征尚未接入服务器，操作未提交"); return; }
+        if (Dwsg.Network.GameNetwork.Enabled)
+        {
+            List<将领信息> 将领;
+            if (正在提交山贼出征 || !校验选中将领(out 将领)) return;
+            正在提交山贼出征 = true;
+            Dwsg.Combat.ResourceClient.Dispatch(资源点标识, 将领, result => {
+                if (this == null) return;
+                正在提交山贼出征 = false;
+                全局变量.提示类.显示信息(result.Message);
+                if (result.Code != Dwsg.Shared.GameCodes.Ok) return;
+                已选中将领列表.Clear(); 选择快照.Clear(); 显示编队将领列表();
+            });
+            return;
+        }
         if (资源选择载入号 != 资源点规则.本地.载入号) { 全局变量.提示类.显示信息("世界已切换，请重新选择资源点。"); return; }
         List<将领信息> 将领表;
         if (!校验选中将领(out 将领表)) return;

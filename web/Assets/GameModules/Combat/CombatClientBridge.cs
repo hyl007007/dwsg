@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dwsg.Network;
+using Dwsg.Window3;
 using Dwsg.Shared;
 using Dwsg.Shared.Combat;
 using Newtonsoft.Json.Linq;
@@ -46,7 +47,7 @@ namespace Dwsg.Combat
                 {
                     if (views.TryGetValue(battle.BattleId, out BanditBattleView view)) { view.Finish(); views.Remove(battle.BattleId); }
                     if (battle.PlayerId == pending.PlayerId && battle.Phase != "joined" && known.Contains(battle.BattleId) && notified.Add(battle.BattleId))
-                        全局变量.提示类.显示信息("战斗结束!\r\n声望+" + battle.Reward.声望 + "\r\n铜钱 + " + battle.Reward.国库铜钱 + "\r\n粮食 + " + battle.Reward.原提示粮食 + "\r\n黄金 + " + battle.Reward.原提示黄金);
+                        全局变量.提示类.显示信息(battle.Kind == "resource" ? (battle.Phase == "won" ? "已占领资源点，部队归队并开始采集" : "资源点部队已归队") : "战斗结束!\r\n声望+" + battle.Reward.声望 + "\r\n铜钱 + " + battle.Reward.国库铜钱 + "\r\n粮食 + " + battle.Reward.原提示粮食 + "\r\n黄金 + " + battle.Reward.原提示黄金);
                     continue;
                 }
                 known.Add(battle.BattleId);
@@ -55,14 +56,22 @@ namespace Dwsg.Combat
                 {
                     var units = battle.Attackers.Concat(battle.Defenders).Where(unit => unit.ArmyId == formation.ArmyId && !unit.Retired && unit.GeneralOwnerId == pending.PlayerId).ToList();
                     if (units.Count == 0) continue;
+                    if (pending.PrivatePlayer["和平驻防运行"] is JArray peace && peace.OfType<JObject>().Any(p => p.Value<string>("ArmyId") == formation.ArmyId)) continue;
                     activeArmies.Add(formation.ArmyId);
                     if (!armies.TryGetValue(formation.ArmyId, out 军情信息 march))
                     {
-                        march = new 军情信息 { 战场类型 = battle.Kind == "city" ? 1 : 0, 坐标x = battle.X, 坐标y = battle.Y, 身份 = units[0].PlayerGarrison ? CityPlayerGarrisonRules.LegacyMarchIdentity : 全局变量.本机身份 };
+                        march = battle.Kind == "resource" ? (军情信息)new 资源点军情信息 {
+                            世界标识 = pending.WorldId, 资源点标识 = battle.ResourceId, 服务器战场ID = battle.BattleId,
+                            所属玩家ID = 全局变量.本机身份, 出发封地ID = battle.SourceFiefId, 目标批次 = battle.ResourceBatch,
+                            出发坐标x = battle.SourceX, 出发坐标y = battle.SourceY } : new 军情信息();
+                        march.战场类型 = battle.Kind == "city" ? 1 : battle.Kind == "resource" ? 2 : 0;
+                        march.坐标x = battle.X; march.坐标y = battle.Y;
+                        march.身份 = units[0].PlayerGarrison ? CityPlayerGarrisonRules.LegacyMarchIdentity : 全局变量.本机身份;
                         armies.Add(formation.ArmyId, march); 全局变量.军情列表.Add(march);
                     }
                     march.到达时间 = formation.AvailableUtcMs / 1000;
                     march.已进入战场 = units[0].PlayerGarrison ? battle.GarrisonArmies.Single(army => army.ArmyId == formation.ArmyId).Phase == "fighting" : battle.Phase != "marching";
+                    if (march is 资源点军情信息 resource) resource.阶段 = march.已进入战场 ? 资源出征阶段.参战 : 资源出征阶段.前往;
                     march.队列将领列表 = units.Select(unit => unit.General.ToObject<将领信息>()).ToList();
                 }
                 if (battle.Phase == "marching") continue;
@@ -71,7 +80,7 @@ namespace Dwsg.Combat
                     GameObject root = UnityEngine.Object.Instantiate(battle.Kind == "city" ? 全局变量.城池战斗场景pre : 全局变量.山贼战斗场景pre, transform);
                     战斗系统 system = root.GetComponentInChildren<战斗系统>(true);
                     system.服务器战场ID = battle.BattleId;
-                    system.战场类型 = battle.Kind == "city" ? 1 : 0; system.坐标x = battle.X; system.坐标y = battle.Y;
+                    system.战场类型 = battle.Kind == "city" ? 1 : battle.Kind == "resource" ? 2 : 0; system.坐标x = battle.X; system.坐标y = battle.Y;
                     system.创建时间 = battle.StartedUtcMs / 1000; system.攻身份 = battle.Attackers.FirstOrDefault()?.General["详细信息"].Value<int>("身份") ?? -1;
                     system.守身份 = battle.Defenders.FirstOrDefault()?.General["详细信息"].Value<int>("身份") ?? 2;
                     current = root.AddComponent<BanditBattleView>(); current.System = system;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using Dwsg.Network;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -28,7 +29,13 @@ namespace Dwsg.Social
                 if (root.GetComponent<SocialPanel>() != null) return;
                 if (root.GetComponent<主界面UI脚本>() != null) main = true;
             }
-            if (!main) { Panel = null; return; }
+            if (!main)
+            {
+                Panel = null;
+                var connected = Adapter as NetworkSocialAdapter;
+                if (connected != null) { connected.Dispose(); Adapter = null; }
+                return;
+            }
             var host = new GameObject("窗口5社交控制器");
             SceneManager.MoveGameObjectToScene(host, scene);
             Panel = host.AddComponent<SocialPanel>();
@@ -44,7 +51,13 @@ namespace Dwsg.Social
                 int index = 全局变量.本机身份;
                 if (全局变量.主界面UI对象 != null && 全局变量.所有玩家数据表 != null && index >= 0 && index < 全局变量.所有玩家数据表.Count)
                 {
-                    if (!externallyConfigured)
+                    if (GameNetwork.Enabled && GameNetwork.HasRole)
+                    {
+                        var previous = Adapter as IDisposable;
+                        if (previous != null) previous.Dispose();
+                        Adapter = new NetworkSocialAdapter(GameNetwork.CurrentSnapshot);
+                    }
+                    else if (!externallyConfigured)
                     {
                         var info = 全局变量.所有玩家数据表[index].基础信息;
                         // 仅读取本机身份，绝不遍历世界玩家表把 NPC 添加为联系人。
@@ -223,6 +236,7 @@ namespace Dwsg.Social
         public static void SetAdapter(ISocialAdapter adapter)
         {
             if (adapter == null) throw new ArgumentNullException("adapter");
+            if (Adapter != adapter && Adapter is IDisposable) ((IDisposable)Adapter).Dispose();
             Adapter = adapter;
             // 允许存档加载器在切场景之前配置；配置明确携带到下一次主场景初始化。
             externallyConfigured = true;
@@ -235,7 +249,12 @@ namespace Dwsg.Social
             if (Panel != panel) return;
             Panel = null;
             // 场景切换后的本地关系由世界存档 RestoreForWorld 接回，不能误复用上一局。
-            if (!externallyConfigured) Adapter = null;
+            if (!externallyConfigured)
+            {
+                var previous = Adapter as IDisposable;
+                if (previous != null) previous.Dispose();
+                Adapter = null;
+            }
         }
     }
 }

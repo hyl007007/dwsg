@@ -1,3 +1,7 @@
+using Dwsg.Administration;
+using Dwsg.Network;
+using Dwsg.Shared;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using 玩家数据结构;
@@ -163,7 +167,7 @@ namespace 缺失界面.窗口2
             this.actorIndex = actorIndex; this.now = now; this.salaryRemaining = salaryRemaining; this.setSalaryRemaining = setSalaryRemaining;
         }
 
-        public string ConnectionLabel { get { return "本地世界 · 未连接多人服务器"; } }
+        public string ConnectionLabel { get { return GameNetwork.Enabled ? "多人世界 · 服务器同步" : "本地世界 · 未连接多人服务器"; } }
         private 玩家数据 Actor { get { var all = players(); int index = actorIndex(); return index >= 0 && index < all.Count ? all[index] : null; } }
         public string OwnNationCode { get { return Actor != null && Actor.基础信息 != null ? Actor.基础信息.国家 ?? "" : ""; } }
         public int ActorId { get { return Actor != null && Actor.基础信息 != null ? Actor.基础信息.ID : -1; } }
@@ -201,7 +205,13 @@ namespace 缺失界面.窗口2
             return new NationPlayerSnapshot { Id = id, Name = info.名字 ?? "未命名角色", NationCode = info.国家 ?? "", Avatar = info.头像,
                 Level = info.等级, Title = info.称号名 ?? "无", Merit = info.战功, Contribution = info.贡献, Prestige = info.声望,
                 Office = NationSalaryRules.Office(info.战功, nation != null && nation.国王 == id).ToString(), Appointment = appointment,
-                Fiefs = player.封地信息表 == null ? 0 : player.封地信息表.Count, Generals = CountGenerals(player) };
+                Fiefs = PublicCount(id, "公开封地数", player.封地信息表 == null ? 0 : player.封地信息表.Count), Generals = PublicCount(id, "公开将领数", CountGenerals(player)) };
+        }
+
+        private static int PublicCount(int id, string field, int fallback)
+        {
+            var rows = GameNetwork.CurrentSnapshot?.PublicWorld["玩家列表"] as JArray;
+            return GameNetwork.Enabled && rows != null && id >= 0 && id < rows.Count ? rows[id].Value<int?>(field) ?? fallback : fallback;
         }
 
         private static int CountGenerals(玩家数据 player)
@@ -228,7 +238,7 @@ namespace 缺失界面.窗口2
                     Capital = nation != null && nation.国都x == x && nation.国都y == y, Tax = city.税率, Wall = city.城墙,
                     Talent = (city.天赋类型 >= 0 && city.天赋类型 < talents.Length ? talents[city.天赋类型] : "未知") + NationDataSource.Number(city.天赋加成) + "%",
                     Totem = city.图腾类型 >= 0 && city.图腾类型 < totems.Length ? totems[city.图腾类型] : "未知",
-                    Notice = city.公告 ?? "", Fiefs = city.城池封地列表 == null ? 0 : city.城池封地列表.Count,
+                    Notice = city.公告 ?? "", Fiefs = GameNetwork.Enabled ? AdministrationClient.PublicCity(x, y)?.Value<int>("封地数量") ?? 0 : city.城池封地列表 == null ? 0 : city.城池封地列表.Count,
                     Garrison = (city.城池驻防列表 == null ? 0 : city.城池驻防列表.Count) + (city.城池玩家驻防列表 == null ? 0 : city.城池玩家驻防列表.Count) };
             }
             return null;
@@ -256,7 +266,7 @@ namespace 缺失界面.窗口2
         private NationSnapshot Summary(国家信息库类 nation)
         {
             bool member = IsMember(nation, ActorId), king = member && nation.国王 == ActorId;
-            long interval = Math.Max(0, nation.轮选时间间隔), elapsed = Math.Max(0, now() - nation.上次轮选时间);
+            long interval = Math.Max(0, nation.轮选时间间隔), elapsed = Math.Max(0, (GameNetwork.Enabled && GameNetwork.CurrentSnapshot != null ? GameNetwork.CurrentSnapshot.ServerUtcMs / 1000 : now()) - nation.上次轮选时间);
             return new NationSnapshot { Id = nation.ID, Code = nation.国号, Name = nation.国名, KingId = nation.国王,
                 Notice = nation.公告 ?? "", Declaration = nation.宣言 ?? "", Welfare = nation.民生值, Efficiency = nation.效率,
                 Technology = nation.科技等级, Copper = nation.铜钱, Grain = nation.粮食, LastElection = nation.上次轮选时间,
@@ -287,20 +297,28 @@ namespace 缺失界面.窗口2
             return result;
         }
 
+        private WorldState CommandWorld()
+        {
+            var mapping = new JObject();
+            for (int i = 0; i < players().Count; i++) mapping["local-" + i] = i;
+            var rows = new JArray();
+            foreach (var player in players()) rows.Add(new JObject { ["基础信息"] = JObject.FromObject(player.基础信息) });
+            return new WorldState { Data = new JObject { ["玩家列表"] = rows, ["国家列表"] = JArray.FromObject(nations()) }, EntityMappings = new JObject { ["players"] = mapping } };
+        }
+        private NationActionResult ApplyNationCommand(WorldState world, string code, GameResult result)
+        {
+            if (result.Code != GameCodes.Ok) return NationActionResult.Fail(result.Code == GameCodes.Forbidden ? NationError.Forbidden : NationError.InvalidInput, result.Message);
+            var original = FindNation(code); var changed = Dwsg.Shared.Economy.TerritoryRules.Nation(world, code);
+            original.公告 = changed.Value<string>("公告"); original.宣言 = changed.Value<string>("宣言");
+            foreach (NationOffice office in Enum.GetValues(typeof(NationOffice))) SetOffice(original, office, changed.Value<int>(office.ToString()));
+            return NationActionResult.Ok(result.Message);
+        }
         public NationActionResult Publish(string code, NationNoticeKind kind, string text)
         {
-            if (!Enum.IsDefined(typeof(NationNoticeKind), kind)) return NationActionResult.Fail(NationError.InvalidInput, "公告类型无效。");
-            var nation = FindNation(code); if (nation == null) return NationActionResult.Fail(NationError.NoNation, "国家已不存在，请返回国家页刷新。");
-            var rights = Summary(nation);
-            if (!(kind == NationNoticeKind.公告 ? rights.CanPublishNotice : rights.CanPublishDeclaration))
-                return NationActionResult.Fail(NationError.Forbidden, kind == NationNoticeKind.公告 ? "仅本国国王或丞相可编辑公告。" : "仅本国国王可编辑宣言。");
-            text = (text ?? "").Trim(); int limit = kind == NationNoticeKind.公告 ? 400 : 100;
-            if (text.Length > limit) return NationActionResult.Fail(NationError.InvalidInput, "内容超出" + limit + "字限制。");
-            foreach (char c in text) if (char.IsControl(c) && c != '\n' && c != '\r' && c != '\t')
-                return NationActionResult.Fail(NationError.InvalidInput, "内容包含不支持的控制字符。");
-            if (kind == NationNoticeKind.公告) nation.公告 = text; else nation.宣言 = text;
-            // Existing country fields are already part of the world save. Saving remains the main window's responsibility.
-            return NationActionResult.Ok("已" + (text.Length == 0 ? "清空" : "更新") + kind + "。");
+            if (GameNetwork.Enabled) return NationActionResult.Fail(NationError.Forbidden, "联机编辑须等待服务器确认。");
+            var world = CommandWorld(); var nation = FindNation(code);
+            return ApplyNationCommand(world, code, AdministrationRules.Publish(world, "local-" + actorIndex(), code, kind.ToString(), text,
+                nation == null ? "" : kind == NationNoticeKind.公告 ? nation.公告 ?? "" : nation.宣言 ?? ""));
         }
 
         private static int OfficeId(国家信息库类 nation, NationOffice office)
@@ -331,15 +349,11 @@ namespace 缺失界面.窗口2
 
         public NationActionResult Appoint(string code, NationOffice office, int memberId)
         {
-            var nation = FindNation(code); if (nation == null) return NationActionResult.Fail(NationError.NoNation, "国家已不存在。");
-            if (!Summary(nation).CanManage) return NationActionResult.Fail(NationError.Forbidden, "仅本国国王可任免国家职务。");
+            if (GameNetwork.Enabled) return NationActionResult.Fail(NationError.Forbidden, "联机任免须等待服务器确认。");
             if (!Enum.IsDefined(typeof(NationOffice), office) || memberId < -1) return NationActionResult.Fail(NationError.InvalidInput, "任命参数无效。");
-            if (memberId >= 0 && (!IsMember(nation, memberId) || memberId == nation.国王))
-                return NationActionResult.Fail(NationError.MissingMember, "请选择本国非国王成员，成员已换国时不能任命。");
-            if (memberId >= 0) foreach (NationOffice old in Enum.GetValues(typeof(NationOffice)))
-                if (OfficeId(nation, old) == memberId) SetOffice(nation, old, -1);
-            SetOffice(nation, office, memberId);
-            return NationActionResult.Ok(memberId < 0 ? "已免去" + office + "。" : "已任命" + FindPlayer(memberId).基础信息.名字 + "为" + office + "。");
+            var world = CommandWorld(); var nation = FindNation(code);
+            return ApplyNationCommand(world, code, AdministrationRules.AppointNation(world, "local-" + actorIndex(), code, office.ToString(),
+                memberId < 0 ? null : "local-" + memberId, nation == null ? null : AdministrationRules.StablePlayer(world, OfficeId(nation, office))));
         }
 
         private static bool Valid(double value) { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0; }

@@ -5,6 +5,9 @@ using System.Globalization;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Network;
+using Dwsg.Auxiliary;
+using Dwsg.Shared;
 
 public class 赌场脚本 : MonoBehaviour
 {
@@ -12,6 +15,9 @@ public class 赌场脚本 : MonoBehaviour
     public Text 豹子金额;
     public Text 大金额;
     private readonly InputField[] 金额输入 = new InputField[3];
+    private bool 联机下注中;
+    private Text 联机结果文本;
+    private long 上次联机显示秒 = -1;
 
     private void Awake()
     {
@@ -28,11 +34,26 @@ public class 赌场脚本 : MonoBehaviour
     private void OnEnable()
     {
         绑定结果显示();
+        GameNetwork.SnapshotReceived -= 联机快照更新;
+        GameNetwork.SnapshotReceived += 联机快照更新;
+        联机快照更新(GameNetwork.CurrentSnapshot);
+    }
+    private void OnDisable() { GameNetwork.SnapshotReceived -= 联机快照更新; }
+    private void 联机快照更新(WorldSnapshot snapshot)
+    {
+        if (!GameNetwork.Enabled || !isActiveAndEnabled || 联机结果文本 == null) return;
+        string 内容 = AuxiliaryClient.CasinoSummary();
+        if (联机结果文本.text != 内容) 联机结果文本.text = 内容;
     }
 
     private void Update()
     {
-        赌场状态显示.刷新();
+        if (!GameNetwork.Enabled) 赌场状态显示.刷新();
+        else
+        {
+            long 秒 = (GameNetwork.CurrentSnapshot == null ? 0 : GameNetwork.CurrentSnapshot.ServerUtcMs) / 1000;
+            if (上次联机显示秒 != 秒) { 上次联机显示秒 = 秒; 联机快照更新(GameNetwork.CurrentSnapshot); }
+        }
     }
 
     private void 绑定结果显示()
@@ -41,6 +62,7 @@ public class 赌场脚本 : MonoBehaviour
         if (结果 == null) return;
         Text 文字 = 结果.GetComponent<Text>();
         if (文字 == null) return;
+        联机结果文本 = 文字;
         RectTransform 框 = 文字.rectTransform;
         // 原15号字体六行结算实测需131高；保留上缘，向下扩展仍距金额标签24以上。
         float 增高 = Mathf.Max(0, 144 - 框.rect.height);
@@ -49,7 +71,7 @@ public class 赌场脚本 : MonoBehaviour
             框.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 框.rect.height + 增高);
             框.anchoredPosition -= new Vector2(0, 增高 * (1 - 框.pivot.y));
         }
-        赌场状态显示.绑定(文字);
+        if (!GameNetwork.Enabled) 赌场状态显示.绑定(文字);
     }
 
     private static void 安装下注按钮居中(Transform 下注布局)
@@ -102,6 +124,7 @@ public class 赌场脚本 : MonoBehaviour
             全局变量.提示类.显示信息("下注类别无效");
             return;
         }
+        if (GameNetwork.Enabled) { 添加联机下注(type); return; }
         if (全局变量.赌场是否开始)
         {
             全局变量.提示类.显示信息("已经开始无法下注");
@@ -138,6 +161,30 @@ public class 赌场脚本 : MonoBehaviour
         全局变量.所有玩家数据表[全局变量.本机身份].财产信息.黄金 -= 下注金额;
         全局变量.提示类.显示信息($"下注成功{下注金额}");
         赌场状态显示.刷新();
+    }
+    private void 添加联机下注(int type)
+    {
+        if (联机下注中) return;
+        安装金额输入();
+        int 金额;
+        if (金额输入[type] == null || !int.TryParse(金额输入[type].text, NumberStyles.None, CultureInfo.InvariantCulture, out 金额) || 金额 <= 0)
+        { 全局变量.提示类.显示信息("下注金额须为1至2147483647的正整数"); return; }
+        if (!GameNetwork.Connected) { 全局变量.提示类.显示信息("尚未连接服务器，请等待重连"); return; }
+        联机下注中 = true; 设置下注交互(false);
+        AuxiliaryClient.Bet(type, 金额, result => {
+            if (this == null) return;
+            联机下注中 = false; 设置下注交互(true);
+            全局变量.提示类.显示信息(result.Code == GameCodes.Ok ? "下注成功" + 金额 : result.Message);
+            联机快照更新(GameNetwork.CurrentSnapshot);
+        });
+    }
+    private void 设置下注交互(bool 可用)
+    {
+        var 布局 = transform.Find("赌场说明/下注布局");
+        if (布局 == null) return;
+        var 交互 = 布局.GetComponent<CanvasGroup>();
+        if (交互 == null) 交互 = 布局.gameObject.AddComponent<CanvasGroup>();
+        交互.interactable = 可用;
     }
 }
 

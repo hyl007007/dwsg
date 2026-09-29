@@ -123,6 +123,7 @@ namespace Dwsg.Social
         }
         private List<SocialPlayerDto> WorldRoles()
         {
+            if (adapter is IAsyncSocialAdapter) return State.Players.Where(p => p.Id != Me).ToList();
             var result = new List<SocialPlayerDto>();
             if (!(adapter is LocalSocialAdapter) || 全局变量.所有玩家数据表 == null) return result;
             var seen = new HashSet<string>();
@@ -155,7 +156,24 @@ namespace Dwsg.Social
             else RenderRelations(screen, body, page == "师徒" ? RelationKind.Mentor : RelationKind.Brotherhood);
         }
         private void Apply(SocialScreen screen, SocialCommand command)
-        { screen.Feedback(adapter.Execute(command)); }
+        { Execute(screen, command, null); }
+        private void Execute(SocialScreen screen, SocialCommand command, Action<SocialResult> completed)
+        {
+            var source = adapter;
+            var render = screen.Render;
+            Action<SocialResult> finish = result => {
+                if (this == null || screen == null || source != adapter || screen.Render != render || !screen.gameObject.activeInHierarchy) return;
+                if (completed != null) completed(result);
+                if (screen != null && screen.gameObject.activeInHierarchy) screen.Feedback(result);
+            };
+            var asynchronous = adapter as IAsyncSocialAdapter;
+            if (asynchronous == null) finish(adapter.Execute(command));
+            else
+            {
+                screen.Feedback(SocialResult.Fail("pending", "正在提交，请稍候"));
+                asynchronous.ExecuteAsync(command, finish);
+            }
+        }
         private void ShowProfile(string id)
         {
             targetId = id;
@@ -192,7 +210,7 @@ namespace Dwsg.Social
             var input = ui.Input(body, "按称呼或编号查找", 0, 43, 435, 34, 48, search);
             input.onValueChanged.AddListener(v => search = v);
             ui.Button(body, "查找", 443, 43, 80, 34, () => screen.Refresh());
-            ui.Button(body, "添加联系人", 531, 43, 129, 34, ShowContactForm);
+            ui.Button(body, adapter is IAsyncSocialAdapter ? "玩家列表" : "添加联系人", 531, 43, 129, 34, ShowContactForm);
             var people = s.Players.Where(p => p.Id != Me && (p.Name.IndexOf(search.Trim(), StringComparison.OrdinalIgnoreCase) >= 0 || p.Id.IndexOf(search.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) &&
                 (friendFilter != "好友" || IsFriend(s, p.Id)) && (friendFilter != "黑名单" || IsBlocked(s, p.Id))).ToList();
             var rows = ui.List(body, 0, 84, W, 205);
@@ -206,19 +224,20 @@ namespace Dwsg.Social
                     () => { if (IsBlocked(s, id)) Apply(screen, new SocialCommand { Kind = SocialCommandKind.Unblock, Target = id });
                         else if (p.IsNpc) ShowRoleMessages(p); else ShowConversation(id); });
             }
-            if (people.Count == 0) rows.Empty(search.Length > 0 ? "没有匹配的联系人" : "还没有这类联系人", "点击“添加联系人”，从本世界角色选择，或添加手动联系人。");
+            if (people.Count == 0) rows.Empty(search.Length > 0 ? "没有匹配的联系人" : "还没有这类联系人", adapter is IAsyncSocialAdapter ? "点击“玩家列表”查看本世界已创建角色的玩家。" : "点击“添加联系人”，从本世界角色选择，或添加手动联系人。");
         }
         private void ShowContactForm()
         {
-            manualContact = !(adapter is LocalSocialAdapter); roleSearch = "";
+            manualContact = !(adapter is LocalSocialAdapter || adapter is IAsyncSocialAdapter); roleSearch = "";
             if (form == null) form = Screen("登记联系人", RenderContactForm);
             if (form == null) return;
             form.Render = RenderContactForm; Show(form);
         }
         private void RenderContactForm(SocialScreen screen)
         {
-            screen.Title.text = "添加联系人";
-            Tabs(screen.Body, new[] { "本世界角色", "手动联系人" }, manualContact ? "手动联系人" : "本世界角色",
+            bool online = adapter is IAsyncSocialAdapter;
+            screen.Title.text = online ? "本世界玩家" : "添加联系人";
+            Tabs(screen.Body, online ? new[] { "本世界玩家" } : new[] { "本世界角色", "手动联系人" }, online ? "本世界玩家" : manualContact ? "手动联系人" : "本世界角色",
                 selected => { manualContact = selected == "手动联系人"; screen.Refresh(); });
             if (!manualContact)
             {
@@ -235,13 +254,14 @@ namespace Dwsg.Social
                     bool exists = saved.Players.Any(p => p.Id == role.Id);
                     ui.Button(row, exists ? "查看" : "添加联系人", 468, 14, 156, 34, () =>
                     {
+                        if (online) { screen.gameObject.SetActive(false); ShowProfile(selected.Id); return; }
                         var local = adapter as LocalSocialAdapter;
                         if (local == null) return;
                         var result = local.RegisterWorldRole(selected); screen.Feedback(result);
                         if (result.Succeeded) { screen.gameObject.SetActive(false); ShowProfile(selected.Id); }
                     });
                 }
-                if (roles.Count == 0) list.Empty("没有匹配的本世界角色", "清空查找条件重试；手动联系人可在另一页添加。");
+                if (roles.Count == 0) list.Empty("没有匹配的本世界角色", online ? "清空查找条件，或等待其他玩家创建角色。" : "清空查找条件重试；手动联系人可在另一页添加。");
                 return;
             }
             ui.Text(screen.Body, "填写对方提供的编号与称呼。", 12, 42, 630, 34, 18, SocialUi.Muted);
@@ -269,7 +289,7 @@ namespace Dwsg.Social
             if (p == null) p = WorldRole(targetId);
             if (p == null) { ui.Text(screen.Body, "联系人已移除", 12, 12, 630, 60); ui.Button(screen.Body, "返回联系人", 12, 86, 200, 36, ReturnToContacts); return; }
             screen.Title.text = "名片 · " + p.Name;
-            var sprite = p.Id == Me ? ui.Avatar : p.IsNpc && 全局变量.所有头像资源表 != null && p.Portrait < 全局变量.所有头像资源表.Count ? 全局变量.所有头像资源表[p.Portrait] : null;
+            var sprite = p.Id == Me ? ui.Avatar : (p.IsNpc || p.Verified) && 全局变量.所有头像资源表 != null && p.Portrait < 全局变量.所有头像资源表.Count ? 全局变量.所有头像资源表[p.Portrait] : null;
             ui.Image(screen.Body, "头像", 12, 8, 64, 70, sprite, sprite == null ? SocialUi.Green : Color.white);
             if (sprite == null) ui.Text(screen.Body, "联系人", 12, 8, 64, 70, 16, SocialUi.Muted, TextAnchor.MiddleCenter);
             ui.Text(screen.Body, p.Name, 92, 3, 550, 32, 21);
@@ -315,7 +335,7 @@ namespace Dwsg.Social
             ui.Button(screen.Body, blocked ? "取消屏蔽" : "屏蔽", 450, 204, 194, 38, () => Confirm(
                 IsBlocked(State, p.Id) ? "移出黑名单？好友关系需重新申请。" : "拉黑 " + p.Name + "？好友关系及待确认邀请将取消。",
                 new SocialCommand { Kind = IsBlocked(State, p.Id) ? SocialCommandKind.Unblock : SocialCommandKind.Block, Target = p.Id }), p.Id != Me);
-            if (p.Id != Me)
+            if (p.Id != Me && !(adapter is IAsyncSocialAdapter))
             {
                 ui.Button(screen.Body, "移除联系人", 12, 286, 194, 36, () => RemoveContact(person));
                 var name = ui.Input(screen.Body, "备注称呼", 230, 252, 280, 34, 20, p.Name);
@@ -323,6 +343,7 @@ namespace Dwsg.Social
                     new SocialCommand { Kind = SocialCommandKind.RenameContact, Target = person.Id, Name = name.text.Trim() }));
                 ui.Button(screen.Body, "返回联系人", 230, 291, 194, 36, ReturnToContacts);
             }
+            else ui.Button(screen.Body, "返回联系人", 230, 291, 194, 36, ReturnToContacts);
         }
         private void RemoveContact(SocialPlayerDto person)
         {
@@ -353,8 +374,8 @@ namespace Dwsg.Social
             }
             if (players.Count == 0)
             {
-                list.Empty("没有匹配的私聊对象", "清空查找条件，或添加手动联系人。NPC 的相关播报在聊天页查看。");
-                ui.Button(body, "添加联系人", 416, 228, 232, 38, ShowContactForm);
+                list.Empty("没有匹配的私聊对象", adapter is IAsyncSocialAdapter ? "清空查找条件，或等待其他玩家创建角色。" : "清空查找条件，或添加手动联系人。NPC 的相关播报在聊天页查看。");
+                ui.Button(body, adapter is IAsyncSocialAdapter ? "玩家列表" : "添加联系人", 416, 228, 232, 38, ShowContactForm);
             }
         }
         private void ShowConversation(string id)
@@ -398,9 +419,9 @@ namespace Dwsg.Social
             ui.Button(screen.Body, "保存草稿", 500, 246, 160, 36, () => Apply(screen, new SocialCommand { Kind = SocialCommandKind.SaveDraft, Target = id, Text = input.text }));
             ui.Button(screen.Body, adapter.IsConnected ? "发送" : "尝试发送", 500, 291, 160, 36, () =>
             {
-                var result = adapter.Execute(new SocialCommand { Kind = SocialCommandKind.SendPrivate, Target = id, Text = input.text.Trim() });
-                screen.Feedback(result);
-                if (result.Succeeded) { conversationText = ""; screen.Refresh(); }
+                Execute(screen, new SocialCommand { Kind = SocialCommandKind.SendPrivate, Target = id, Text = input.text.Trim() }, result => {
+                    if (result.Succeeded) { conversationText = ""; screen.Refresh(); }
+                });
             });
         }
         private static System.Collections.IEnumerator ConversationToBottom(SocialList list)
@@ -447,9 +468,9 @@ namespace Dwsg.Social
             var notice = ui.Input(screen.Body, "最多 120 字，可换行", 144, 144, 488, 90, 120, editNotice, true); notice.onValueChanged.AddListener(v => editNotice = v);
             ui.Button(screen.Body, "确认创建", 430, 250, 202, 40, () =>
             {
-                var result = adapter.Execute(new SocialCommand { Kind = SocialCommandKind.CreateGuild, Name = name.text.Trim(), Text = notice.text });
-                screen.Feedback(result);
-                if (result.Succeeded) { screen.gameObject.SetActive(false); ShowGuild(result.EntityId); }
+                Execute(screen, new SocialCommand { Kind = SocialCommandKind.CreateGuild, Name = name.text.Trim(), Text = notice.text }, result => {
+                    if (result.Succeeded) { screen.gameObject.SetActive(false); ShowGuild(result.EntityId); }
+                });
             });
         }
         private void ShowGuild(string id)
@@ -646,10 +667,12 @@ namespace Dwsg.Social
             ui.Button(screen.Body, "取消", 84, 261, 218, 42, () => screen.gameObject.SetActive(false));
             ui.Button(screen.Body, "确认", 360, 261, 218, 42, () =>
             {
-                var result = adapter.Execute(confirmCommand); screen.Feedback(result);
-                if (!result.Succeeded) return;
-                screen.gameObject.SetActive(false);
-                if (confirmed != null) confirmed(result);
+                var callback = confirmed;
+                Execute(screen, confirmCommand, result => {
+                    if (!result.Succeeded) return;
+                    screen.gameObject.SetActive(false);
+                    if (callback != null) callback(result);
+                });
             });
         }
     }

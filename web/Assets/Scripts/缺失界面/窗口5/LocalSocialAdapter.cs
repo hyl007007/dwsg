@@ -28,6 +28,8 @@ namespace Dwsg.Social
         public const int ContactLimit = 128;
         public const int HistoryLimit = 512;
         private readonly SocialLocalStore store;
+        private readonly bool authoritative;
+        private readonly long serverUtcSeconds;
         public string CurrentPlayerId { get; private set; }
         public bool IsConnected { get { return false; } }
         public string ConnectionStatus { get { return "离线 · 联机消息尚未连接"; } }
@@ -37,11 +39,16 @@ namespace Dwsg.Social
         public LocalSocialAdapter(SocialPlayerDto self, string worldKey)
             : this(new SocialLocalStore(self, worldKey), self.Id) { }
         public LocalSocialAdapter(SocialLocalStore localStore, string sessionPlayerId)
+            : this(localStore, sessionPlayerId, false, 0) { }
+        // 仅服务端模块以认证身份创建；不接受 UI 命令切换执行模式。
+        internal LocalSocialAdapter(SocialLocalStore localStore, string sessionPlayerId, bool authoritative, long serverUtcSeconds)
         {
             if (localStore == null || !localStore.State.Players.Any(p => p.Id == sessionPlayerId && !p.IsNpc))
                 throw new ArgumentException("会话必须绑定已登记的本地身份");
             store = localStore;
             CurrentPlayerId = sessionPlayerId;
+            this.authoritative = authoritative;
+            this.serverUtcSeconds = serverUtcSeconds;
         }
         internal static T Copy<T>(T value)
         { return JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(value)); }
@@ -118,7 +125,7 @@ namespace Dwsg.Social
         private static bool ValidNotice(string text)
         { return text != null && text.Length <= 120 && !text.Any(c => (char.IsControl(c) && c != '\n' && c != '\r') || c == '<' || c == '>'); }
         private static string Id() { return Guid.NewGuid().ToString("N"); }
-        private static long Now() { return DateTimeOffset.UtcNow.ToUnixTimeSeconds(); }
+        private long Now() { return authoritative ? serverUtcSeconds : DateTimeOffset.UtcNow.ToUnixTimeSeconds(); }
         private SocialPlayerDto Player(string id) { return S.Players.FirstOrDefault(p => p.Id == id); }
         private GuildDto GuildFor(string id) { return S.Guilds.FirstOrDefault(g => g.Members.Contains(id)); }
         private BrotherhoodDto BrothersFor(string id) { return S.Brotherhoods.FirstOrDefault(g => g.Members.Contains(id)); }
@@ -137,12 +144,14 @@ namespace Dwsg.Social
         private SocialResult Denied() { return SocialResult.Fail("permission", "当前角色无权执行此操作"); }
         private SocialResult Missing() { return SocialResult.Fail("missing", "记录不存在或已失效，请返回刷新"); }
         private SocialResult Done(string message, string id = null)
-        { store.Notify(); return SocialResult.Local(message, id); }
+        { store.Notify(); return SocialResult.Local(authoritative ? message.Replace("已保存，未发送", "已发送") : message, id); }
 
         public SocialResult Execute(SocialCommand c)
         {
             if (c == null || !Enum.IsDefined(typeof(SocialCommandKind), c.Kind)) return SocialResult.Fail("invalid", "无效的社交命令");
             if (Player(CurrentPlayerId) == null) return Denied();
+            if (authoritative && (c.Kind == SocialCommandKind.RegisterContact || c.Kind == SocialCommandKind.RemoveContact || c.Kind == SocialCommandKind.RenameContact))
+                return SocialResult.Fail("permission", "联机角色资料由服务器维护");
             c.Text = c.Text ?? "";
             switch (c.Kind)
             {
@@ -188,6 +197,17 @@ namespace Dwsg.Social
                     var sp = TargetProblem(c.Target); if (sp != null) return sp;
                     if (Player(c.Target).IsNpc) return SocialResult.Fail("npc", "NPC 不提供私聊，可查看相关播报");
                     if (!ValidText(c.Text, 200) || string.IsNullOrWhiteSpace(c.Text)) return SocialResult.Fail("invalid", "私聊限 1–200 字且不能含换行/尖括号");
+                    if (authoritative)
+                    {
+                        var previous = S.Messages.LastOrDefault(x => x.From == CurrentPlayerId);
+                        if (previous != null && Now() - previous.CreatedUtc < 1) return SocialResult.Fail("rate", "发送过于频繁，请稍后再试");
+                        var message = new PrivateMessageDto { Id = Id(), From = CurrentPlayerId, To = c.Target, Text = c.Text,
+                            Delivery = MessageDelivery.Sent, CreatedUtc = Now() };
+                        S.Messages.Add(message);
+                        while (S.Messages.Count > HistoryLimit) S.Messages.RemoveAt(0);
+                        S.Drafts.RemoveAll(x => x.Owner == CurrentPlayerId && x.Target == c.Target);
+                        return Done("私聊已发送", message.Id);
+                    }
                     return SocialResult.Fail("offline", "消息未发送，可先保存草稿");
                 case SocialCommandKind.SaveDraft:
                     var dp = TargetProblem(c.Target, false); if (dp != null) return dp;

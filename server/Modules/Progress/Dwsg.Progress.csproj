@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Dwsg.Shared.csproj" />
+    <ProjectReference Include="../Generals/Dwsg.Generals.csproj" />
+    <Compile Include="../../../web/Assets/Scripts/缺失界面/窗口1/Window1Rules.cs" Link="Rules/Window1Rules.cs" />
+    <Compile Include="../../../web/Assets/Scripts/缺失界面/窗口1/SixMinistriesState.cs" Link="Rules/SixMinistriesState.cs" />
+    <Compile Include="../../../web/Assets/Scripts/缺失界面/窗口1/SixMinistriesConfig.cs" Link="Rules/SixMinistriesConfig.cs" />
+    <Compile Include="../../../web/Assets/Scripts/缺失界面/窗口1/SixMinistriesService.cs" Link="Rules/SixMinistriesService.cs" />
+  </ItemGroup>
+</Project>

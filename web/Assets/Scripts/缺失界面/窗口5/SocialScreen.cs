@@ -64,6 +64,14 @@ namespace Dwsg.Social
             if (!gameObject.activeInHierarchy || Render == null) return;
             if (Status != null) Status.text = "";
             SocialUi.Clear(Body); RenderCount++; Render(this);
+            var pending = Adapter as IAsyncSocialAdapter;
+            var controls = Body.GetComponent<CanvasGroup>();
+            if (pending != null || controls != null)
+            {
+                if (controls == null) controls = Body.gameObject.AddComponent<CanvasGroup>();
+                controls.interactable = pending == null || !pending.IsBusy;
+                if (pending != null && pending.IsBusy) Feedback(SocialResult.Fail("pending", "正在提交，请稍候"));
+            }
             TruncateTitle();
         }
         private void TruncateTitle()

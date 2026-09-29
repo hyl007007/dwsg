@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
+using Dwsg.Network;
+using Dwsg.Auxiliary;
+using Dwsg.Shared;
 
 public class 显示称号信息 : MonoBehaviour
 {
@@ -18,6 +21,17 @@ public class 显示称号信息 : MonoBehaviour
 	private float 总页数;
 
 	private int 第几个玩家;
+	private bool 联机切换中;
+	private string 联机称号签名;
+	private void OnEnable() { GameNetwork.SnapshotReceived -= 联机快照更新; GameNetwork.SnapshotReceived += 联机快照更新; }
+	private void OnDisable() { GameNetwork.SnapshotReceived -= 联机快照更新; }
+	private void 联机快照更新(WorldSnapshot snapshot)
+	{
+		if (!GameNetwork.Enabled || !isActiveAndEnabled || snapshot == null || !GameNetwork.HasRole) return;
+		string 签名 = snapshot.PrivatePlayer["称号信息表"]?.ToString(Newtonsoft.Json.Formatting.None);
+		if (联机称号签名 == 签名) return;
+		联机称号签名 = 签名; 刷新显示();
+	}
 
 	public void 刷新显示()
 	{
@@ -91,6 +105,22 @@ public class 显示称号信息 : MonoBehaviour
 			var 称号表 = 全局变量.所有玩家数据表[第几个玩家].称号信息表;
 			int 选中索引 = (显示第几页 - 1) * 12 + 第几个称号;
 			if (第几个称号 < 0 || 第几个称号 >= 12 || 选中索引 < 0 || 选中索引 >= 称号表.Count) return;
+			if (GameNetwork.Enabled)
+			{
+				if (联机切换中) return;
+				if (!GameNetwork.Connected) { 全局变量.提示类.显示信息("尚未连接服务器，请等待重连"); return; }
+				string 名字 = 称号表[选中索引].名字;
+				联机切换中 = true;
+				设置称号交互(false);
+				AuxiliaryClient.EquipTitle(名字, result => {
+					if (this == null) return;
+					联机切换中 = false;
+					设置称号交互(true);
+					全局变量.提示类.显示信息(result.Code == GameCodes.Ok ? "已激活:" + 名字 : result.Message);
+					if (isActiveAndEnabled) 刷新显示();
+				});
+				return;
+			}
 			if (称号表[选中索引].状态 == 0)
 			{
 				全局变量.提示类.显示信息("尚未获得此称号。");
@@ -126,6 +156,13 @@ public class 显示称号信息 : MonoBehaviour
 				}
 			}
 			刷新显示();
+		}
+		private void 设置称号交互(bool 可用)
+		{
+			if (称号列表对象 == null) return;
+			var 交互 = 称号列表对象.GetComponent<CanvasGroup>();
+			if (交互 == null) 交互 = 称号列表对象.AddComponent<CanvasGroup>();
+			交互.interactable = 可用;
 		}
 
 		public void 左翻页()

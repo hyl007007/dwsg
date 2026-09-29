@@ -32,13 +32,20 @@ namespace Dwsg.Window3
         }
         private static void 反馈(军事详情面板 页, CityResult 结果)
         {
+            if (页 == null) return;
             页.提示(结果.Success ? 军事结果.通过(结果.Message) : 军事结果.拒绝(军事错误.状态冲突, 结果.Message));
             if (结果.Success) 页.刷新();
+        }
+        private static void 联机反馈(军事详情面板 页, long 代次, Dwsg.Shared.GameResult 结果)
+        {
+            if (页 == null || !页.isActiveAndEnabled || 页.展示代次 != 代次) return;
+            反馈(页, 结果.Code == Dwsg.Shared.GameCodes.Ok ? CityResult.Ok(结果.Message) : CityResult.Fail(结果.Message));
         }
         public static void 构造详情(军事详情面板 页, string 点ID, Action<string> 选择将领,
             Action<资源点军情信息> 观战 = null, Func<long> 现在 = null)
         {
             if (页 == null) return;
+            long 页面代次 = 页.展示代次;
             var 规则 = 资源点规则.本地; long 载入号 = 规则.载入号; int 角色 = 全局变量.本机身份;
             var 点 = 规则.查询().Find(x => x.标识 == 点ID);
             if (点 == null) { 页.说明("资源点已变更，请重新选择。", 40); return; }
@@ -54,7 +61,8 @@ namespace Dwsg.Window3
                 页.操作行("放弃资源点", "结清已采资源；剩余库存保留，再次占领需要战斗。", "放弃", () =>
                 {
                     if (规则.载入号 != 载入号 || 全局变量.本机身份 != 角色) { 反馈(页, CityResult.Fail("世界已切换，请重新打开资源点。")); return; }
-                    反馈(页, 规则.放弃(点ID, 时钟()));
+                    if (Dwsg.Network.GameNetwork.Enabled) Dwsg.Combat.ResourceClient.Abandon(点ID, r => 联机反馈(页, 页面代次, r));
+                    else 反馈(页, 规则.放弃(点ID, 时钟()));
                 });
             else if (点.占领玩家ID == -1 && 点.剩余库存 > 0 && 任务.Count == 0)
                 页.操作行("占领资源点", "守军：1级山贼。击败守军后占领。", "选择将领", () =>
@@ -72,6 +80,7 @@ namespace Dwsg.Window3
                     {
                         if (规则.载入号 != 载入号 || 全局变量.本机身份 != 角色) { 反馈(页, CityResult.Fail("世界已切换，请重新打开资源点。")); return; }
                         if (当前.阶段 == 资源出征阶段.参战) { if (观战 != null) 观战(当前); }
+                        else if (Dwsg.Network.GameNetwork.Enabled) Dwsg.Combat.ResourceClient.Withdraw(当前, r => 联机反馈(页, 页面代次, r));
                         else 反馈(页, 规则.撤回(当前));
                     }, 属我 && (情.阶段 != 资源出征阶段.参战 || 观战 != null));
             }

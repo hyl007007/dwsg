@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../shared/Dwsg.Shared.csproj" />
+    <Compile Include="../../../web/Assets/GameModules/Administration/AdministrationRules.cs" Link="AdministrationRules.cs" />
+  </ItemGroup>
+</Project>

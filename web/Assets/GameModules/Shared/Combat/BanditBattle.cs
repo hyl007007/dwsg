@@ -103,6 +103,8 @@ namespace Dwsg.Shared.Combat
         public string Kind = "bandit";
         public string CityNation, CityName, CityOwnerPlayerId;
         public int CityScale;
+        public string ResourceId;
+        public int ResourceBatch, SourceFiefId, SourceX, SourceY;
         public double Wall, WallMaximum, WarReward;
         public int X, Y;
         public long ArrivalUtcMs, NextTickUtcMs, StartedUtcMs, Frame;

@@ -63,7 +63,10 @@ var runtime = new WorldRuntime(store, sessions.Authorize, initializeEntities: Ge
     preparePlayer: (state, playerId, now) => {
         ProductionModule.InitializePlayer(state, playerId, now);
         NationModule.InitializeSalary(state, playerId, now);
-    }, prepareCommit: StableNationIds.EnsureMappings);
+        Dwsg.Server.Progress.ProgressModule.RefreshPlayer(state, playerId, now);
+        Dwsg.Server.Auxiliary.AuxiliaryModule.InitializePlayer(state, playerId, now);
+    }, prepareCommit: StableNationIds.EnsureMappings,
+    prepareTimedCommit: Dwsg.Server.Progress.ProgressModule.RefreshAll);
 sessions.Runtime = runtime;
 runtime.Register(new EconomyModule(GeneralsModule.EnsureMappings));
 runtime.Register(new ProductionModule());
@@ -74,6 +77,11 @@ runtime.Register(new NationModule(state => StableNationIds.RegisterCreated(state
 runtime.Register(new GeneralsModule());
 runtime.Register(new ChatModule());
 runtime.Register(new CombatModule());
+runtime.Register(new Dwsg.Server.Social.SocialModule());
+runtime.Register(new Dwsg.Server.Administration.AdministrationModule());
+runtime.Register(new Dwsg.Server.Progress.ProgressModule());
+runtime.Register(new Dwsg.Server.Progress.TrainingModule());
+runtime.Register(new Dwsg.Server.Auxiliary.AuxiliaryModule());
 runtime.Committed += sessions.Publish;
 var app = builder.Build();
 app.MapGet("/health", () => Results.Json(new { protocolVersion = 1, worldId }));

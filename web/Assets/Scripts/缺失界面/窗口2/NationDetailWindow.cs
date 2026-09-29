@@ -1,3 +1,4 @@
+using Dwsg.Administration;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -26,7 +27,8 @@ namespace 缺失界面.窗口2
         private Text title, heading, feedback, timerText;
         private NationSnapshot snapshot;
         private float nextTimer;
-        private bool settleFirstLayout;
+        private bool settleFirstLayout, submitting;
+        private int viewGeneration;
         private string laidOutFeedback;
         private 所有城池界面脚本 existingCityMap;
         private Transform originalCountry;
@@ -158,6 +160,7 @@ namespace 缺失界面.窗口2
 
         private void Render()
         {
+            viewGeneration++;
             ClearContent(); snapshot = Data.ReadNation(context.Code); title.text = context.Page == NationPage.宣言 ? "国家宣告" : context.Page.ToString();
             heading.text = snapshot == null ? "未加入国家" : Short(snapshot.Name, 18) + "（" + Short(snapshot.Code, 6) + "）";
             feedback.text = "";
@@ -337,10 +340,17 @@ namespace 缺失界面.窗口2
             ui.Button("保存正文", row, "保存", () =>
             {
                 if (context.ActorId != Data.ActorId) { feedback.text = "当前角色已变化，请返回重新编辑。"; return; }
-                var result = Data.Publish(context.Code, kind, field.text);
-                if (result.Success) Back(); feedback.text = result.Message;
+                if (submitting) return;
+                submitting = true; var opened = context; int generation = viewGeneration; field.interactable = false;
+                feedback.text = "正在保存，请稍候。";
+                AdministrationClient.Publish(Data, context.Code, kind, field.text, kind == NationNoticeKind.公告 ? snapshot.Notice : snapshot.Declaration, result =>
+                {
+                    if (this == null) return; submitting = false; if (field != null) field.interactable = true;
+                    if (!gameObject.activeInHierarchy || generation != viewGeneration || context.Page != opened.Page || context.Code != opened.Code || context.ActorId != opened.ActorId) return;
+                    if (result.Success) Back(); feedback.text = result.Message;
+                });
             });
-            ui.Button("清空正文", row, "清空输入", () => field.text = "");
+            ui.Button("清空正文", row, "清空输入", () => { if (!submitting) field.text = ""; });
             ui.Paragraph(content, "最多" + limit + "字。清空后保存会撤下原内容。\n返回或刷新会放弃未保存的输入。", NationUiFactory.Muted);
             feedback.text = "正在编辑" + kind + "；尚未保存。";
         }
@@ -435,7 +445,14 @@ namespace 缺失界面.窗口2
             ui.Button("确认任免", row, "确认任免", () =>
             {
                 if (context.ActorId != Data.ActorId) { feedback.text = "当前角色已变化，请返回重新查看。"; return; }
-                var result = Data.Appoint(context.Code, context.Office, context.PlayerId); if (result.Success) Back(); feedback.text = result.Message;
+                if (submitting) return;
+                submitting = true; var opened = context; int generation = viewGeneration; feedback.text = "正在任免，请稍候。";
+                AdministrationClient.Appoint(Data, context.Code, context.Office, context.PlayerId, old == null ? -1 : old.Id, result =>
+                {
+                    if (this == null) return; submitting = false;
+                    if (!gameObject.activeInHierarchy || generation != viewGeneration || context.Page != opened.Page || context.Code != opened.Code || context.ActorId != opened.ActorId || context.Office != opened.Office || context.PlayerId != opened.PlayerId) return;
+                    if (result.Success) Back(); feedback.text = result.Message;
+                });
             });
         }
 

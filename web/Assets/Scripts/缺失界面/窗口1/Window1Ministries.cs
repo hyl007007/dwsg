@@ -18,6 +18,8 @@ namespace Dwsg.Window1
         private readonly List<Row> rows = new List<Row>();
         private int department, usedRows;
         private bool ready;
+        private bool onlinePending;
+        private long viewGeneration;
         private Coroutine refreshLoop;
         private static readonly string[] Departments = { "吏部", "户部", "礼部", "兵部", "工部", "刑部" };
         private sealed class Row
@@ -40,7 +42,7 @@ namespace Dwsg.Window1
             {
                 int selected = i;
                 var tab = style.Tab(tabStrip, "六部_" + Departments[i], Departments[i], () => {
-                    department = selected; scroll.verticalNormalizedPosition = 1; feedback.text = ""; Refresh();
+                    viewGeneration++; department = selected; scroll.verticalNormalizedPosition = 1; feedback.text = ""; Refresh();
                 });
                 tabs.Add(tab);
             }
@@ -87,8 +89,8 @@ namespace Dwsg.Window1
             row.Root.gameObject.SetActive(true); row.Title.text = title; row.Detail.text = detail;
             row.Command = command; row.CancelCommand = cancel;
             row.Action.GetComponentInChildren<Text>(true).text = action;
-            row.Action.gameObject.SetActive(!string.IsNullOrEmpty(action)); row.Action.interactable = command != null;
-            row.Cancel.gameObject.SetActive(cancel != null);
+            row.Action.gameObject.SetActive(!string.IsNullOrEmpty(action)); row.Action.interactable = command != null && !onlinePending;
+            row.Cancel.gameObject.SetActive(cancel != null); row.Cancel.interactable = !onlinePending;
         }
         private void Execute(Func<MinistryResult> action)
         {
@@ -97,16 +99,55 @@ namespace Dwsg.Window1
             feedback.color = result.Success ? Window1Style.Gold : Window1Style.Ink;
             Refresh();
         }
-        private void OnEnable() { if (ready) BeginRefresh(); }
+        private MinistryResult Command(string type, string field, Newtonsoft.Json.Linq.JToken value, Func<MinistryResult> offline)
+        {
+            if (!Dwsg.Network.GameNetwork.Enabled) return offline();
+            if (onlinePending) return MinistryResult.Fail("正在等待服务器确认，请勿重复点击");
+            onlinePending = true;
+            long requestedView = viewGeneration; int requestedDepartment = department;
+            MinistryResult immediate = null;
+            Dwsg.Progress.ProgressClient.Send(type, new Newtonsoft.Json.Linq.JObject { [field] = value }, result =>
+            {
+                immediate = result.Code == Dwsg.Shared.GameCodes.Ok ? MinistryResult.Ok(result.Message) : MinistryResult.Fail(result.Message);
+                if (this == null) return;
+                onlinePending = false;
+                if (!isActiveAndEnabled || requestedView != viewGeneration || requestedDepartment != department) { Refresh(); return; }
+                feedback.text = result.Message;
+                feedback.color = result.Code == Dwsg.Shared.GameCodes.Ok ? Window1Style.Gold : Window1Style.Ink;
+                Refresh();
+            });
+            return immediate ?? MinistryResult.Fail("正在等待服务器确认…");
+        }
+        private MinistryResult Train(SixMinistriesService service, 玩家数据结构.将领信息 general)
+        {
+            if (!Dwsg.Network.GameNetwork.Enabled) return service.TrainGeneral(general);
+            if (onlinePending) return MinistryResult.Fail("正在等待服务器确认，请勿重复点击");
+            onlinePending = true;
+            long requestedView = viewGeneration; int requestedDepartment = department;
+            MinistryResult immediate = null;
+            Dwsg.Progress.TrainingClient.Train(general, result =>
+            {
+                immediate = result.Code == Dwsg.Shared.GameCodes.Ok ? MinistryResult.Ok(result.Message) : MinistryResult.Fail(result.Message);
+                if (this == null) return;
+                onlinePending = false;
+                if (!isActiveAndEnabled || requestedView != viewGeneration || requestedDepartment != department) { Refresh(); return; }
+                feedback.text = result.Message;
+                feedback.color = result.Code == Dwsg.Shared.GameCodes.Ok ? Window1Style.Gold : Window1Style.Ink;
+                Refresh();
+            });
+            return immediate ?? MinistryResult.Fail("正在等待服务器确认…");
+        }
+        private void OnEnable() { viewGeneration++; if (ready) { feedback.text = ""; BeginRefresh(); } }
         private void BeginRefresh() { Refresh(); if (refreshLoop == null) refreshLoop = StartCoroutine(VisibleRefresh()); }
         private IEnumerator VisibleRefresh()
         { while (isActiveAndEnabled) { yield return new WaitForSecondsRealtime(1); if (isActiveAndEnabled) Refresh(); } }
-        private void OnDisable() { if (refreshLoop != null) StopCoroutine(refreshLoop); refreshLoop = null; }
+        private void OnDisable() { viewGeneration++; if (refreshLoop != null) StopCoroutine(refreshLoop); refreshLoop = null; }
         private void JobRow(SixMinistriesService service, MinistryJob job, string title, string reward)
         {
             bool due = service.Now >= job.ReadyAt;
             Add(title, (due ? "已到期，可领取" : "剩余 " + (job.ReadyAt - service.Now) + " 秒") + " · " + reward + "\n右侧X撤销待办，费用不退还。",
-                due ? "领取" : "进行中", due ? (Func<MinistryResult>)(() => ClaimForDisplay(service, job)) : null, () => service.Cancel(job.Id));
+                due ? "领取" : "进行中", due ? (Func<MinistryResult>)(() => Command("ministries.claim", "id", job.Id, () => ClaimForDisplay(service, job))) : null,
+                () => Command("ministries.cancel", "id", job.Id, () => service.Cancel(job.Id)));
         }
         private static MinistryResult ClaimForDisplay(SixMinistriesService service, MinistryJob job)
         {
@@ -134,7 +175,7 @@ namespace Dwsg.Window1
             {
                 try
                 {
-                    var config = service.Rules; var money = service.World.Actor.财产信息;
+                    var config = service.Rules; var money = ExistingWorldAdapter.CurrentPlayer.财产信息;
                     resources.text = "文官 " + service.Roster.Count + "/" + config.RosterLimit + "    铜钱 " + money.铜钱.ToString("0") + "    粮食 " + money.粮食.ToString("0");
                     if (department == 0) Officials(service, config);
                     else if (department == 1) Farming(service, config);
@@ -156,11 +197,11 @@ namespace Dwsg.Window1
                 int candidate = i;
                 var job = service.PendingJobs.FirstOrDefault(j => j.Kind == MinistryJobKind.Recruit && j.Candidate == candidate);
                 if (job != null) JobRow(service, job, "招募 · " + config.Candidates[i], "领取后加入文官名册");
-                else Add("候选 · " + config.Candidates[i], "铜钱 " + config.RecruitCopper + " · " + config.RecruitSeconds + " 秒\n待领取招募也占用名额，名册上限 " + config.RosterLimit + "。", "招募", () => service.StartRecruit(candidate));
+                else Add("候选 · " + config.Candidates[i], "铜钱 " + config.RecruitCopper + " · " + config.RecruitSeconds + " 秒\n待领取招募也占用名额，名册上限 " + config.RosterLimit + "。", "招募", () => Command("ministries.recruit", "candidate", candidate, () => service.StartRecruit(candidate)));
             }
             foreach (var officer in service.Roster)
                 Add(OfficerTitle(officer, config), "文官经验 " + officer.Experience + " · " + (service.IsBusy(officer) ? "正在执行政务" : "空闲，可派遣或解雇"),
-                    "解雇", service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => service.Dismiss(officer)));
+                    "解雇", service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => Command("ministries.dismiss", "id", officer.Id, () => service.Dismiss(officer))));
         }
         private void Farming(SixMinistriesService service, SixMinistriesConfig config)
         {
@@ -169,7 +210,7 @@ namespace Dwsg.Window1
                 int plot = i;
                 var job = service.PendingJobs.FirstOrDefault(j => j.Kind == MinistryJobKind.Plant && j.Slot == plot);
                 if (job != null) JobRow(service, job, "地块 " + (i + 1), "粮食+" + config.PlantGrain);
-                else Add("地块 " + (i + 1), "铜钱 " + config.PlantCopper + " · " + config.PlantSeconds + " 秒\n采摘粮食+" + config.PlantGrain + "，每轮仅领取一次。", "种植", () => service.StartPlant(plot));
+                else Add("地块 " + (i + 1), "铜钱 " + config.PlantCopper + " · " + config.PlantSeconds + " 秒\n采摘粮食+" + config.PlantGrain + "，每轮仅领取一次。", "种植", () => Command("ministries.plant", "plot", plot, () => service.StartPlant(plot)));
             }
         }
         private void Relief(SixMinistriesService service, SixMinistriesConfig config)
@@ -180,7 +221,7 @@ namespace Dwsg.Window1
                 var job = service.PendingJobs.FirstOrDefault(j => j.Kind == MinistryJobKind.Relief && j.OfficerId == officer.Id);
                 if (job != null) JobRow(service, job, "赈济 · " + OfficerTitle(officer, config), "铜钱+" + config.ReliefRewardCopper + "、经验+" + config.ReliefExperience);
                 else Add(OfficerTitle(officer, config), "铜钱 " + config.ReliefCopper + "、粮食 " + config.ReliefGrain + " · " + config.ReliefSeconds + " 秒\n完成：铜钱+" + config.ReliefRewardCopper + "、文官经验+" + config.ReliefExperience, "赈济",
-                    service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => service.StartRelief(officer)));
+                    service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => Command("ministries.relief", "id", officer.Id, () => service.StartRelief(officer))));
             }
         }
         private void Military(SixMinistriesService service, SixMinistriesConfig config)
@@ -194,7 +235,7 @@ namespace Dwsg.Window1
                 var buff = snapshot.Buffs.FirstOrDefault(b => b.Owner == service.ActorKey && b.Kind == kind && b.ExpiresAt > service.Now);
                 if (job != null) JobRow(service, job, title, "+" + config.MilitaryBonus * 100 + "% · " + config.BuffSeconds / 60 + "分钟");
                 else if (buff != null) Add(title + " · 已生效", "加成 " + buff.Bonus * 100 + "% · 剩余 " + (buff.ExpiresAt - service.Now) + " 秒\n同类军务不可叠加或续期。", "生效中");
-                else Add(title, "铜钱 " + config.MilitaryCopper + "、粮食 " + config.MilitaryGrain + " · " + config.MilitarySeconds + " 秒\n领取后+" + config.MilitaryBonus * 100 + "%持续" + config.BuffSeconds / 60 + "分钟，同类不叠加。", "办理", () => service.StartMilitary(attacking));
+                else Add(title, "铜钱 " + config.MilitaryCopper + "、粮食 " + config.MilitaryGrain + " · " + config.MilitarySeconds + " 秒\n领取后+" + config.MilitaryBonus * 100 + "%持续" + config.BuffSeconds / 60 + "分钟，同类不叠加。", "办理", () => Command("ministries.military", "attack", attacking, () => service.StartMilitary(attacking)));
             }
         }
         private void Study(SixMinistriesService service, SixMinistriesConfig config)
@@ -205,9 +246,9 @@ namespace Dwsg.Window1
                 var job = service.PendingJobs.FirstOrDefault(j => j.Kind == MinistryJobKind.Study && j.OfficerId == officer.Id);
                 if (job != null) JobRow(service, job, "研习 · " + OfficerTitle(officer, config), "文官经验+" + config.StudyExperience);
                 else Add(OfficerTitle(officer, config), "铜钱 " + config.StudyCopper + " · " + config.StudySeconds + " 秒\n研习经验+" + config.StudyExperience + "，忙碌文官不可派遣。", "研习",
-                    service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => service.StartStudy(officer)));
+                    service.IsBusy(officer) ? null : (Func<MinistryResult>)(() => Command("ministries.study", "id", officer.Id, () => service.StartStudy(officer))));
             }
-            var generals = service.World.Generals();
+            var generals = new SixMinistriesAdapter().Generals();
             if (generals.Count == 0) Add("将领训练", "当前没有已登记将领，可从原将领页招募。");
             foreach (var general in generals)
             {
@@ -217,7 +258,7 @@ namespace Dwsg.Window1
                 double level = general.将领属性.成长点数.等级;
                 bool idle = general.详细信息.状态 == 0 && SixMinistriesConfig.Number(level) && level >= 1 && level < 99;
                 Add(title, idle ? "铜钱 " + SixMinistriesAdapter.TrainingCopper(general) + "、体力 " + SixMinistriesAdapter.TrainingStamina + "\n即时经验+" + SixMinistriesAdapter.TrainingExperience(general) + "（本级升级经验10%）。" : "将领忙碌或已满级，不能训练。",
-                    "训练", idle ? (Func<MinistryResult>)(() => service.TrainGeneral(general)) : null);
+                    "训练", idle ? (Func<MinistryResult>)(() => Train(service, general)) : null);
             }
         }
         private void Persuasion(SixMinistriesService service, SixMinistriesConfig config)
@@ -231,7 +272,7 @@ namespace Dwsg.Window1
             if (service.NpcTargets.Count == 0) Add("策反名册", "当前本地官署已没有可策反的文官。");
             foreach (var target in service.NpcTargets)
                 Add(OfficerTitle(target, config), "地方官署（本地NPC） · 进度 " + target.Persuasion + "/" + config.PersuasionGoal + "\n铜钱 " + config.PersuasionCopper + " · " + config.PersuasionSeconds + "秒 · 完成+" + config.PersuasionStep, "策反",
-                    job != null || service.IsBusy(target) ? null : (Func<MinistryResult>)(() => service.StartPersuasion(target)));
+                    job != null || service.IsBusy(target) ? null : (Func<MinistryResult>)(() => Command("ministries.persuade", "id", target.Id, () => service.StartPersuasion(target))));
         }
     }
 }

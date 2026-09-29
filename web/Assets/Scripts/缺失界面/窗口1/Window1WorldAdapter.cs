@@ -133,7 +133,7 @@ namespace Dwsg.Window1
         private static readonly ExistingWorldAdapter adapter = new ExistingWorldAdapter();
         public static event Action Changed;
         public static bool HasPersistentWorldId { get; private set; }
-        public static string CurrentWorldId { get { return Service == null ? null : state.WorldId; } }
+        public static string CurrentWorldId { get { return Dwsg.Network.GameNetwork.Enabled ? Dwsg.Progress.ProgressClient.WorldId : Service == null ? null : state.WorldId; } }
         private static bool Ready { get { return ExistingWorldAdapter.CurrentPlayer != null && adapter.PlayerKey != null; } }
         private static object FirstPlayer { get { return 全局变量.所有玩家数据表 != null && 全局变量.所有玩家数据表.Count > 0 ? 全局变量.所有玩家数据表[0] : null; } }
 
@@ -141,6 +141,7 @@ namespace Dwsg.Window1
         {
             get
             {
+                if (Dwsg.Network.GameNetwork.Enabled) return Dwsg.Progress.ProgressClient.Journal;
                 if (!Ready) return null;
                 if (state == null || !ReferenceEquals(listAnchor, 全局变量.所有玩家数据表) || !ReferenceEquals(firstPlayerAnchor, FirstPlayer))
                     Reset("local-session-" + Guid.NewGuid().ToString("N"), false);
@@ -167,6 +168,7 @@ namespace Dwsg.Window1
         public static bool ImportJson(string worldId, string json, out string error) { return 导入JSON(worldId, json, out error); }
         public static string 导出JSON()
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return null;
             var s = Service;
             if (s == null) return null;
             string ignored; s.Refresh(out ignored);
@@ -198,6 +200,7 @@ namespace Dwsg.Window1
         public static bool 发布本地告示(LocalNotice notice, out string error)
         {
             error = "本地告示无效";
+            if (Dwsg.Network.GameNetwork.Enabled) { error = "联机告示由服务器发布"; return false; }
             if (Service == null || notice == null || !notice.IsValid() || notice.Id.StartsWith("builtin.", StringComparison.Ordinal)) return false;
             if (state.Notices.Any(n => n.Id == notice.Id)) { error = "告示标识已存在"; return false; }
             if (state.Notices.Count >= 100) { error = "告示列表已满"; return false; }
@@ -214,15 +217,15 @@ namespace Dwsg.Window1
             var entries = new List<LocalNotice>
             {
                 new LocalNotice { Id = "builtin.offline", Title = "通信状态", Pinned = true,
-                    Body = "当前处于离线状态，跨设备来信暂不可用。" },
+                    Body = Dwsg.Network.GameNetwork.Enabled ? "当前连接游戏服务器。任务、邮件与六部政务由服务器保存，操作结果以服务器回执为准。" : "当前处于离线状态，跨设备来信暂不可用。" },
                 new LocalNotice { Id = "builtin.progress", Title = "封地政务 · " + (land == null ? "未选择封地" : land.封地名字),
                     Body = progress == null ? error : "君主：" + p.基础信息.名字 + "\n所属国家：" + p.基础信息.国家 + "\n当前封地：" + (land == null ? "未选择" : land.封地名字) +
                     "\n\n麾下建筑 " + progress.Buildings.ToString("0") + " 座，建筑等级合计 " + progress.BuildingLevels.ToString("0") +
                     "\n将领 " + progress.Generals.ToString("0") + " 名，最高等级 " + progress.GeneralLevel.ToString("0") +
                     "\n可用军队 " + progress.Troops.ToString("0") + "，累计战功 " + progress.Merit.ToString("0") },
-                new LocalNotice { Id = "builtin.rules", Title = "任务与奖励须知", Body = "完成成长任务与成就后，达成记录会保留，每项奖励可领取一次。\n\n日常任务每日刷新。从当天首次载入游戏时的进度开始计算，之后建筑、科技、将领总等级和战功的净增加计入今日任务。已经达成的进度会保留，调整日期不会让已领取的奖励重复发放。\n\n领取奖励后，各项资源余额不能超过20亿；道具每堆最多999个。空间或余额上限不足时，整份奖励暂不发放。先整理背包或使用资源，再来领取，领取机会会保留。\n\n" + (HasPersistentWorldId ? "保存游戏时，任务、告示与邮件进度一并保存。读档后恢复到保存时的状态。" : "任务、告示与邮件记录仅在本次游戏中保留，离开游戏后不会保留。") }
+                new LocalNotice { Id = "builtin.rules", Title = "任务与奖励须知", Body = "完成成长任务与成就后，达成记录会保留，每项奖励可领取一次。\n\n日常任务每日刷新。从当天首次载入游戏时的进度开始计算，之后建筑、科技、将领总等级和战功的净增加计入今日任务。已经达成的进度会保留，调整日期不会让已领取的奖励重复发放。\n\n领取奖励后，各项资源余额不能超过20亿；道具每堆最多999个。空间或余额上限不足时，整份奖励暂不发放。先整理背包或使用资源，再来领取，领取机会会保留。\n\n" + (Dwsg.Network.GameNetwork.Enabled ? "任务与邮件由服务器持续保存。重新登录同一角色后恢复，领取结果以服务器确认记录为准。" : HasPersistentWorldId ? "保存游戏时，任务、告示与邮件进度一并保存。读档后恢复到保存时的状态。" : "任务、告示与邮件记录仅在本次游戏中保留，离开游戏后不会保留。") }
             };
-            entries.AddRange(state.Notices.Select(n => n.Copy()));
+            if (!Dwsg.Network.GameNetwork.Enabled && state != null) entries.AddRange(state.Notices.Select(n => n.Copy()));
             return entries.OrderByDescending(n => n.Pinned).ThenByDescending(n => n.PublishedUtcTicks).ToList();
         }
         internal static void Signal() { if (Changed != null) Changed(); }

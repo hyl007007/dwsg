@@ -1,3 +1,6 @@
+using Dwsg.Administration;
+using Dwsg.Network;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -154,7 +157,7 @@ namespace Dwsg.Window3
             panel.X = x; panel.Y = y; panel.Tab = page == CityPage.Civic ? Mathf.Clamp(tab, 1, 4) : tab;
             if (panel.gameObject.activeSelf) panel.Render(); else panel.gameObject.SetActive(true);
         }
-        public void Confirm(int x, int y, string heading, string detail, Func<CityResult> command)
+        public void Confirm(int x, int y, string heading, string detail, Action<Action<CityResult>> command)
         {
             var panel = Get(CityPage.Confirm); if (panel == null) return;
             panel.X = x; panel.Y = y; panel.ConfirmationTitle = heading; panel.ConfirmationDetail = detail; panel.Command = command;
@@ -192,7 +195,9 @@ namespace Dwsg.Window3
         private CityRepairOrder displayedRepair;
         public int X, Y, Tab;
         internal string ConfirmationTitle, ConfirmationDetail;
-        internal Func<CityResult> Command;
+        internal Action<Action<CityResult>> Command;
+        private bool submitting;
+        private int viewGeneration;
         private static readonly Color Ink = new Color(.96f, .94f, .73f);
         private static readonly Color Gold = new Color(.9f, .75f, .33f);
         private static readonly Color ButtonGold = new Color(.847f, .835f, .584f);
@@ -338,6 +343,19 @@ namespace Dwsg.Window3
             // Original city return button: 97x39, flush with the 644-wide operation row.
             SetEnabled(Button(name, footer, name, new Vector2(97, 39), new Vector2(x * (273.5f / 240f), 0), action), enabled);
         }
+        private void Run(Action<Action<CityResult>> command, bool refresh = true)
+        {
+            if (submitting) return;
+            submitting = true; int x = X, y = Y, tab = Tab, generation = viewGeneration;
+            Result(CityResult.Ok("正在提交，请稍候。"));
+            command(result =>
+            {
+                if (this == null) return;
+                submitting = false;
+                if (!gameObject.activeInHierarchy || generation != viewGeneration || X != x || Y != y || Tab != tab) return;
+                if (refresh) Render(); Result(result);
+            });
+        }
         private void Result(CityResult result)
         {
             feedback.text = result.Message; feedback.color = result.Success ? Quiet : new Color(1, .77f, .47f);
@@ -346,6 +364,7 @@ namespace Dwsg.Window3
         public void Render()
         {
             if (ui == null) return;
+            viewGeneration++;
             Clear(); CityLocalAdapter.Local.Settle(); var c = CityLocalAdapter.City(X, Y);
             tabs.gameObject.SetActive(page == CityPage.Civic);
             float viewportHeight = page == CityPage.Civic ? 218 : 258;
@@ -374,7 +393,7 @@ namespace Dwsg.Window3
                 else RenderGovernment(c);
                 Footer("侦查", -240, () => ui.Open(CityPage.Scout, X, Y));
                 Footer("收藏册", -80, () => ui.Open(CityPage.Bookmarks, X, Y));
-                Footer(CityLocalAdapter.Local.IsBookmarked(X, Y) ? "取消收藏" : "收藏本城", 80, () => { var r = CityLocalAdapter.Local.Bookmark(X, Y, !CityLocalAdapter.Local.IsBookmarked(X, Y)); Render(); Result(r); });
+                Footer(CityLocalAdapter.Local.IsBookmarked(X, Y) ? "取消收藏" : "收藏本城", 80, () => Run(done => AdministrationClient.Bookmark(X, Y, !CityLocalAdapter.Local.IsBookmarked(X, Y), done)));
                 Footer("返回", 240, () => gameObject.SetActive(false));
             }
             content.anchoredPosition = Vector2.zero;
@@ -391,6 +410,22 @@ namespace Dwsg.Window3
         }
         private void RenderFiefs(城池信息库类 c)
         {
+            if (GameNetwork.Enabled)
+            {
+                var projected = AdministrationClient.PublicCity(X, Y);
+                Row("本城封地：" + (projected?.Value<int>("封地数量") ?? 0) + "/" + c.获取封地上限(), 58);
+                var residents = projected?["居民封地"] as JArray;
+                if (residents != null) foreach (JObject entry in residents)
+                {
+                    int index = AdministrationClient.PlayerIndex(entry.Value<string>("playerId")); var owner = CityLocalAdapter.Player(index);
+                    string text = entry.Value<string>("name") + "  · " + (owner == null ? "君主" : owner.基础信息.名字);
+                    if (index == 全局变量.本机身份) ActionRow(text, "进入封地", ui.View.进入封地, true, 58); else Row(text, 58);
+                }
+                if (residents == null) Row("敌方封地只公开数量。", 72);
+                else if (residents.Count == 0) Row("暂无封地。", 72);
+                if (CityLocalAdapter.Friendly(c) && !c.是否有我的封地()) ActionRow("在本城建立封地", "开辟封地", () => { ui.View.开辟封地(); Render(); });
+                return;
+            }
             Row("本城封地：" + c.城池封地列表.Count + "/" + c.获取封地上限(), 58);
             foreach (var index in c.城池封地列表)
             {
@@ -433,7 +468,7 @@ namespace Dwsg.Window3
             string request = Guid.NewGuid().ToString("N");
             ui.Confirm(X, Y, kind == CityRepairKind.Wall ? "确认修筑城墙" : "确认修筑道路",
                 "修复 " + Number(quote.Amount) + "\n费用：铜 " + Number(quote.Copper) + " / 粮 " + Number(quote.Food) + "\n耗时：30秒；同城只可进行一个任务。",
-                () => CityLocalAdapter.Local.Repair(quote, request));
+                done => AdministrationClient.Repair(quote, request, done));
         }
         private void RenderGovernment(城池信息库类 c)
         {
@@ -447,15 +482,15 @@ namespace Dwsg.Window3
                     () => PrepareTax(captured), permission == null, 64);
             }
             string candidate = CityLocalAdapter.Local.CandidatePermission(X, Y);
-            ActionRow(candidate ?? "在本城有封地的本国君主可登记候选，免费。", "竞选登记", () => { var r = CityLocalAdapter.Local.Apply(X, Y, Guid.NewGuid().ToString("N")); Render(); Result(r); }, candidate == null, 64);
+            ActionRow(candidate ?? "在本城有封地的本国君主可登记候选，免费。", "竞选登记", () => Run(done => AdministrationClient.Apply(X, Y, done)), candidate == null, 64);
             Row("城主由国王从候选中任命。", 44);
             var n = 全局方法类.获取指定名字的国家(c.国家);
             var list = CityLocalAdapter.Local.Candidates(X, Y).Select(a => new { Record = a, Player = 全局变量.所有玩家数据表.FirstOrDefault(p => p.基础信息.ID == a.PlayerId) }).Where(a => a.Player != null).OrderByDescending(a => a.Player.基础信息.贡献).ToList();
             foreach (var a in list)
             {
-                int id = a.Record.PlayerId; string name = a.Player.基础信息.名字; string request = Guid.NewGuid().ToString("N");
+                int id = a.Record.PlayerId, expectedOwner = c.城主; string expectedNation = c.国家; string name = a.Player.基础信息.名字; string request = Guid.NewGuid().ToString("N");
                 ActionRow(name + " · 贡献 " + Number(a.Player.基础信息.贡献), "任命",
-                    () => ui.Confirm(X, Y, "确认任命城主", "任命" + name + "\n将替换当前城主。", () => CityLocalAdapter.Local.Appoint(X, Y, id, request)),
+                    () => ui.Confirm(X, Y, "确认任命城主", "任命" + name + "\n将替换当前城主。", done => AdministrationClient.AppointCity(X, Y, id, expectedOwner, expectedNation, request, done)),
                     n != null && CityLocalAdapter.Me != null && n.国王 == CityLocalAdapter.Me.基础信息.ID && CityLocalAdapter.Me.基础信息.国家 == c.国家, 62);
             }
             if (list.Count == 0) Row("暂无候选。先登记，再由国王任命。", 72);
@@ -468,13 +503,13 @@ namespace Dwsg.Window3
             double copper = kind == CityTaxKind.Lord ? c.城主征收_铜 : c.国家征收_铜;
             double food = kind == CityTaxKind.Lord ? c.城主征收_粮 : c.国家征收_粮;
             int owner = c.城主, actor = CityLocalAdapter.Me.基础信息.ID; string nation = c.国家;
-            ui.Confirm(X, Y, kind == CityTaxKind.Lord ? "确认城主征收" : "确认国家征收", "征收铜钱 " + Number(copper) + " / 粮 " + Number(food) + "\n所得进入" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "。下次征收需等待24小时。", () =>
+            ui.Confirm(X, Y, kind == CityTaxKind.Lord ? "确认城主征收" : "确认国家征收", "征收铜钱 " + Number(copper) + " / 粮 " + Number(food) + "\n所得进入" + (kind == CityTaxKind.Lord ? "个人财产" : "国家国库") + "。下次征收需等待24小时。", done =>
             {
                 var current = CityLocalAdapter.City(X, Y);
                 if (current == null || CityLocalAdapter.Me == null || CityLocalAdapter.Me.基础信息.ID != actor || current.城主 != owner || current.国家 != nation ||
                     (kind == CityTaxKind.Lord ? current.城主征收_铜 : current.国家征收_铜) != copper || (kind == CityTaxKind.Lord ? current.城主征收_粮 : current.国家征收_粮) != food)
-                    return CityResult.Fail("城池归属或征收额度已变化，请重新确认。");
-                return CityLocalAdapter.Local.Collect(X, Y, kind, request);
+                { done(CityResult.Fail("城池归属或征收额度已变化，请重新确认。")); return; }
+                AdministrationClient.Collect(X, Y, kind, owner, nation, copper, food, request, done);
             });
         }
         private void RenderConfirm()
@@ -484,7 +519,8 @@ namespace Dwsg.Window3
             confirm.onClick.AddListener(() =>
             {
                 SetEnabled(confirm, false); var command = Command; Command = null;
-                Result(command == null ? CityResult.Fail("操作已经提交，请返回查看结果。") : command());
+                if (command == null) Result(CityResult.Fail("操作已经提交，请返回查看结果。"));
+                else Run(command, false);
             });
             界面窗口管理器.注册运行时按钮(confirm);
             Footer("返回", 240, () => gameObject.SetActive(false));
@@ -511,10 +547,10 @@ namespace Dwsg.Window3
                 var row = Row((c == null ? "失效城池" : c.名称) + "（" + x + "," + y + "）", 58, 250);
                 SetEnabled(Button("定位收藏", row, "定位", new Vector2(70, 34), new Vector2(107, 0), () => Result(ui.Locate(x, y))), c != null);
                 SetEnabled(Button("查看收藏", row, "查看", new Vector2(70, 34), new Vector2(183, 0), () => ui.OpenCity(x, y)), c != null);
-                Button("移除收藏", row, "移除", new Vector2(70, 34), new Vector2(259, 0), () => { var r = CityLocalAdapter.Local.Bookmark(x, y, false); Render(); Result(r); });
+                Button("移除收藏", row, "移除", new Vector2(70, 34), new Vector2(259, 0), () => Run(done => AdministrationClient.Bookmark(x, y, false, done)));
             }
             if (list.Count == 0) Row("暂无收藏。点“收藏本城”加入此城。", 90);
-            Footer("收藏本城", -80, () => { var r = CityLocalAdapter.Local.Bookmark(X, Y, true); Render(); Result(r); }, CityLocalAdapter.City(X, Y) != null);
+            Footer("收藏本城", -80, () => Run(done => AdministrationClient.Bookmark(X, Y, true, done)), CityLocalAdapter.City(X, Y) != null);
             Footer("返回", 240, () => gameObject.SetActive(false));
         }
         private void RenderLord(城池信息库类 c)

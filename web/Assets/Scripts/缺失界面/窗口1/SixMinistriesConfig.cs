@@ -3,8 +3,8 @@ using System.Linq;
 
 namespace Dwsg.Window1
 {
-    // 本地可替换配置，不是官方手游数值。公开资料仅确认六部方向，
-    // 本工程以铜粮、短计时和已有将领修炼规则形成可保存的离线闭环。
+    // 沿用工程六部配置，不是官方手游数值。离线和服务器引用同一份配置，
+    // 联机费用、计时与成果统一在服务器核验，客户端不能提交替代配置。
     // 六部专有费用/时长/奖励均集中于此；将领修炼复用窗口4原规则。
     public sealed class SixMinistriesConfig
     {
@@ -18,7 +18,7 @@ namespace Dwsg.Window1
         public long MaxIdentity = 1000000000000, MaxTimestamp = 4102444800;
         public int MaxOfficers = 6147, MaxJobs = 8192, MaxBuffs = 1024;
         public string[] Candidates = { "沈文", "顾农", "周谋" };
-        // NPC为本地独立官署实体，不借用玩家账号，也不模拟真人/联网招募。
+        // NPC为世界内独立官署实体，不借用玩家账号，也不模拟真人。
         // 仅新世界或缺少此可选存档字段时生成一次；转移/解雇后不会重刷。
         public MinistryNpcDefinition[] Npcs = {
             new MinistryNpcDefinition { Key = "npc.prefecture.wen", Owner = "npc:prefecture", Name = "地方文书" },

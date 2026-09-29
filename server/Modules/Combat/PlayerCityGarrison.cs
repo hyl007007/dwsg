@@ -19,6 +19,7 @@ namespace Dwsg.Server.Modules.Combat
             JObject city = City(world, x, y);
             if (city == null) return GameResult.Reject(GameCodes.NotFound, "城池不存在");
             BanditBattle battle = ActiveAt(world, x, y, kind: "city");
+            if (battle == null || battle.Phase == "marching") return DispatchPeaceGarrison(world, context, payload);
             if (battle == null || battle.Phase != "fighting" || ValidateCitySiegeOwnership(world, city, out _).Code != GameCodes.Ok)
                 return GameResult.Reject(GameCodes.Conflict, "当前无法驻防，城池没有正在进行的有效城战");
             if (battle.PlayerId == context.Actor.PlayerId)
@@ -82,6 +83,12 @@ namespace Dwsg.Server.Modules.Combat
             bool single = payload?["generalId"] != null;
             if (!Keys(payload, single ? new[] { "armyId", "generalId" } : new[] { "armyId" }) || !Id(payload["armyId"], out string armyId)
                 || (single && !Id(payload["generalId"], out _))) return GameResult.Reject(GameCodes.InvalidArgument, "驻防撤回参数无效");
+            var peace = (world.Data["和平驻防运行"] as JObject)?[armyId] as JObject;
+            if (peace != null && peace.Value<string>("Phase") != "fighting")
+            {
+                if (single) return GameResult.Reject(GameCodes.InvalidArgument, "和平驻防请按队伍撤回。");
+                return WithdrawPeaceGarrison(world, context, peace);
+            }
             var records = world.Data["战斗运行"] as JObject;
             BanditBattle battle = records?.Properties().Select(entry => entry.Value.ToObject<BanditBattle>())
                 .SingleOrDefault(entry => entry.GarrisonArmies.Any(army => army.ArmyId == armyId));
@@ -110,6 +117,8 @@ namespace Dwsg.Server.Modules.Combat
                 GameResult outcome = GeneralsModule.ApplyCityDefenderOutcome(world, army.PlayerId, army.ArmyId,
                     units.Select(unit => new GeneralOutcome { GeneralId = unit.GeneralId, General = unit.General, Remaining = checked((int)unit.Remaining), Wounded = checked((int)unit.Wounded) }), generalId == null);
                 if (outcome.Code != GameCodes.Ok) return outcome;
+                var peaceOutcome = RestorePeaceAfterBattle(world, army, units, phase == "withdrawn", utcMs);
+                if (peaceOutcome.Code != GameCodes.Ok) return peaceOutcome;
                 foreach (CombatUnit unit in units)
                 {
                     JObject fief;

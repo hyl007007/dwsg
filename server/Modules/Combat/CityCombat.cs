@@ -85,7 +85,7 @@ namespace Dwsg.Server.Modules.Combat
 
         private static void StartCityBattle(WorldState world, BanditBattle battle)
         {
-            if (IsOriginalAiBattle(world, battle)) { StartOriginalAiCityBattle(world, battle); return; }
+            if (IsOriginalAiBattle(world, battle)) { StartOriginalAiCityBattle(world, battle); AttachPeaceGarrisons(world, battle); return; }
             JObject city = City(world, battle.X, battle.Y);
             battle.CityOwnerPlayerId = null;
             if (ValidateCitySiegeTarget(world, battle.PlayerId, city).Code != GameCodes.Ok)
@@ -153,6 +153,7 @@ namespace Dwsg.Server.Modules.Combat
             }
             city = City(world, battle.X, battle.Y); city["正在交战"] = true;
             battle.RandomState = random.State;
+            AttachPeaceGarrisons(world, battle);
         }
 
         private static void RecalculateCityOwner(WorldState world, BanditBattle battle, CombatUnit actor, long utc)

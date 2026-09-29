@@ -80,6 +80,7 @@ namespace Dwsg.Network
                         if (general.详细信息 != null) general.详细信息.身份 = own;
             }
             ApplyOwnFiefLinks(own);
+            Dwsg.Progress.ProgressClient.Apply(snapshot);
             return true;
         }
         private static void ApplyOwnFiefLinks(int own)

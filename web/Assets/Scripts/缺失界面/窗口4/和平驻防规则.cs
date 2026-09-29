@@ -28,6 +28,8 @@ namespace 缺失界面.窗口4
         public string 目标国家;
         public int 目标城主;
         public string 变更说明 = "";
+        [Newtonsoft.Json.JsonIgnore] public string 服务器任务ID;
+        [Newtonsoft.Json.JsonIgnore] public string 服务器战场ID;
     }
 
     public static class 和平驻防规则
@@ -80,12 +82,12 @@ namespace 缺失界面.窗口4
         }
         public static long 计算行军秒数(double x, double y, int 目标x, int 目标y)
         {
-            double 距离 = Math.Abs(x - 目标x) + Math.Abs(y - 目标y);
-            if (!军事本地规则.有限(距离) || 距离 > int.MaxValue * 2.0) return -1;
-            return Math.Max(每格秒数, (long)Math.Ceiling(距离 * 每格秒数));
+            return Dwsg.Shared.Combat.PeaceGarrisonRules.TravelSeconds(x, y, 目标x, 目标y);
         }
         public static double 已占兵力(城池信息库类 城, 驻防军情信息 忽略 = null)
         {
+            if (Dwsg.Network.GameNetwork.Enabled && 城 != null)
+                return Dwsg.Administration.AdministrationClient.PublicCity(城.坐标x, 城.坐标y)?.Value<double>("和平驻防兵力") ?? 0;
             var 已计 = new HashSet<将领信息>();
             double 数量 = 0;
             if (城 == null) return 0;
@@ -100,6 +102,7 @@ namespace 缺失界面.窗口4
         }
         public static 军事结果 派遣(玩家数据 主, 封地信息 封地, 城池信息库类 城, List<将领信息> 将领表, long 现在)
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return 军事结果.拒绝(军事错误.状态冲突, "联机驻防须等待服务器确认。");
             var 检查 = 检查目标(主, 城);
             if (!检查.成功) return 检查;
             检查 = 军事本地规则.检查出征(主, 将领表);
@@ -168,6 +171,7 @@ namespace 缺失界面.窗口4
         }
         public static 军事结果 撤回(玩家数据 主, 驻防军情信息 情, long 现在)
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return 军事结果.拒绝(军事错误.状态冲突, "联机撤回须等待服务器确认。");
             if (情 == null || 全局变量.军情列表 == null || !全局变量.军情列表.Contains(情) || !ReferenceEquals(主, 玩家(情.所属玩家)))
                 return 军事结果.拒绝(军事错误.状态冲突, "驻防任务已变更，请重新选择。");
             if (情.阶段 == 驻防任务阶段.撤回) return 军事结果.拒绝(军事错误.状态冲突, "部队已在返回途中。");
@@ -180,6 +184,7 @@ namespace 缺失界面.窗口4
         }
         public static void 推进(long 现在)
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return;
             if (现在 < 0 || 全局变量.军情列表 == null) return;
             foreach (var 情 in 获取任务())
             {

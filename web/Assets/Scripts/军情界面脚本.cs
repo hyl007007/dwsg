@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using 玩家数据结构;
@@ -264,16 +264,26 @@ public class 军情界面脚本 : MonoBehaviour
             {
                 if (!资源.已进入战场)
                 {
+                    if (Dwsg.Network.GameNetwork.Enabled)
+                    {
+                        Dwsg.Combat.ResourceClient.Withdraw(资源, result => { if (this == null) return; 全局变量.提示类.显示信息(result.Message); 显示军情列表(); });
+                        return;
+                    }
                     全局变量.提示类.显示信息(资源点规则.本地.撤回(资源).Message);
                     显示军情列表();
                     return;
                 }
-                var 检查 = 资源点规则.本地.校验军情(资源);
+                var 检查 = Dwsg.Network.GameNetwork.Enabled ? CityResult.Ok("") : 资源点规则.本地.校验军情(资源);
                 if (!检查.Success) { 全局变量.提示类.显示信息(检查.Message); return; }
             }
             var 驻 = 情 as 驻防军情信息;
             if (驻 != null && 驻.阶段 != 驻防任务阶段.参战)
             {
+                if (Dwsg.Network.GameNetwork.Enabled)
+                {
+                    Dwsg.Combat.PeaceGarrisonClientBridge.Withdraw(驻, 结果 => { if (this == null) return; 全局变量.提示类.显示信息(结果.说明); 显示军情列表(); });
+                    return;
+                }
                 全局变量.提示类.显示信息(和平驻防规则.撤回(军事缺口入口.当前玩家(), 驻, TIME.getTime()).说明);
                 显示军情列表();
                 return;
@@ -283,7 +293,8 @@ public class 军情界面脚本 : MonoBehaviour
             {
                 var 系统 = 地图.GetComponentInChildren<战斗系统>(true);
                 if (系统 == null || 情.坐标x != 系统.坐标x || 情.坐标y != 系统.坐标y || 情.战场类型 != 系统.战场类型) continue;
-                if (资源 != null && !资源点战斗适配.匹配军情(系统, 资源)) continue;
+                if (资源 != null && (Dwsg.Network.GameNetwork.Enabled ? 系统.服务器战场ID != 资源.服务器战场ID : !资源点战斗适配.匹配军情(系统, 资源))) continue;
+                if (驻 != null && Dwsg.Network.GameNetwork.Enabled && 系统.服务器战场ID != 驻.服务器战场ID) continue;
                 var 界面 = 全局变量.战斗界面UI对象.GetComponent<战斗界面UI脚本>();
                 界面.准备战场();
                 全局变量.战斗地图相机.transform.SetParent(地图);

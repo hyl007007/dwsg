@@ -1,10 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using 玩家数据结构;
 
 namespace Dwsg.Window1
 {
+    // 同一政务规则由原世界和服务器分别提供资产适配，不依赖 Unity 或玩家 DTO。
+    public interface ISixMinistriesWorld
+    {
+        string ActorKey { get; }
+        bool IsCurrent { get; }
+        bool IsBoundWorld { get; }
+        ISet<string> PlayerKeys { get; }
+        bool ResourcesValid();
+        bool CanPay(double copper, double grain);
+        bool CanReceive(double copper, double grain);
+        void Pay(double copper, double grain);
+        void Receive(double copper, double grain);
+        MinistryResult Train(object general);
+    }
     public sealed class MinistryResult
     {
         public bool Success;
@@ -20,17 +33,17 @@ namespace Dwsg.Window1
     {
         private readonly SixMinistriesState state;
         private readonly SixMinistriesConfig rules;
-        private readonly SixMinistriesAdapter world;
+        private readonly ISixMinistriesWorld world;
         private readonly Func<long> clock;
         public string WorldId { get { return state.WorldId; } }
         public string ActorKey { get { return world.ActorKey; } }
         public long Now { get { return clock(); } }
         public SixMinistriesConfig Rules { get { return rules.Copy(); } }
-        public SixMinistriesAdapter World { get { return world; } }
+        public ISixMinistriesWorld World { get { return world; } }
         public IReadOnlyList<MinistryOfficer> Roster { get { return state.Officers.Where(o => o.Owner == ActorKey).OrderBy(o => o.Id).ToArray(); } }
         public IReadOnlyList<MinistryOfficer> NpcTargets { get { return state.Officers.Where(o => rules.NpcOwner(o.Owner)).OrderBy(o => o.Id).ToArray(); } }
         public IReadOnlyList<MinistryJob> PendingJobs { get { return state.Jobs.Where(j => j.Owner == ActorKey).OrderBy(j => j.Id).ToArray(); } }
-        public SixMinistriesService(SixMinistriesState source, SixMinistriesConfig configuration, SixMinistriesAdapter adapter, Func<long> time)
+        public SixMinistriesService(SixMinistriesState source, SixMinistriesConfig configuration, ISixMinistriesWorld adapter, Func<long> time)
         {
             if (source == null || configuration == null || adapter == null || time == null) throw new ArgumentException("六部模型参数缺失");
             rules = configuration.Copy(); world = adapter; clock = time;
@@ -128,7 +141,7 @@ namespace Dwsg.Window1
             if (state.Buffs.Count >= rules.MaxBuffs && !state.Buffs.Any(b => b.Owner == ActorKey && b.Kind == kind)) return MinistryResult.Fail("军务记录已满");
             return Start(kind, now, rules.MilitaryCopper, rules.MilitaryGrain);
         }
-        public MinistryResult TrainGeneral(将领信息 general)
+        public MinistryResult TrainGeneral(object general)
         {
             long now; string error;
             if (!Guard(out now, out error)) return MinistryResult.Fail(error);
@@ -227,7 +240,7 @@ namespace Dwsg.Window1
         private double BattleBonus(int playerId, bool attack, long now)
         {
             string error;
-            string owner = SixMinistriesAdapter.Key(playerId);
+            string owner = "player:" + playerId.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (!world.IsBoundWorld || !world.PlayerKeys.Contains(owner) || !state.Validate(state.WorldId, rules, now, world.PlayerKeys, out error)) return 0;
             var kind = attack ? MinistryJobKind.MilitaryAttack : MinistryJobKind.MilitaryDefense;
             var buff = state.Buffs.FirstOrDefault(b => b.Owner == owner && b.Kind == kind && b.StartedAt <= now && now < b.ExpiresAt);

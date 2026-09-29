@@ -7,5 +7,9 @@
     <ProjectReference Include="../Modules/Generals/Dwsg.Generals.csproj" />
     <ProjectReference Include="../Modules/Chat/Dwsg.Chat.csproj" />
     <ProjectReference Include="../Modules/Combat/Dwsg.Combat.csproj" />
+    <ProjectReference Include="../Modules/Social/Dwsg.Server.Social.csproj" />
+    <ProjectReference Include="../Modules/Progress/Dwsg.Progress.csproj" />
+    <ProjectReference Include="../Modules/Auxiliary/Dwsg.Auxiliary.csproj" />
+    <ProjectReference Include="../Modules/Administration/Dwsg.Administration.csproj" />
   </ItemGroup>
 </Project>

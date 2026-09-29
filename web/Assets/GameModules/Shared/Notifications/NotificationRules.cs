@@ -15,7 +15,7 @@ namespace Dwsg.Shared.Notifications
             var battle = candidate.Data["战斗运行"]?[battleId] as JObject;
             if (battle == null || battle.Value<string>("BattleId") != battleId || string.IsNullOrEmpty(battle.Value<string>("PlayerId")))
                 return GameResult.Reject(GameCodes.NotFound, "真实战场记录不存在。");
-            if (eventType == null || (!eventType.StartsWith("combat.bandit.", StringComparison.Ordinal) && !eventType.StartsWith("combat.city.", StringComparison.Ordinal)))
+            if (eventType == null || (!eventType.StartsWith("combat.bandit.", StringComparison.Ordinal) && !eventType.StartsWith("combat.city.", StringComparison.Ordinal) && !eventType.StartsWith("combat.resource.", StringComparison.Ordinal)))
                 return GameResult.Reject(GameCodes.InvalidArgument, "战场通知类型无效。");
             var result = GameResult.Success();
             if (battle.Value<string>("Phase") == "joined") return result;
@@ -129,6 +129,9 @@ namespace Dwsg.Shared.Notifications
 
         private static JObject Target(WorldState state, JObject battle)
         {
+            if (battle.Value<string>("Kind") == "resource") return new JObject {
+                ["kind"] = "resource", ["x"] = battle["X"]?.DeepClone(), ["y"] = battle["Y"]?.DeepClone(),
+                ["name"] = "资源点", ["resourceId"] = battle["ResourceId"]?.DeepClone() };
             bool city = battle.Value<string>("Kind") == "city";
             var target = new JObject { ["kind"] = city ? "city" : "bandit", ["x"] = battle["X"]?.DeepClone(), ["y"] = battle["Y"]?.DeepClone(),
                 ["name"] = city ? (battle.Value<string>("CityName") ?? "城池") : "山贼" };

@@ -108,6 +108,16 @@ public sealed class AuthorizedWorldProjection : IWorldProjection
             }
         privatePlayer["战斗运行"] = ownBattles;
         world["军情摘要"] = publicMarches;
+        if (actor != null)
+        {
+            privatePlayer["casino"] = Dwsg.Server.Auxiliary.AuxiliaryModule.ProjectCasino(state, actor);
+            privatePlayer["titleReadyUtcMs"] = Dwsg.Server.Auxiliary.AuxiliaryModule.TitleReadyUtcMs(state, actor);
+        }
+        world["resources"] = Dwsg.Server.Modules.Combat.CombatModule.ProjectResources(state);
+        if (actor != null) privatePlayer["social"] = Dwsg.Server.Social.SocialModule.Project(state, actor);
+        if (actor != null) privatePlayer["progress"] = Dwsg.Server.Progress.ProgressModule.Project(state, actor.PlayerId, serverUtcMs);
+        Dwsg.Server.Administration.AdministrationModule.EnrichProjection(state, actor, world, privatePlayer);
+        Dwsg.Server.Modules.Combat.CombatModule.EnrichPeaceGarrisonProjection(state, actor, world, privatePlayer);
         return new WorldSnapshot { WorldId = state.WorldId, PlayerId = actor?.PlayerId, WorldRevision = state.Revision,
             ServerUtcMs = serverUtcMs, PublicWorld = world, PrivatePlayer = privatePlayer };
     }

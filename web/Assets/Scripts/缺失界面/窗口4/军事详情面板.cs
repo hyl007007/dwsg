@@ -222,6 +222,7 @@ namespace 缺失界面.窗口4
         public RectTransform 内容;
         public ScrollRect 滚动;
         public Action<军事详情面板> 构造内容;
+        public long 展示代次 { get; private set; }
         private bool 已构造;
         private bool 战斗专属;
 
@@ -321,6 +322,7 @@ namespace 缺失界面.窗口4
 
         public void 打开(string 标题内容, Action<军事详情面板> 构造)
         {
+            展示代次++;
             标题.text = 标题内容;
             构造内容 = 构造;
             反馈.text = "";
@@ -347,7 +349,7 @@ namespace 缺失界面.窗口4
                 if ((根框.sizeDelta - 尺寸).sqrMagnitude > 0.01f) 根框.sizeDelta = 尺寸;
             }
         }
-        private void OnDisable() { if (战斗专属 && gameObject.activeSelf) gameObject.SetActive(false); }
+        private void OnDisable() { 展示代次++; if (战斗专属 && gameObject.activeSelf) gameObject.SetActive(false); }
         public void 刷新()
         {
             清空();

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace Dwsg.Window1
 {
-    // 本模块的全部数值是本地规则。进度来自当前世界，网络邮件由未来适配器接入。
+    // 沿用本工程任务数值；离线与服务器共享进度、奖励和邮件规则。
     public enum GoalKind { Growth, Daily, Achievement }
     public enum WorldMetric { LordLevel, Buildings, BuildingLevels, HallLevel, Generals, GeneralLevels, GeneralLevel, Merit, Troops, Technology }
 
@@ -237,9 +237,10 @@ namespace Dwsg.Window1
         private readonly Window1WorldState state;
         private readonly ILocalWorld world;
         private readonly Func<DateTime> clock;
+        private readonly bool readOnly;
         private bool mutating;
-        public JournalService(Window1WorldState state, ILocalWorld world, Func<DateTime> clock)
-        { this.state = state; this.world = world; this.clock = clock; }
+        public JournalService(Window1WorldState state, ILocalWorld world, Func<DateTime> clock, bool readOnly = false)
+        { this.state = state; this.world = world; this.clock = clock; this.readOnly = readOnly; }
         private PlayerJournal Journal()
         {
             if (string.IsNullOrEmpty(world.PlayerKey)) throw new InvalidOperationException("没有当前君主");
@@ -249,6 +250,7 @@ namespace Dwsg.Window1
         }
         public bool Refresh(out string error)
         {
+            if (readOnly) { error = null; return state.Players.Any(p => p.PlayerKey == world.PlayerKey); }
             WorldProgress progress;
             if (!world.TryRead(out progress, out error)) return false;
             if (progress == null || !progress.IsValid()) { error = "世界进度包含无效数值"; return false; }
@@ -280,6 +282,7 @@ namespace Dwsg.Window1
         public string DailyDate { get { return Journal().Day; } }
         public bool ClaimGoal(string id, out string error)
         {
+            if (readOnly) { error = "请等待服务器确认领取"; return false; }
             if (mutating) { error = "奖励正在处理"; return false; }
             if (!Refresh(out error)) return false;
             var def = GoalCatalog.Find(id);
@@ -294,6 +297,7 @@ namespace Dwsg.Window1
         { return Journal().Mails.OrderByDescending(m => m.SentUtcTicks).ThenBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Copy()).ToList(); }
         public bool ReceiveLocalMail(LocalMail mail, out string error)
         {
+            if (readOnly) { error = "联机邮件由服务器投递"; return false; }
             error = "本地信件内容无效";
             if (mail == null || !mail.IsValid()) return false;
             var p = Journal();
@@ -303,9 +307,10 @@ namespace Dwsg.Window1
             p.Mails.Add(copy); p.DeliveredMailIds.Add(copy.Id); error = null; return true;
         }
         public bool ReadMail(string id)
-        { var m = Journal().Mails.Find(x => x.Id == id); if (m == null) return false; m.Read = true; return true; }
+        { if (readOnly) return false; var m = Journal().Mails.Find(x => x.Id == id); if (m == null) return false; m.Read = true; return true; }
         public bool ClaimMail(string id, out string error)
         {
+            if (readOnly) { error = "请等待服务器确认领取"; return false; }
             if (mutating) { error = "附件正在处理"; return false; }
             var m = Journal().Mails.Find(x => x.Id == id);
             if (m == null) { error = "信件不存在"; return false; }
@@ -317,13 +322,14 @@ namespace Dwsg.Window1
         }
         public bool DeleteMail(string id, out string error)
         {
+            if (readOnly) { error = "请等待服务器确认删除"; return false; }
             var p = Journal(); var m = p.Mails.Find(x => x.Id == id);
             if (m == null) { error = "信件不存在"; return false; }
             if (m.Attachment.HasAnything && !m.Claimed) { error = "请先领取附件，再删除信件"; return false; }
             p.Mails.Remove(m); error = null; return true;
         }
         public void ReadNotice(string id)
-        { var p = Journal(); if (!p.ReadNoticeIds.Contains(id) && p.ReadNoticeIds.Count < 1000) p.ReadNoticeIds.Add(id); }
+        { if (readOnly) return; var p = Journal(); if (!p.ReadNoticeIds.Contains(id) && p.ReadNoticeIds.Count < 1000) p.ReadNoticeIds.Add(id); }
         public bool NoticeRead(string id) { return Journal().ReadNoticeIds.Contains(id); }
         public static int PageCount(int count, int size) { return Math.Max(1, (Math.Max(0, count) + Math.Max(1, size) - 1) / Math.Max(1, size)); }
         public static int ClampPage(int page, int count, int size) { return Math.Max(0, Math.Min(PageCount(count, size) - 1, page)); }

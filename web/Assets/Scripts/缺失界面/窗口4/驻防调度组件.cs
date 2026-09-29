@@ -29,6 +29,7 @@ namespace 缺失界面.窗口4
         }
         private void Update()
         {
+            if (Dwsg.Network.GameNetwork.Enabled) return;
             long 现在 = TIME.getTime();
             if (现在 == 上次推进) return;
             上次推进 = 现在;

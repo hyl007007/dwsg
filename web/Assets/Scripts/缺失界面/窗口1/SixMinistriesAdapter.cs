@@ -9,7 +9,7 @@ using 缺失界面.窗口4;
 namespace Dwsg.Window1
 {
     // 只使用当前世界中已登记的玩家/将领引用；不复制资源或制造第二份将领。
-    public sealed class SixMinistriesAdapter
+    public sealed class SixMinistriesAdapter : ISixMinistriesWorld
     {
         private readonly List<玩家数据> players;
         private readonly 玩家数据[] playerAnchors;
@@ -61,8 +61,8 @@ namespace Dwsg.Window1
         public bool CanReceive(double copper, double grain)
         { return ResourcesValid() && SixMinistriesConfig.Number(copper) && SixMinistriesConfig.Number(grain) &&
             Actor.财产信息.铜钱 + copper <= Reward.ResourceLimit && Actor.财产信息.粮食 + grain <= Reward.ResourceLimit; }
-        internal void Pay(double copper, double grain) { Actor.财产信息.铜钱 -= copper; Actor.财产信息.粮食 -= grain; }
-        internal void Receive(double copper, double grain) { Actor.财产信息.铜钱 += copper; Actor.财产信息.粮食 += grain; }
+        public void Pay(double copper, double grain) { Actor.财产信息.铜钱 -= copper; Actor.财产信息.粮食 -= grain; }
+        public void Receive(double copper, double grain) { Actor.财产信息.铜钱 += copper; Actor.财产信息.粮食 += grain; }
         public List<将领信息> Generals()
         { return !IsCurrent || Actor.封地信息表 == null ? new List<将领信息>() : Actor.封地信息表.Where(l => l != null && l.将领信息表 != null).SelectMany(l => l.将领信息表).Where(g => g != null).ToList(); }
         private bool GeneralContext(将领信息 general, out 封地信息 land, out string error)
@@ -85,8 +85,9 @@ namespace Dwsg.Window1
                 !SixMinistriesConfig.Number(general.详细信息.剩余体力)) return false;
             land = matches[0]; error = null; return true;
         }
-        public MinistryResult Train(将领信息 general)
+        public MinistryResult Train(object target)
         {
+            var general = target as 将领信息;
             封地信息 land; string error;
             if (!GeneralContext(general, out land, out error)) return MinistryResult.Fail(error);
             // 原窗口4规则同时验证体力与资源，再扣款并调用真实将领经验方法。
@@ -114,6 +115,7 @@ namespace Dwsg.Window1
         {
             get
             {
+                if (Dwsg.Network.GameNetwork.Enabled) return Dwsg.Progress.ProgressClient.Ministries;
                 string id = Window1Module.CurrentWorldId;
                 if (ExistingWorldAdapter.CurrentPlayer == null || string.IsNullOrEmpty(id)) return null;
                 if (service == null || adapter == null || !adapter.IsBoundWorld || service.WorldId != id) Reset(id);

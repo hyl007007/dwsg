@@ -570,7 +570,7 @@ namespace Dwsg.Window1
         {
             if (page == JournalPage.Achievement)
             { if (achievements != null) achievements.Open(); return; }
-            achievementDetail = false; ApplyLayout();
+            viewGeneration++; achievementDetail = false; ApplyLayout();
             currentPage = page; pageIndex = 0; selectedId = null; deletePendingId = null; feedback.text = ""; feedback.color = FeedbackInk;
             if (!gameObject.activeSelf) gameObject.SetActive(true);
             Refresh(true);
@@ -581,7 +581,7 @@ namespace Dwsg.Window1
         {
             var definition = GoalCatalog.Find(id);
             if (definition == null || definition.Kind != GoalKind.Achievement) return;
-            achievementDetail = true; ApplyLayout();
+            viewGeneration++; achievementDetail = true; ApplyLayout();
             currentPage = JournalPage.Achievement; selectedId = id; deletePendingId = null; feedback.text = ""; feedback.color = FeedbackInk;
             if (!gameObject.activeSelf) gameObject.SetActive(true);
             Refresh(true);
@@ -601,20 +601,31 @@ namespace Dwsg.Window1
             Window1Style.Place(delete.GetComponent<RectTransform>(), achievementDetail ? 408 : 568, 428, achievementDetail ? 228 : 203, 34);
         }
         private void OnEnable()
-        { if (!ready) return; Window1Module.Changed += OnChanged; refreshLoop = StartCoroutine(VisibleRefresh()); }
+        { viewGeneration++; if (!ready) return; feedback.text = ""; Window1Module.Changed += OnChanged; Refresh(true); refreshLoop = StartCoroutine(VisibleRefresh()); }
         private void OnDisable()
-        { Window1Module.Changed -= OnChanged; if (refreshLoop != null) StopCoroutine(refreshLoop); refreshLoop = null; deletePendingId = null; }
+        { viewGeneration++; Window1Module.Changed -= OnChanged; if (refreshLoop != null) StopCoroutine(refreshLoop); refreshLoop = null; deletePendingId = null; }
         private void OnChanged() { if (isActiveAndEnabled) Refresh(false); }
         private IEnumerator VisibleRefresh()
         { while (isActiveAndEnabled) { Refresh(false); yield return new WaitForSecondsRealtime(2); } }
         private void ChangePage(int step)
-        { pageIndex += step; selectedId = null; deletePendingId = null; feedback.text = ""; Refresh(true); }
+        { viewGeneration++; pageIndex += step; selectedId = null; deletePendingId = null; feedback.text = ""; Refresh(true); }
         private void Select(string id)
         {
-            selectedId = id; deletePendingId = null; feedback.text = "";
-            if (currentPage == JournalPage.Mail && Window1Module.Service != null) Window1Module.Service.ReadMail(id);
-            if (currentPage == JournalPage.Notices && Window1Module.Service != null) Window1Module.Service.ReadNotice(id);
+            viewGeneration++; selectedId = id; deletePendingId = null; feedback.text = "";
+            MarkRead(id);
             Refresh(true);
+        }
+        private void MarkRead(string id)
+        {
+            var service = Window1Module.Service;
+            if (service == null || string.IsNullOrEmpty(id)) return;
+            if (Dwsg.Network.GameNetwork.Enabled)
+            {
+                if (currentPage == JournalPage.Mail || currentPage == JournalPage.Notices)
+                    Dwsg.Progress.ProgressClient.MarkRead(id, currentPage == JournalPage.Mail);
+            }
+            else if (currentPage == JournalPage.Mail) service.ReadMail(id);
+            else if (currentPage == JournalPage.Notices) service.ReadNotice(id);
         }
         private int Count { get { return currentPage == JournalPage.Mail ? mailViews.Count : currentPage == JournalPage.Notices ? noticeViews.Count : goalViews.Count; } }
         private void Refresh(bool force)
@@ -648,7 +659,7 @@ namespace Dwsg.Window1
             for (int i = 0; i < tabs.Count; i++) tabs[i].SetIsOnWithoutNotify(TabPages[i] == currentPage);
             unreadToggle.gameObject.SetActive(currentPage == JournalPage.Mail);
             subtitle.text = currentPage == JournalPage.Mail ? "收件箱" : currentPage == JournalPage.Notices ? "封地政务与任务须知" :
-                currentPage == JournalPage.Daily ? s.DailyDate + " · 仅计今日载入后的净增加 · 达成记录保留 · 每项奖励每日可领一次" : "完成条件领取奖励 · 达成记录保留 · 每项奖励可领取一次";
+                currentPage == JournalPage.Daily ? s.DailyDate + (Dwsg.Network.GameNetwork.Enabled ? " · 服务器记录今日净增加 · 达成记录保留 · 每项奖励每日可领一次" : " · 仅计今日载入后的净增加 · 达成记录保留 · 每项奖励每日可领一次") : "完成条件领取奖励 · 达成记录保留 · 每项奖励可领取一次";
             pageIndex = JournalService.ClampPage(pageIndex, Count, PageSize);
             int first = pageIndex * PageSize;
             var ids = currentPage == JournalPage.Mail ? mailViews.Select(m => m.Id).ToList() : currentPage == JournalPage.Notices ? noticeViews.Select(n => n.Id).ToList() : goalViews.Select(g => g.Definition.Id).ToList();
@@ -699,7 +710,7 @@ namespace Dwsg.Window1
             }
             if (currentPage == JournalPage.Mail)
             {
-                service.ReadMail(selectedId);
+                MarkRead(selectedId);
                 var m = mailViews.First(x => x.Id == selectedId);
                 detailTitle.text = ShortTitle(m.Title, 19); detailMeta.text = "来信 · " + ShortTitle(m.Sender, 10) + " · " + DateLabel(m.SentUtcTicks);
                 detailBody.text = "发信者：" + m.Sender + "\n主题：" + m.Title + "\n\n" + m.Body;
@@ -715,7 +726,7 @@ namespace Dwsg.Window1
             }
             else if (currentPage == JournalPage.Notices)
             {
-                service.ReadNotice(selectedId);
+                MarkRead(selectedId);
                 var n = noticeViews.First(x => x.Id == selectedId); detailTitle.text = ShortTitle(n.Title, 19);
                 detailMeta.text = n.Pinned ? "置顶" : "封地告示 · " + DateLabel(n.PublishedUtcTicks);
                 detailBody.text = n.Title + "\n\n" + n.Body; rewards.text = "";
@@ -732,6 +743,7 @@ namespace Dwsg.Window1
                 claim.GetComponentInChildren<Text>().text = g.Claimed ? "奖励已领取" : g.Complete ? "领取奖励" : "条件未达成";
                 claim.interactable = g.Complete && !g.Claimed; SetAttachment(g.Definition.Reward);
             }
+            if (onlinePending) claim.interactable = delete.interactable = false;
             LayoutDetail(); SetBodyHeight(resetScroll);
         }
         private static string GoalBody(GoalView goal)
@@ -779,6 +791,8 @@ namespace Dwsg.Window1
         private void Claim()
         {
             var s = Window1Module.Service; if (s == null || selectedId == null) return;
+            if (Dwsg.Network.GameNetwork.Enabled)
+            { SendOnline(currentPage == JournalPage.Mail ? "progress.claimMail" : "progress.claimGoal", false); return; }
             string error; bool ok = currentPage == JournalPage.Mail ? s.ClaimMail(selectedId, out error) : s.ClaimGoal(selectedId, out error);
             feedback.text = ok ? "已领取，奖励已到账。" : error; feedback.color = ok ? FeedbackInk : new Color(1f, .58f, .43f);
             if (全局变量.提示类 != null) 全局变量.提示类.显示信息(feedback.text);
@@ -790,8 +804,31 @@ namespace Dwsg.Window1
             if (selectedId == null || Window1Module.Service == null) return;
             feedback.color = FeedbackInk;
             if (deletePendingId != selectedId) { deletePendingId = selectedId; feedback.text = "再次点击“确认删除”，移除此信。"; Refresh(true); return; }
+            if (Dwsg.Network.GameNetwork.Enabled) { SendOnline("progress.deleteMail", true); return; }
             string error; bool ok = Window1Module.Service.DeleteMail(selectedId, out error);
             feedback.text = ok ? "信件已删除。" : error; if (ok) selectedId = null; deletePendingId = null; Refresh(true); if (ok) Window1Module.Signal();
+        }
+        private bool onlinePending;
+        private long viewGeneration;
+        private void SendOnline(string type, bool removing)
+        {
+            if (onlinePending) return;
+            onlinePending = true; string id = selectedId;
+            long requestedView = viewGeneration; JournalPage requestedPage = currentPage;
+            feedback.text = "正在等待服务器确认…"; claim.interactable = delete.interactable = false;
+            Dwsg.Progress.ProgressClient.Send(type, new Newtonsoft.Json.Linq.JObject { ["id"] = id }, result =>
+            {
+                if (this == null) return;
+                onlinePending = false;
+                if (!isActiveAndEnabled || requestedView != viewGeneration || requestedPage != currentPage || selectedId != id)
+                { signature = null; Refresh(false); return; }
+                bool ok = result.Code == Dwsg.Shared.GameCodes.Ok;
+                feedback.text = ok && removing ? "信件已删除。" : result.Message;
+                feedback.color = ok ? FeedbackInk : new Color(1f, .58f, .43f);
+                if (ok && removing) selectedId = null;
+                deletePendingId = null; Refresh(true);
+                if (全局变量.提示类 != null) 全局变量.提示类.显示信息(feedback.text);
+            });
         }
     }
 }
