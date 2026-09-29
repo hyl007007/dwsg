@@ -87,7 +87,7 @@ public static class 将领操作回归检查
 				for (int i = 0; i < 3; i++)
 				{
 					List<道具信息> stacks = player.背包道具列表.获取道具分类列表(names[i]);
-					stacks.Clear(); stacks.Add(new 道具信息 { 名字 = names[i], 数量 = 3 }); stacks.Add(new 道具信息 { 名字 = names[i], 数量 = 1 });
+					stacks.Clear(); stacks.Add(new 道具信息(names[i], 3)); stacks.Add(new 道具信息(names[i], 1));
 					refresh[i](); Assert(stacks.Count == 1 && stacks[0].数量 == 3 && tavern.将领列表.Count == 5, "道具消费或候选数量错误");
 				}
 			});
