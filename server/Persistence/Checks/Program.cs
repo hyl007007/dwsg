@@ -35,6 +35,8 @@ using (var store = new SqliteWorldStore(database))
     store.ImportWorld(world, new[] { binding });
     Check(JToken.DeepEquals(store.Load(world.WorldId)!.Data, seed), "complete original world imported without rewriting fields");
     Check(store.Load("missing") == null, "missing world is not generated");
+    Check(store.ListRoles(world.WorldId).Count == 1 && store.ListRoles(world.WorldId)[0].AccountId == binding.AccountId &&
+        store.ListRoles("missing").Count == 0, "human roles come only from persisted bindings, not original NPC indexes");
     bool duplicateImport = false;
     try { store.ImportWorld(world); } catch (SqliteException) { duplicateImport = true; }
     Check(duplicateImport, "existing import cannot overwrite the world");
@@ -71,6 +73,7 @@ using (var restarted = new SqliteWorldStore(database))
     Check(JToken.DeepEquals(restarted.Load(world.WorldId)!.Data, successful.Candidate.Data), "whole world recovered after reopen");
     var recoveredRole = restarted.ResolveRole(world.WorldId, binding.AccountId)!;
     Check(recoveredRole.PlayerId == playerId && recoveredRole.LegacyPlayerIndex == 0, "account role binding survives restart");
+    Check(restarted.ListRoles(world.WorldId).Single().PlayerId == playerId, "human role list survives restart without adding system actors");
     Check(restarted.FindReceipt(world.WorldId, "server", "first")!.ResultJson == successful.Receipt.ResultJson, "system receipt survives restart");
     using var competitor = new SqliteWorldStore(database);
     var current = restarted.Load(world.WorldId)!;
@@ -154,6 +157,7 @@ using (var live = new SqliteWorldStore(liveDatabase))
         Check(recovered.Revision == 1 && JToken.DeepEquals(recovered.Data, committed.Candidate.Data), "online backup restores whole original world and revision from WAL");
         Check(JToken.DeepEquals(recovered.EntityMappings, backupWorld.EntityMappings), "online backup restores every stable player mapping");
         Check(restored.ResolveRole(backupWorld.WorldId, backupRole.AccountId)!.PlayerId == backupRole.PlayerId, "online backup restores account role binding");
+        Check(restored.ListRoles(backupWorld.WorldId).Single().AccountId == backupRole.AccountId, "online backup restores complete human role registration");
         Check(restored.FindReceipt(backupWorld.WorldId, "server", "wal-receipt")!.ResultJson == committed.Receipt.ResultJson,
             "online backup restores exact command receipt");
         Check(restored.Commit(committed).Replayed && restored.Load(backupWorld.WorldId)!.Revision == 1, "restored receipt prevents duplicate commit");

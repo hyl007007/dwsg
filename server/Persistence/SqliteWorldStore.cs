@@ -89,6 +89,23 @@ public sealed class SqliteWorldStore : IWorldStore, IDisposable
         lock (gate) return ReadReceipt(worldId, playerId, requestId, null);
     }
 
+    public IReadOnlyList<RoleBinding> ListRoles(string worldId)
+    {
+        RequireId(worldId);
+        lock (gate)
+        {
+            using var command = Command("SELECT account_id,player_id,legacy_index FROM roles WHERE world_id=$world ORDER BY legacy_index", null,
+                ("$world", worldId));
+            using var reader = command.ExecuteReader();
+            var roles = new List<RoleBinding>();
+            while (reader.Read()) roles.Add(new RoleBinding
+            {
+                WorldId = worldId, AccountId = reader.GetString(0), PlayerId = reader.GetString(1), LegacyPlayerIndex = reader.GetInt32(2)
+            });
+            return roles;
+        }
+    }
+
     // Only the administrator's startup/import path calls this; existing worlds cannot be overwritten.
     public void ImportWorld(WorldState state, IEnumerable<RoleBinding>? bindings = null)
     {
