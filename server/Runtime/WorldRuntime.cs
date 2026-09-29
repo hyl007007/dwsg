@@ -12,18 +12,21 @@ namespace Dwsg.Runtime
         private readonly Func<AuthenticatedActor, bool> authorize;
         private readonly Func<long> utcNow;
         private readonly Action<WorldState> initializeEntities;
+        private readonly Action<WorldState, string, long> preparePlayer;
         private readonly Dictionary<string, IGameModule> modules = new Dictionary<string, IGameModule>(StringComparer.Ordinal);
         private readonly List<IGameTickModule> ticks = new List<IGameTickModule>();
         // Five-player worlds serialize candidate evaluation and durable commit under one world gate.
         private readonly ConcurrentDictionary<string, object> gates = new ConcurrentDictionary<string, object>();
         public event Action<GameResult> Committed;
         public WorldRuntime(IWorldStore store, Func<AuthenticatedActor, bool> authorize,
-            Func<long> utcNow = null, Action<WorldState> initializeEntities = null)
+            Func<long> utcNow = null, Action<WorldState> initializeEntities = null,
+            Action<WorldState, string, long> preparePlayer = null)
         {
             this.store = store ?? throw new ArgumentNullException(nameof(store));
             this.authorize = authorize ?? throw new ArgumentNullException(nameof(authorize));
             this.utcNow = utcNow ?? (() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             this.initializeEntities = initializeEntities;
+            this.preparePlayer = preparePlayer;
         }
         public void Register(IGameModule module)
         {
@@ -92,13 +95,18 @@ namespace Dwsg.Runtime
                 var original = store.Load(worldId);
                 if (original == null) return GameResult.Reject(GameCodes.NotFound, "世界不存在。");
                 var candidate = original.Clone();
-                var result = create(candidate, nickname, nation, utcNow(), out var index);
+                var createdUtcMs = utcNow();
+                var result = create(candidate, nickname, nation, createdUtcMs, out var index);
                 if (result.Code != GameCodes.Ok) return result;
                 var playerId = Guid.NewGuid().ToString("N");
                 var players = candidate.EntityMappings["players"] as Newtonsoft.Json.Linq.JObject;
                 if (players == null) throw new InvalidOperationException("Player mapping missing");
                 players[playerId] = index;
+                var humans = candidate.EntityMappings["humanPlayers"] as Newtonsoft.Json.Linq.JObject;
+                if (humans == null) candidate.EntityMappings["humanPlayers"] = humans = new Newtonsoft.Json.Linq.JObject();
+                humans[playerId] = true;
                 initializeEntities?.Invoke(candidate);
+                preparePlayer?.Invoke(candidate, playerId, createdUtcMs);
                 binding = new RoleBinding { AccountId = accountId, WorldId = worldId, PlayerId = playerId, LegacyPlayerIndex = index };
                 candidate.Revision = checked(original.Revision + 1);
                 result.RequestId = requestId; result.WorldId = worldId; result.WorldRevision = candidate.Revision;
