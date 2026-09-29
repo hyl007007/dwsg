@@ -7,7 +7,8 @@ using Dwsg.Shared.Economy;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-if (args.Length != 2) throw new ArgumentException("Pass actual original seed and a new audit database path.");
+if (args.Length != 2 && !(args.Length == 3 && args[2] == "--technology"))
+    throw new ArgumentException("Pass actual original seed, a new audit database path, and optionally --technology.");
 string db = Path.GetFullPath(args[1]);
 if (!db.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(p => p.Equals("audit", StringComparison.OrdinalIgnoreCase)) || File.Exists(db))
     throw new ArgumentException("Use a new disposable database under audit.");
@@ -30,6 +31,11 @@ for (int i = 0; i < 2; i++)
     bindings.Add(new RoleBinding { WorldId = world.WorldId, PlayerId = id, AccountId = Guid.NewGuid().ToString("N"), LegacyPlayerIndex = index });
 }
 GeneralsModule.EnsureMappings(world);
+if (args.Length == 3)
+{
+    TechnologyChecks.Run(world, bindings, db);
+    return;
+}
 string owner = bindings[0].PlayerId;
 JObject Player(WorldState state) => state.RequirePlayer(owner);
 string Json(JToken token) => token.ToString(Formatting.None);
