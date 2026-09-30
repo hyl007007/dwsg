@@ -53,8 +53,9 @@ namespace Dwsg.Social
         private static void Show(SocialScreen screen)
         {
             if (screen == null) return;
-            if (screen.gameObject.activeSelf) screen.Refresh();
-            else screen.gameObject.SetActive(true); // OnEnable 完成唯一一次重建。
+            bool wasActive = screen.gameObject.activeSelf;
+            界面窗口动画.设置显示(screen.gameObject, true);
+            if (wasActive) screen.Refresh(); // OnEnable 完成唯一一次重建。
         }
         private string Me { get { return adapter.CurrentPlayerId; } }
         private string Name(SocialStateDto s, string id)
@@ -85,7 +86,7 @@ namespace Dwsg.Social
                     var returned = returnToChat; returnToChat = null; returnScreen = null;
                     if (returned != null) { 界面窗口管理器.关闭当前场景窗口(); returned(); return; }
                 }
-                screen.gameObject.SetActive(false);
+                界面窗口动画.关闭(screen.gameObject);
             }, out screen.Title);
             ui.Text(panel, adapter.ConnectionStatus, 24, 46, 652, 30, 15, SocialUi.PaperInk);
             screen.Body = ui.Node(panel, "内容", 36.5f, 96.3f, W, 332);
@@ -664,7 +665,7 @@ namespace Dwsg.Social
         private void RenderConfirmation(SocialScreen screen)
         {
             ui.Text(screen.Body, confirmText, 22, 40, 616, 110, 21, SocialUi.Ink, TextAnchor.MiddleCenter);
-            ui.Button(screen.Body, "取消", 84, 261, 218, 42, () => screen.gameObject.SetActive(false));
+            ui.Button(screen.Body, "取消", 84, 261, 218, 42, () => 界面窗口动画.关闭(screen.gameObject));
             ui.Button(screen.Body, "确认", 360, 261, 218, 42, () =>
             {
                 var callback = confirmed;

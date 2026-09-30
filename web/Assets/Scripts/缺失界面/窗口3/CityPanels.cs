@@ -155,13 +155,17 @@ namespace Dwsg.Window3
         {
             var panel = Get(page); if (panel == null) { Notice("窗口管理器尚未就绪，请重新打开城池。"); return; }
             panel.X = x; panel.Y = y; panel.Tab = page == CityPage.Civic ? Mathf.Clamp(tab, 1, 4) : tab;
-            if (panel.gameObject.activeSelf) panel.Render(); else panel.gameObject.SetActive(true);
+            bool wasActive = panel.gameObject.activeSelf;
+            界面窗口动画.设置显示(panel.gameObject, true);
+            if (wasActive) panel.Render();
         }
         public void Confirm(int x, int y, string heading, string detail, Action<Action<CityResult>> command)
         {
             var panel = Get(CityPage.Confirm); if (panel == null) return;
             panel.X = x; panel.Y = y; panel.ConfirmationTitle = heading; panel.ConfirmationDetail = detail; panel.Command = command;
-            if (panel.gameObject.activeSelf) panel.Render(); else panel.gameObject.SetActive(true);
+            bool wasActive = panel.gameObject.activeSelf;
+            界面窗口动画.设置显示(panel.gameObject, true);
+            if (wasActive) panel.Render();
         }
         public void Notice(string text) { if (全局变量.提示类 != null) 全局变量.提示类.显示信息(text); }
         public CityResult Locate(int x, int y)
@@ -176,7 +180,7 @@ namespace Dwsg.Window3
         {
             int index = 全局变量.所有城池列表.FindIndex(c => c.坐标x == x && c.坐标y == y);
             if (index < 0) { Notice("城池已不存在。"); return; }
-            View.显示城池信息(index); View.gameObject.SetActive(true);
+            View.显示城池信息(index); 界面窗口动画.设置显示(View.gameObject, true);
         }
     }
 
@@ -252,7 +256,7 @@ namespace Dwsg.Window3
             var closeImage = Image(closeRect, ui.CloseSprite, Color.white); closeImage.type = UnityEngine.UI.Image.Type.Simple;
             closeImage.preserveAspect = true; closeImage.raycastTarget = true;
             var closeButton = closeRect.gameObject.AddComponent<Button>(); closeButton.targetGraphic = closeImage;
-            closeButton.onClick.AddListener(() => gameObject.SetActive(false)); 界面窗口管理器.注册运行时按钮(closeButton);
+            closeButton.onClick.AddListener(() => 界面窗口动画.关闭(gameObject)); 界面窗口管理器.注册运行时按钮(closeButton);
             var info = Box("信息背景", pane, new Vector2(682, 354), new Vector2(0, 16));
             // The old forest child is larger than its masked parent. Fit the actual local
             // background sprite to this information area instead of copying its oversize rect.
@@ -394,7 +398,7 @@ namespace Dwsg.Window3
                 Footer("侦查", -240, () => ui.Open(CityPage.Scout, X, Y));
                 Footer("收藏册", -80, () => ui.Open(CityPage.Bookmarks, X, Y));
                 Footer(CityLocalAdapter.Local.IsBookmarked(X, Y) ? "取消收藏" : "收藏本城", 80, () => Run(done => AdministrationClient.Bookmark(X, Y, !CityLocalAdapter.Local.IsBookmarked(X, Y), done)));
-                Footer("返回", 240, () => gameObject.SetActive(false));
+                Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
             }
             content.anchoredPosition = Vector2.zero;
             Canvas.ForceUpdateCanvases(); scroll.StopMovement(); scroll.verticalNormalizedPosition = 1;
@@ -523,7 +527,7 @@ namespace Dwsg.Window3
                 else Run(command, false);
             });
             界面窗口管理器.注册运行时按钮(confirm);
-            Footer("返回", 240, () => gameObject.SetActive(false));
+            Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
         }
         private void RenderScout()
         {
@@ -535,7 +539,7 @@ namespace Dwsg.Window3
             if (!report.CanReadDefenders) Row("仅显示地图公开信息。敌方兵力和资源未公开。", 94);
             else if (report.Defenders.Count == 0) Row("暂无驻防将领。", 54);
             else foreach (string entry in report.Defenders) Row(entry, 62);
-            Footer("刷新观察", -80, Render); Footer("返回", 240, () => gameObject.SetActive(false));
+            Footer("刷新观察", -80, Render); Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
         }
         private void RenderBookmarks()
         {
@@ -551,7 +555,7 @@ namespace Dwsg.Window3
             }
             if (list.Count == 0) Row("暂无收藏。点“收藏本城”加入此城。", 90);
             Footer("收藏本城", -80, () => Run(done => AdministrationClient.Bookmark(X, Y, true, done)), CityLocalAdapter.City(X, Y) != null);
-            Footer("返回", 240, () => gameObject.SetActive(false));
+            Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
         }
         private void RenderLord(城池信息库类 c)
         {
@@ -565,7 +569,7 @@ namespace Dwsg.Window3
                 Row("战功：" + Number(p.基础信息.战功) + "    声望：" + Number(p.基础信息.声望), 55);
 
             }
-            Footer("返回", 240, () => gameObject.SetActive(false));
+            Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
         }
         private void RenderNation(城池信息库类 c)
         {
@@ -583,7 +587,7 @@ namespace Dwsg.Window3
                         if (!ui.View.尝试打开本国界面()) Result(CityResult.Fail("本国信息界面未就绪。"));
                     });
             }
-            Footer("返回", 240, () => gameObject.SetActive(false));
+            Footer("返回", 240, () => 界面窗口动画.关闭(gameObject));
         }
     }
 }

@@ -469,7 +469,7 @@ namespace Dwsg.Window1
             Style.Frame(panel);
             title = Label(panel, "标题", "政务", 20, Window1Style.Gold, 180, 8, 440, 35, TextAnchor.MiddleCenter);
             原界面文字样式.标题(title);
-            var close = Style.CloseButton(panel, () => gameObject.SetActive(false)); Window1Style.Place(close.GetComponent<RectTransform>(), 758, 3, 38, 38);
+            var close = Style.CloseButton(panel, () => 界面窗口动画.关闭(gameObject)); Window1Style.Place(close.GetComponent<RectTransform>(), 758, 3, 38, 38);
             var tabLayout = Window1Style.Rect(panel, "页签布局"); Window1Style.Place(tabLayout, 20, 51, 760, 35);
             Window1Style.ControlRow(tabLayout);
             string[] labels = { "成长任务", "日常任务", "告示栏", "邮件" };
@@ -572,7 +572,7 @@ namespace Dwsg.Window1
             { if (achievements != null) achievements.Open(); return; }
             viewGeneration++; achievementDetail = false; ApplyLayout();
             currentPage = page; pageIndex = 0; selectedId = null; deletePendingId = null; feedback.text = ""; feedback.color = FeedbackInk;
-            if (!gameObject.activeSelf) gameObject.SetActive(true);
+            界面窗口动画.设置显示(gameObject, true);
             Refresh(true);
         }
         public void OpenAchievementStep(int step)
@@ -583,7 +583,7 @@ namespace Dwsg.Window1
             if (definition == null || definition.Kind != GoalKind.Achievement) return;
             viewGeneration++; achievementDetail = true; ApplyLayout();
             currentPage = JournalPage.Achievement; selectedId = id; deletePendingId = null; feedback.text = ""; feedback.color = FeedbackInk;
-            if (!gameObject.activeSelf) gameObject.SetActive(true);
+            界面窗口动画.设置显示(gameObject, true);
             Refresh(true);
         }
         private void ApplyLayout()

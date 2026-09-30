@@ -91,9 +91,9 @@ namespace 缺失界面.窗口2
             var layout = footer.gameObject.AddComponent<HorizontalLayoutGroup>(); layout.spacing = 24; layout.childControlHeight = true;
             layout.childControlWidth = true; layout.childForceExpandHeight = false; layout.childForceExpandWidth = false; layout.childAlignment = TextAnchor.MiddleRight;
             ui.Button("刷新", footer, "刷新", () => { context.Scroll = 1; Render(); });
-            ui.Button("返回国家", footer, "国家页", () => gameObject.SetActive(false));
+            ui.Button("返回国家", footer, "国家页", () => 界面窗口动画.关闭(gameObject));
             ui.Button("返回上级", footer, "返回", Back);
-            ui.Close(countryRoot.Find("标题栏背景/关闭"), transform, () => gameObject.SetActive(false));
+            ui.Close(countryRoot.Find("标题栏背景/关闭"), transform, () => 界面窗口动画.关闭(gameObject));
         }
 
         public void Open(NationPage page, string code)
@@ -106,7 +106,9 @@ namespace 缺失界面.窗口2
                 if (nation != null && nation.Capital != null && OpenCity(nation.Capital)) return;
             }
             history.Clear(); context = new Context { Page = page, Code = code, PlayerId = -1, ActorId = Data.ActorId, Scroll = 1 };
-            if (!gameObject.activeSelf) gameObject.SetActive(true); else Render();
+            bool wasActive = gameObject.activeSelf;
+            界面窗口动画.设置显示(gameObject, true);
+            if (wasActive) Render();
         }
 
         public bool OpenExistingNation(string code)
@@ -120,7 +122,9 @@ namespace 缺失界面.窗口2
         {
             var player = Data.ReadPlayer(playerId); if (player == null) return false;
             history.Clear(); context = new Context { Page = NationPage.玩家资料, Code = player.NationCode, PlayerId = playerId, ActorId = Data.ActorId, Scroll = 1 };
-            if (!gameObject.activeSelf) gameObject.SetActive(true); else Render();
+            bool wasActive = gameObject.activeSelf;
+            界面窗口动画.设置显示(gameObject, true);
+            if (wasActive) Render();
             return true;
         }
 
@@ -144,7 +148,7 @@ namespace 缺失界面.窗口2
 
         private void Back()
         {
-            if (history.Count == 0) gameObject.SetActive(false);
+            if (history.Count == 0) 界面窗口动画.关闭(gameObject);
             else { context = history.Pop(); Render(); }
         }
 

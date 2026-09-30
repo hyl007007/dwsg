@@ -76,7 +76,8 @@ namespace 缺失界面.窗口4
                     {
                         if (按.transform.IsChildOf(画册.transform)) continue;
                         for (int i = 0; i < 按.onClick.GetPersistentEventCount(); i++)
-                            if (按.onClick.GetPersistentTarget(i) == 画册.gameObject &&
+                            if ((按.onClick.GetPersistentTarget(i) == 画册.gameObject ||
+                                (按.onClick.GetPersistentTarget(i) as 界面窗口开关)?.gameObject == 画册.gameObject) &&
                                 按.onClick.GetPersistentMethodName(i) == "SetActive")
                             {
                                 // 保留拜访名将及其他原入口事件，随后恢复原查询页。
@@ -426,7 +427,7 @@ namespace 缺失界面.窗口4
                         if (出征脚本 != null) 出征脚本.切换出征封地(号);
                         if (编队 != null) { 编队.显示第几个封地 = 号; 编队.重置刷新将领列表(); }
                         // 父页恢复后仅刷新数据；由统一导航处理返回。
-                        页.gameObject.SetActive(false);
+                        界面窗口动画.关闭(页.gameObject);
                     });
                 }
             });

@@ -52,10 +52,10 @@ public class 画册脚本 : MonoBehaviour
         if (查询界面对象 == null) return;
         if (名将画册消耗显示界面对象 != null) 名将画册消耗显示界面对象.SetActive(false);
         if (名将画册列表界面对象 != null) 名将画册列表界面对象.SetActive(false);
-        gameObject.SetActive(true);
+        界面窗口动画.设置显示(gameObject, true);
         重置查询();
         // 主导航可能只关闭子画布，根对象仍活动，因此每次入口都显式恢复查询页。
-        查询界面对象.SetActive(true);
+        界面窗口动画.设置显示(查询界面对象, true);
     }
 
     private void OnDisable()
@@ -91,7 +91,7 @@ public class 画册脚本 : MonoBehaviour
         全局变量.提示类.显示信息(结果.说明);
         if (!结果.成功) return;
         名将画册消耗显示界面对象.SetActive(false);
-        名将画册列表界面对象.SetActive(true);
+        界面窗口动画.设置显示(名将画册列表界面对象, true);
         显示画册脚本.显示画册列表到UI();
     }
 
@@ -116,6 +116,6 @@ public class 画册脚本 : MonoBehaviour
         名将画册材料文本对象.verticalOverflow = VerticalWrapMode.Overflow;
         名将画册材料文本对象.text = "名将：" + 查询记录.名字 + "\n画册有效期24小时\n交换需要勇士令" + 材料数量 + "个";
         名将画册价格文本对象.text = "黄金购买需要" + (材料数量 * 10) + "黄金";
-        名将画册消耗显示界面对象.SetActive(true);
+        界面窗口动画.设置显示(名将画册消耗显示界面对象, true);
     }
 }

@@ -191,7 +191,7 @@ public class 附近山贼界面脚本 : MonoBehaviour
             查找面板 = 遮罩.gameObject;
             查找面板.SetActive(false);
             var 弹窗 = 查找面板.AddComponent<原界面小弹窗>();
-            弹窗.初始化(原窗口, "查找山贼", () => 查找面板.SetActive(false), 260);
+            弹窗.初始化(原窗口, "查找山贼", () => 界面窗口动画.关闭(查找面板), 260);
             var 行 = 军事界面样式.矩形("等级区域", 弹窗.内容, new Vector2(342, 38), Vector2.zero);
             行.gameObject.AddComponent<LayoutElement>().preferredHeight = 38;
             var 横排 = 行.gameObject.AddComponent<HorizontalLayoutGroup>();
@@ -223,17 +223,17 @@ public class 附近山贼界面脚本 : MonoBehaviour
                 第几页 = 0;
                 选中 = null;
                 刷新山贼列表();
-                查找面板.SetActive(false);
+                界面窗口动画.关闭(查找面板);
                 全局变量.提示类.显示信息(显示列表.Count > 0 ? "已显示查找结果，可用方向按钮翻页。" : "没有符合等级的山贼。");
             });
-            var 取消按钮 = 弹窗.添加按钮("取消", "取消", () => 查找面板.SetActive(false));
+            var 取消按钮 = 弹窗.添加按钮("取消", "取消", () => 界面窗口动画.关闭(查找面板));
             界面窗口管理器.注册运行时按钮(查找按钮);
             界面窗口管理器.注册运行时按钮(取消按钮);
             界面窗口管理器.注册运行时按钮(弹窗.关闭);
         }
         等级输入.SetTextWithoutNotify(等级筛选 == 0 ? "" : 等级筛选.ToString());
         查找反馈.text = "按等级筛选当前世界的山贼。";
-        查找面板.SetActive(true);
+        界面窗口动画.设置显示(查找面板, true);
         查找面板.transform.SetAsLastSibling();
     }
 }

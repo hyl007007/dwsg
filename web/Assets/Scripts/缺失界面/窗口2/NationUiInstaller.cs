@@ -83,7 +83,7 @@ namespace 缺失界面.窗口2
             {
                 nationNameButton.onClick.AddListener(() =>
                 {
-                    if (nationList != null) { nationList.gameObject.SetActive(true); nationList.刷新显示(); }
+                    if (nationList != null) { 界面窗口动画.设置显示(nationList.gameObject, true); nationList.刷新显示(); }
                     else if (全局变量.提示类 != null) 全局变量.提示类.显示信息("国家列表未就绪，请返回重试。");
                 });
                 界面窗口管理器.注册运行时按钮(nationNameButton);
@@ -150,7 +150,7 @@ namespace 缺失界面.窗口2
             { var panel = originalCountry.Find(path); if (panel != null) panel.gameObject.SetActive(false); }
             if (overviewTab != null) overviewTab.isOn = true;
             var overviewPanel = originalCountry.Find("概况布局"); if (overviewPanel != null) overviewPanel.gameObject.SetActive(true);
-            originalCountry.gameObject.SetActive(true); overview.刷新显示(); if (notices != null) notices.Refresh();
+            界面窗口动画.设置显示(originalCountry.gameObject, true); overview.刷新显示(); if (notices != null) notices.Refresh();
             return true;
         }
 

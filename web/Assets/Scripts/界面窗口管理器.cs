@@ -65,18 +65,23 @@ public sealed class 界面窗口管理器 : MonoBehaviour
                 if (窗口 == null) 窗口 = 画布.gameObject.AddComponent<界面互斥窗口>();
                 窗口.管理器 = this;
                 窗口列表.Add(窗口);
+                界面窗口动画.接入(画布.gameObject);
             }
         }
         foreach (GameObject 根对象 in 场景.GetRootGameObjects())
         {
             foreach (Button 按钮 in 根对象.GetComponentsInChildren<Button>(true))
             {
+                界面窗口动画.接入按钮(按钮);
                 绑定点击来源(按钮.gameObject);
                 // 在原有按钮动作结束后恢复父窗口，保留原有数据刷新和返回动作。
                 按钮.onClick.AddListener(尝试返回上级);
             }
             foreach (EventTrigger 点击事件 in 根对象.GetComponentsInChildren<EventTrigger>(true))
+            {
                 绑定点击来源(点击事件.gameObject);
+                界面窗口动画.接入事件(点击事件);
+            }
         }
         foreach (var 窗口 in 窗口列表)
             if (窗口.gameObject.activeInHierarchy) 打开窗口(窗口);
@@ -112,10 +117,14 @@ public sealed class 界面窗口管理器 : MonoBehaviour
         if (窗口.管理器 != null && 窗口.管理器 != 管理器) return false;
         窗口.管理器 = 管理器;
         if (!管理器.窗口列表.Contains(窗口)) 管理器.窗口列表.Add(窗口);
+        界面窗口动画.接入(对象);
         foreach (Button 按钮 in 对象.GetComponentsInChildren<Button>(true))
             管理器.接入按钮(按钮);
         foreach (EventTrigger 点击事件 in 对象.GetComponentsInChildren<EventTrigger>(true))
+        {
             管理器.绑定点击来源(点击事件.gameObject);
+            界面窗口动画.接入事件(点击事件);
+        }
         if (对象.activeInHierarchy) 管理器.打开窗口(窗口);
         return true;
     }
@@ -132,6 +141,7 @@ public sealed class 界面窗口管理器 : MonoBehaviour
 
     private void 接入按钮(Button 按钮)
     {
+        界面窗口动画.接入按钮(按钮);
         绑定点击来源(按钮.gameObject);
         按钮.onClick.RemoveListener(尝试返回上级);
         按钮.onClick.AddListener(尝试返回上级);

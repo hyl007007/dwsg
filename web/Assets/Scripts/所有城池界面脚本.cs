@@ -299,7 +299,7 @@ public class 所有城池界面脚本 : MonoBehaviour
 	{
 		if (城池信息界面UI == null || 第几个城池 < 0 || 第几个城池 >= 全局变量.所有城池列表.Count) return;
 		城池信息界面UI.GetComponent<城池信息显示脚本>().显示城池信息(第几个城池);
-		城池信息界面UI.SetActive(value: true);
+		界面窗口动画.设置显示(城池信息界面UI, true);
 	}
 
 	public void 刷新所有城池()

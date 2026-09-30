@@ -52,7 +52,7 @@ public class 单将撤退脚本 : MonoBehaviour
 
     private void 清除选择()
     {
-        if (撤退布局) 撤退布局.SetActive(false);
+        if (撤退布局) 界面窗口动画.关闭(撤退布局);
         被选中将领 = null;
     }
 
@@ -71,7 +71,7 @@ public class 单将撤退脚本 : MonoBehaviour
             返回.onClick.AddListener(清除选择);
         }
         撤退说明.text = 将.本将领信息.将领属性.初始属性.名字 + " · 撤出本次战斗？";
-        撤退布局.SetActive(true);
+        界面窗口动画.设置显示(撤退布局, true);
     }
 
     void Update()

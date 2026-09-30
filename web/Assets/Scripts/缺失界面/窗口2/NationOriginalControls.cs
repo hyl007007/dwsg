@@ -143,7 +143,7 @@ namespace 缺失界面.窗口2
                 if (root.name != "国家信息界面UI") continue;
                 var overview = root.GetComponentInChildren<显示概况脚本>(true);
                 if (overview != null) { overview.查看国号 = code; overview.刷新显示(); }
-                root.SetActive(true); return;
+                界面窗口动画.设置显示(root, true); return;
             }
         }
 

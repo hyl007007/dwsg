@@ -95,6 +95,7 @@ public sealed class 原界面小弹窗 : MonoBehaviour
         横排.spacing = 54;
         横排.childControlWidth = 横排.childControlHeight = true;
         横排.childForceExpandWidth = 横排.childForceExpandHeight = false;
+        界面窗口动画.接入(gameObject);
     }
 
     public Text 添加说明(string 名称, string 文案, int 字号 = 18)
@@ -106,6 +107,7 @@ public sealed class 原界面小弹窗 : MonoBehaviour
     public void 使用原按钮(Button 按钮)
     {
         按钮.transform.SetParent(操作, false);
+        界面窗口动画.接入按钮(按钮);
         var 图 = 按钮.GetComponent<Image>();
         var 原图 = 按钮参考.GetComponent<Image>();
         图.sprite = 原图.sprite;

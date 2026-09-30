@@ -273,7 +273,7 @@ namespace 缺失界面.窗口4
                 关闭.targetGraphic = 图;
                 var 原按钮 = 原关闭.GetComponent<Button>();
                 if (原按钮 != null) { 关闭.transition = 原按钮.transition; 关闭.colors = 原按钮.colors; 关闭.spriteState = 原按钮.spriteState; }
-                关闭.onClick.AddListener(() => 根.SetActive(false));
+                关闭.onClick.AddListener(() => 界面窗口动画.关闭(根));
                 界面窗口管理器.注册运行时按钮(关闭);
             }
             面板.状态 = 样式.文本(框, "状态说明", "本地世界 · 未连接多人服务器", new Vector2(620, 38), new Vector2(0, 180), 14);
@@ -307,7 +307,7 @@ namespace 缺失界面.窗口4
             Vector2 返回位置 = 原返回 != null ? (Vector2)样式.参考.InverseTransformPoint(原返回.TransformPoint(原返回.rect.center)) : new Vector2(286, -202);
             面板.反馈 = 样式.文本(框, "操作反馈", "", new Vector2(460, 34), new Vector2(0, 返回位置.y), 13);
             var 刷新按钮 = 样式.按钮(框, "刷新", 按钮尺寸, new Vector2(-返回位置.x, 返回位置.y), 面板.刷新);
-            var 返回按钮 = 样式.按钮(框, "返回", 按钮尺寸, 返回位置, () => 根.SetActive(false));
+            var 返回按钮 = 样式.按钮(框, "返回", 按钮尺寸, 返回位置, () => 界面窗口动画.关闭(根));
             var 原返回图 = 原返回 != null ? 原返回.GetComponent<Image>() : null;
             if (原返回图 != null)
             {
@@ -315,6 +315,7 @@ namespace 缺失界面.窗口4
                 返回按钮.GetComponent<Image>().sprite = 原返回图.sprite;
             }
             面板.已构造 = true;
+            界面窗口动画.接入(根);
             if (!战斗内 && !界面窗口管理器.注册运行时窗口(根))
                 Debug.LogWarning("军事详情面板未注册：需先初始化主场景窗口管理器。");
             return 面板;
@@ -326,8 +327,9 @@ namespace 缺失界面.窗口4
             标题.text = 标题内容;
             构造内容 = 构造;
             反馈.text = "";
-            if (gameObject.activeSelf) 刷新();
-            else gameObject.SetActive(true);
+            bool 原来显示 = gameObject.activeSelf;
+            界面窗口动画.设置显示(gameObject, true);
+            if (原来显示) 刷新();
         }
         private void OnEnable()
         {
