@@ -38,7 +38,13 @@ def main():
     print('Installed on ' + args.serial + ': ' + str(apk))
     print('SHA256: ' + hashlib.sha256(apk.read_bytes()).hexdigest())
     if args.launch:
-        print(run('shell', 'am', 'start', '-W', '-n', 'dd.sg/com.unity3d.player.UnityPlayerActivity'))
+        launch = run('shell', 'am', 'start', '-W', '-n', 'dd.sg/com.unity3d.player.UnityPlayerActivity')
+        # Some Android versions return exit code 0 even when Activity Manager
+        # reports a missing activity or a launch timeout in its output.
+        lines = [line.strip() for line in launch.splitlines()]
+        if 'Status: ok' not in lines or any(line.startswith('Error') for line in lines):
+            raise RuntimeError('Android did not confirm launch: ' + launch)
+        print(launch)
 
 
 if __name__ == '__main__':

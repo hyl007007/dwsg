@@ -19,6 +19,7 @@ namespace Dwsg.Network
         private static long sequence;
         private static long snapshotId;
         private static long sessionExpires;
+        private static int connectionGeneration;
         private static bool connecting, workerRunning, reconnect, forceFull;
         private static readonly Queue<PendingCommand> pending = new Queue<PendingCommand>();
         public static WorldSnapshot CurrentSnapshot { get; private set; }
@@ -53,9 +54,13 @@ namespace Dwsg.Network
         }
         public static IEnumerator Connect(JObject phpProof, Action<GameResult> completed)
         {
+            // Reject a duplicate login before it can replace the active request's credentials.
+            if (connecting) { completed(GameResult.Reject(GameCodes.Conflict, "正在连接，请稍候。")); yield break; }
+            ++connectionGeneration;
+            connectionId = null; reconnect = false; CurrentSnapshot = null;
             proof = (JObject)phpProof.DeepClone();
             yield return ConnectCore(null, null, completed);
-            if (!workerRunning) GameNetworkRunner.StartWork(Work());
+            if (proof != null && !workerRunning) GameNetworkRunner.StartWork(Work());
         }
         public static void CreateRole(string nickname, string nation, Action<GameResult> completed)
         {
@@ -76,19 +81,29 @@ namespace Dwsg.Network
         public static void Disconnect()
         {
             var previous = connectionId;
-            connectionId = null; reconnect = false;
+            ++connectionGeneration;
+            connectionId = null; reconnect = false; connecting = false; proof = null;
+            CurrentSnapshot = null; sequence = 0; snapshotId = 0; sessionExpires = 0; forceFull = false;
+            while (pending.Count > 0)
+                Notify(pending.Dequeue().Completed, GameResult.Reject(GameCodes.Unauthenticated, "连接已断开，操作未继续重试。"));
             if (previous != null) GameNetworkRunner.StartWork(Fetch("disconnect", new JObject(), previous, _ => { }));
         }
         private static IEnumerator ConnectCore(string nickname, string nation, Action<GameResult> completed)
         {
             if (connecting) { completed(GameResult.Reject(GameCodes.Conflict, "正在连接，请稍候。")); yield break; }
             connecting = true;
+            var generation = connectionGeneration;
             try
             {
                 var input = new JObject { ["protocolVersion"] = 1, ["worldId"] = worldId, ["requestId"] = Guid.NewGuid().ToString("N"),
                     ["proof"] = proof.DeepClone(), ["nickname"] = nickname, ["nation"] = nation };
                 JObject response = null;
-                yield return Fetch("connect", input, null, value => response = value);
+                yield return Fetch("connect", input, null, value => response = value, () => generation != connectionGeneration);
+                if (generation != connectionGeneration)
+                {
+                    completed(GameResult.Reject(GameCodes.Unauthenticated, "连接已取消，请重新登录。"));
+                    yield break;
+                }
                 var result = ReadResult(response);
                 if (result.Code == GameCodes.Ok || result.Code == GameCodes.RoleRequired)
                 {
@@ -101,7 +116,7 @@ namespace Dwsg.Network
                 Notify(StatusChanged, result);
                 completed(result);
             }
-            finally { connecting = false; }
+            finally { if (generation == connectionGeneration) connecting = false; }
         }
         private static IEnumerator Work()
         {
@@ -129,7 +144,7 @@ namespace Dwsg.Network
                     JObject response = null;
                     var sentConnection = connectionId;
                     bool interrupted = false;
-                    Func<bool> interruptPoll = active == null ? (Func<bool>)(() => interrupted = pending.Count > 0) : null;
+                    Func<bool> interruptPoll = () => sentConnection != connectionId || (active == null && (interrupted = pending.Count > 0));
                     yield return Fetch(active == null ? "poll" : "command", input, sentConnection, value => response = value, interruptPoll);
                     // Responses from a connection superseded locally cannot overwrite its replacement.
                     if (sentConnection != connectionId) continue;

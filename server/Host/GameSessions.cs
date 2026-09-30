@@ -17,6 +17,7 @@ public sealed class GameSession
     public readonly Queue<JObject> Events = new();
     public long Sequence;
     public WorldSnapshot LastSnapshot;
+    public long LastSnapshotEventSequence;
     public long SnapshotSequence;
     public readonly Queue<KeyValuePair<long, WorldSnapshot>> RecentSnapshots = new();
 }
@@ -188,8 +189,13 @@ public sealed class GameSessions
             return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新登录。"));
         lock (session.StreamGate)
         {
-            if (session.LastSnapshot != null && snapshot.WorldRevision < session.LastSnapshot.WorldRevision)
+            if (session.LastSnapshot != null && (snapshot.WorldRevision < session.LastSnapshot.WorldRevision ||
+                snapshot.WorldRevision == session.LastSnapshot.WorldRevision && snapshot.ServerUtcMs < session.LastSnapshot.ServerUtcMs))
                 snapshot = session.LastSnapshot;
+            // Concurrent abandoned polls may finish after a newer reply. Its snapshot and
+            // covered event watermark advance together. Events newer than both
+            // captured watermarks remain pending for the next reply.
+            sequenceLimit = Math.Max(sequenceLimit, session.LastSnapshotEventSequence);
             var visibleMessages = new HashSet<string>((snapshot.PublicWorld["chatMessages"] as JArray ?? new JArray())
                 .OfType<JObject>().Select(message => message.Value<string>("messageId")), StringComparer.Ordinal);
             var wire = snapshot;
@@ -213,6 +219,7 @@ public sealed class GameSessions
             response["sessionExpiresUtcMs"] = Interlocked.Read(ref session.ExpiresUtcMs);
             response["eventsReset"] = session.Events.Count > 0 && afterSequence < session.Events.Peek().Value<long>("sequence") - 1;
             session.LastSnapshot = snapshot;
+            session.LastSnapshotEventSequence = sequenceLimit;
             var snapshotId = ++session.SnapshotSequence;
             response["snapshotId"] = snapshotId;
             // One acknowledged reply plus one abandoned poll, bounded independently of session age.
