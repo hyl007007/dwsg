@@ -19,6 +19,8 @@ namespace Dwsg.Network
         private static long sequence;
         private static long sessionExpires;
         private static bool connecting, workerRunning, reconnect, forceFull;
+        private static UnityWebRequest activePoll;
+        private static bool pollPreempted;
         private static readonly Queue<PendingCommand> pending = new Queue<PendingCommand>();
         public static WorldSnapshot CurrentSnapshot { get; private set; }
         public static int GetCityFiefCount(int legacyCityIndex)
@@ -70,6 +72,7 @@ namespace Dwsg.Network
             if (!Enabled || !HasRole) { completed(GameResult.Reject(GameCodes.Unauthenticated, "请先连接并创建角色。")); return; }
             pending.Enqueue(new PendingCommand { PlayerId = CurrentSnapshot.PlayerId, Completed = completed,
                 Command = new GameCommand { RequestId = Guid.NewGuid().ToString("N"), WorldId = CurrentSnapshot.WorldId, Type = type, Payload = (JObject)payload.DeepClone() } });
+            if (activePoll != null) { pollPreempted = true; activePoll.Abort(); }
             if (!workerRunning) GameNetworkRunner.StartWork(Work());
         }
         public static void Disconnect()
@@ -126,9 +129,11 @@ namespace Dwsg.Network
                     input["afterSequence"] = sequence;
                     JObject response = null;
                     var sentConnection = connectionId;
+                    if (active == null) pollPreempted = false;
                     yield return Fetch(active == null ? "poll" : "command", input, sentConnection, value => response = value);
                     // Responses from a connection superseded locally cannot overwrite its replacement.
                     if (sentConnection != connectionId) continue;
+                    if (active == null && pollPreempted) { pollPreempted = false; continue; }
                     var result = ReadResult(response);
                     if (result.Code == GameCodes.Unavailable)
                     {
@@ -218,11 +223,16 @@ namespace Dwsg.Network
                 request.SetRequestHeader("Content-Type", "application/json");
                 if (id != null) request.SetRequestHeader("X-Dwsg-Connection", id);
                 request.timeout = 15;
-                yield return request.SendWebRequest();
-                JObject response = null;
-                if (request.result == UnityWebRequest.Result.Success)
-                    try { response = JObject.Parse(request.downloadHandler.text); } catch (JsonException) { }
-                completed(response);
+                if (route == "poll") activePoll = request;
+                try
+                {
+                    yield return request.SendWebRequest();
+                    JObject response = null;
+                    if (request.result == UnityWebRequest.Result.Success)
+                        try { response = JObject.Parse(request.downloadHandler.text); } catch (JsonException) { }
+                    completed(response);
+                }
+                finally { if (ReferenceEquals(activePoll, request)) activePoll = null; }
             }
         }
         private sealed class PendingCommand
