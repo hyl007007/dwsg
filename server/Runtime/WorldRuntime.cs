@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Newtonsoft.Json;
 using Dwsg.Shared;
 
@@ -56,6 +57,7 @@ namespace Dwsg.Runtime
                 if (receipt != null) return Replay(receipt, fingerprint);
                 var original = ReadState(command.WorldId);
                 if (original == null) return GameResult.Reject(GameCodes.NotFound, "世界不存在。");
+                var expectedRevision = original.Revision;
                 if (!modules.TryGetValue(command.Type, out var module))
                     return GameResult.Reject(GameCodes.InvalidArgument, "未知命令。");
                 var candidate = module is ICopyingGameModule
@@ -76,7 +78,7 @@ namespace Dwsg.Runtime
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "操作未提交，请稍后重试。"); }
                 if (result == null) return GameResult.Reject(GameCodes.Unavailable, "模块未提供结果。");
                 if (result.Code != GameCodes.Ok) { candidate = original; result.Events.Clear(); }
-                else candidate.Revision = checked(original.Revision + 1);
+                else candidate.Revision = checked(expectedRevision + 1);
                 result.RequestId = command.RequestId; result.WorldId = command.WorldId; result.WorldRevision = candidate.Revision;
                 receipt = new CommandReceipt { WorldId = command.WorldId, PlayerId = actor.PlayerId, RequestId = command.RequestId,
                     Fingerprint = fingerprint, ResultJson = JsonConvert.SerializeObject(result) };
@@ -86,7 +88,7 @@ namespace Dwsg.Runtime
                 {
                     // Own a private copy before committing: results/modules may retain candidate references.
                     savedSnapshot = result.Code == GameCodes.Ok && store is IWorldRevisionStore ? candidate.Clone() : null;
-                    committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = original.Revision, Candidate = candidate, Receipt = receipt });
+                    committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = expectedRevision, Candidate = candidate, Receipt = receipt });
                 }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "保存失败，操作未确认。"); }
                 if (committed.Code != GameCodes.Ok) return GameResult.Reject(committed.Code, "操作未提交。");
@@ -173,25 +175,33 @@ namespace Dwsg.Runtime
         }
         public void Tick(string worldId)
         {
+            var started = Stopwatch.GetTimestamp();
+            var state = ReadSnapshotState(worldId);
+            if (state == null) return;
+            var loaded = Stopwatch.GetTimestamp();
             var commands = new List<GameCommand>();
-            lock (gates.GetOrAdd(worldId, _ => new object()))
-            {
-                var state = ReadState(worldId);
-                if (state == null) return;
-                foreach (var tick in ticks)
-                    foreach (var command in tick.CollectDueCommands(tick is IReadOnlyGameTickModule ? state : state.Clone(), utcNow()))
-                        commands.Add(command);
-            }
+            // Collect from one committed snapshot without holding the writer gate.
+            // Unmarked collectors still receive a copy so they cannot mutate the cache.
+            foreach (var tick in ticks)
+                foreach (var command in tick.CollectDueCommands(tick is IReadOnlyGameTickModule ? state : state.Clone(), utcNow()))
+                    commands.Add(command);
             // A batch of due work must not hold the world gate across all its transactions.
             // Each Execute revalidates the collected command against the latest committed state.
             foreach (var command in commands) Execute(AuthenticatedActor.System(worldId), command);
+            if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1" && Stopwatch.GetElapsedTime(started).TotalMilliseconds >= 100)
+                Console.Error.WriteLine($"DWSG_LATENCY tick load_ms={Stopwatch.GetElapsedTime(started, loaded).TotalMilliseconds:F1} modules_ms={Stopwatch.GetElapsedTime(loaded).TotalMilliseconds:F1}");
         }
         public WorldSnapshot Snapshot(AuthenticatedActor actor, IWorldProjection projection)
         {
+            var started = Stopwatch.GetTimestamp();
             if (!authorize(actor)) throw new UnauthorizedAccessException();
             var state = ReadSnapshotState(actor.WorldId) ?? throw new InvalidOperationException("World missing");
+            var loaded = Stopwatch.GetTimestamp();
             // The private snapshot is immutable. Serialization/projection must not queue writers.
-            return projection.Build(projection is IReadOnlyWorldProjection ? state : state.Clone(), actor, utcNow());
+            var snapshot = projection.Build(projection is IReadOnlyWorldProjection ? state : state.Clone(), actor, utcNow());
+            if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1")
+                Console.Error.WriteLine($"DWSG_LATENCY snapshot load_ms={Stopwatch.GetElapsedTime(started, loaded).TotalMilliseconds:F1} build_ms={Stopwatch.GetElapsedTime(loaded).TotalMilliseconds:F1}");
+            return snapshot;
         }
         private WorldState ReadSnapshotState(string worldId)
         {

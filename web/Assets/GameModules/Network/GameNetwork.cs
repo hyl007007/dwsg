@@ -37,7 +37,15 @@ namespace Dwsg.Network
         public static event Action<WorldSnapshot> SnapshotApplied { add { SnapshotReceived += value; } remove { SnapshotReceived -= value; } }
         public static event Action<GameEvent> EventReceived;
         public static event Action<GameResult> StatusChanged;
-        private static string Endpoint { get { return endpoint ?? Environment.GetEnvironmentVariable("DWSG_GAME_URL") ?? PlayerPrefs.GetString("DWSG_GAME_URL", ""); } }
+        private static string Endpoint
+        {
+            get
+            {
+                var configured = Environment.GetEnvironmentVariable("DWSG_GAME_URL");
+                if (string.IsNullOrWhiteSpace(configured)) configured = PlayerPrefs.GetString("DWSG_GAME_URL", "");
+                return string.IsNullOrWhiteSpace(configured) ? endpoint : configured.TrimEnd('/');
+            }
+        }
         public static void Configure(string address, string world)
         {
             endpoint = string.IsNullOrWhiteSpace(address) ? null : address.TrimEnd('/');
