@@ -16,8 +16,8 @@ public class 登录脚本 : MonoBehaviour
     public Text 密码;
     public Text user;
     public Text pwd;
-    public string 服务器地址 = "http://127.0.0.1:18080/api.php?appid=1";
-    public string 游戏服务器地址 = "";
+    public string 服务器地址 = "https://auth.dwsg-game.com/api.php?appid=1";
+    public string 游戏服务器地址 = "https://game.dwsg-game.com";
     public string 联机世界 = "main";
     public static string 会话令牌 { get; private set; }
     public static int 心跳ID { get; private set; }
