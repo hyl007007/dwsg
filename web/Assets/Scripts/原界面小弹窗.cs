@@ -212,7 +212,7 @@ public sealed class 原界面小弹窗 : MonoBehaviour
             父画布缩放 = 当前父缩放;
             适配屏幕();
         }
-        if (Input.GetKeyDown(KeyCode.Escape) && 取消 != null) 取消();
+        if (Input.GetKeyDown(KeyCode.Escape) && 取消 != null && 安卓输入适配.小弹窗处理返回(this)) 取消();
     }
 
     private void OnDisable()

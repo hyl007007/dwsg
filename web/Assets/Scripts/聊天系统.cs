@@ -103,9 +103,8 @@ public class 聊天系统 : MonoBehaviour
 {
 	// ==================== 可调参数 ====================
 
-	// 面板尺寸按“屏幕像素”来写（760x462）。主界面UI 和 战斗界面UI 两个画布都是
-	// CanvasScaler 参考 960x540、按高度匹配，1080p 下 1 画布单位 = 2 屏幕像素，
-	// 所以两个面板都整体缩到 0.5，屏幕上就是这里写的尺寸。
+	// 主界面UI 和 战斗界面UI 的 CanvasScaler 都参考 960x540、按高度匹配。
+	// 桌面保留原先的 0.5 缩放；Android 使用画布设计尺寸，避免文字再次缩小一半。
 	private const float 面板宽 = 760f;
 
 	private const float 面板高 = 462f;
@@ -262,6 +261,7 @@ public class 聊天系统 : MonoBehaviour
 	private int 已刷新数据版本 = -1;
 
 	private float 下次角标刷新;
+	private bool 上帧输入法组字中;
 
 	private class 面板部件
 	{
@@ -324,6 +324,12 @@ public class 聊天系统 : MonoBehaviour
 		}
 		ChatClient.Initialize(接收联机消息, 播报, 清空聊天);
 		实例.挂界面();
+	}
+
+	public static bool 尝试关闭当前聊天()
+	{
+		return 实例 != null &&
+			(关闭已显示面板(实例.世界部件) || 关闭已显示面板(实例.战斗部件));
 	}
 
 	//全游戏播报的统一入口：内容一样的一条会同时进飘字和聊天
@@ -660,6 +666,9 @@ public class 聊天系统 : MonoBehaviour
 	//（没有用 InputField.onEndEdit，那个连「点到别处失焦」也会触发，会误发。）
 	private void 刷新输入状态()
 	{
+		bool 组字中 = !string.IsNullOrEmpty(Input.compositionString);
+		bool 刚完成组字 = 上帧输入法组字中 && !组字中;
+		上帧输入法组字中 = 组字中;
 		面板部件 目标 = null;
 		if (世界部件 != null && 世界部件.输入框 != null && 世界部件.输入框.isFocused)
 		{
@@ -678,7 +687,8 @@ public class 聊天系统 : MonoBehaviour
 		{
 			return;
 		}
-		if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+		// 输入法用回车选字时不发送；组字结束的同一帧也留给 InputField 提交候选字。
+		if (!组字中 && !刚完成组字 && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
 		{
 			发送输入(目标);
 		}
@@ -767,7 +777,7 @@ public class 聊天系统 : MonoBehaviour
 			按钮对象.transform.SetSiblingIndex(国家按钮.GetSiblingIndex() + 1);
 		}
 		世界界面 = 按钮对象;
-		世界部件 = 建聊天面板(父物体, 0.5f, new Vector2(面板横坐标, 面板纵坐标), false);
+		世界部件 = 建聊天面板(父物体, new Vector2(面板横坐标, 面板纵坐标), false);
 		世界部件.未读红点 = 建未读红点(按钮对象.transform);
 		世界部件.面板.SetActive(value: false);
 		刷新未读红点();
@@ -817,7 +827,7 @@ public class 聊天系统 : MonoBehaviour
 	private void 建战斗界面()
 	{
 		Transform 父物体 = 全局变量.战斗界面UI对象.transform;
-		战斗部件 = 建聊天面板(父物体, 0.5f, new Vector2(0f, 战斗面板纵坐标), false);
+		战斗部件 = 建聊天面板(父物体, new Vector2(0f, 战斗面板纵坐标), false);
 		战斗部件.面板.SetActive(value: false);
 		战斗界面 = 建战斗播报条(父物体);
 	}
@@ -930,8 +940,9 @@ public class 聊天系统 : MonoBehaviour
 
 	// ==================== 面板 ====================
 
-	private 面板部件 建聊天面板(Transform 父物体, float 缩放, Vector2 位置, bool 默认打开)
+	private 面板部件 建聊天面板(Transform 父物体, Vector2 位置, bool 默认打开)
 	{
+		float 缩放 = Application.platform == RuntimePlatform.Android ? 1f : 0.5f;
 		面板部件 部件 = new 面板部件();
 		GameObject 面板 = 新建节点("聊天面板", 父物体, new Vector2(面板宽, 面板高), 位置, Vector2.zero, Vector2.zero, Vector2.zero);
 		面板.transform.localScale = new Vector3(缩放, 缩放, 1f);
@@ -1043,12 +1054,19 @@ public class 聊天系统 : MonoBehaviour
 			Button original = source.GetComponent<Button>();
 			if (original != null) { close.transition = original.transition; close.colors = original.colors; close.spriteState = original.spriteState; }
 		}
-		close.onClick.AddListener(() =>
-		{
-			if (部件.输入框 != null) 部件.输入框.DeactivateInputField();
-			部件.面板.SetActive(false);
-			if (部件.设置面板 != null) 部件.设置面板.SetActive(false);
-		});
+		close.onClick.AddListener(() => 关闭聊天面板(部件));
+	}
+	private static bool 关闭已显示面板(面板部件 部件)
+	{
+		if (部件 == null || 部件.面板 == null || !部件.面板.activeInHierarchy) return false;
+		关闭聊天面板(部件);
+		return true;
+	}
+	private static void 关闭聊天面板(面板部件 部件)
+	{
+		if (部件.输入框 != null) 部件.输入框.DeactivateInputField();
+		部件.面板.SetActive(false);
+		if (部件.设置面板 != null) 部件.设置面板.SetActive(false);
 	}
 	private static void 重置浏览(面板部件 部件)
 	{

@@ -16,6 +16,8 @@ namespace Dwsg.Social
         internal Action<SocialScreen> Render;
         internal ISocialAdapter Adapter;
         internal int RenderCount;
+        private bool refreshWhenIdle;
+        private bool feedbackAfterQueuedRefresh;
         private void OnEnable()
         {
             FitToSafeArea();
@@ -30,6 +32,24 @@ namespace Dwsg.Social
         {
             if (lastResolution.x != UnityEngine.Screen.width || lastResolution.y != UnityEngine.Screen.height || lastSafeArea != UnityEngine.Screen.safeArea || lastKeyboardArea != KeyboardArea)
                 FitToSafeArea();
+        }
+        private void LateUpdate()
+        {
+            if (refreshWhenIdle) Refresh();
+        }
+        private static bool PointerActiveThisFrame()
+        {
+            if (Input.touchCount > 0) return true;
+            for (int button = 0; button < 3; button++)
+                if (Input.GetMouseButtonDown(button) || Input.GetMouseButton(button) || Input.GetMouseButtonUp(button)) return true;
+            return false;
+        }
+        private bool IsEditingInput()
+        {
+            if (Body == null) return false;
+            foreach (var input in Body.GetComponentsInChildren<InputField>(false))
+                if (input.isActiveAndEnabled && input.isFocused) return true;
+            return false;
         }
         private void FitToSafeArea()
         {
@@ -54,6 +74,8 @@ namespace Dwsg.Social
         private void OnDisable()
         {
             if (Adapter != null) Adapter.Changed -= Refresh;
+            refreshWhenIdle = false;
+            feedbackAfterQueuedRefresh = false;
             if (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == null) return;
             if (EventSystem.current.currentSelectedGameObject.transform.IsChildOf(transform))
                 EventSystem.current.SetSelectedGameObject(null);
@@ -62,7 +84,12 @@ namespace Dwsg.Social
         internal void Refresh()
         {
             if (!gameObject.activeInHierarchy || Render == null) return;
-            if (Status != null) Status.text = "";
+            // 输入聚焦或指针按下至抬起的帧都不重建，避免销毁尚未触发 onClick 的按钮。
+            if (IsEditingInput() || PointerActiveThisFrame()) { refreshWhenIdle = true; return; }
+            bool keepFeedback = feedbackAfterQueuedRefresh;
+            refreshWhenIdle = false;
+            feedbackAfterQueuedRefresh = false;
+            if (Status != null && !keepFeedback) Status.text = "";
             SocialUi.Clear(Body); RenderCount++; Render(this);
             var pending = Adapter as IAsyncSocialAdapter;
             var controls = Body.GetComponent<CanvasGroup>();
@@ -101,6 +128,7 @@ namespace Dwsg.Social
         }
         internal void Feedback(SocialResult result)
         {
+            if (refreshWhenIdle) feedbackAfterQueuedRefresh = true;
             Status.text = result.Message;
             // 状态位于黄色纸面，沿用任务页的深墨/深红反馈色。
             Status.color = result.Succeeded ? SocialUi.PaperInk : new Color(.36f, .035f, .02f);

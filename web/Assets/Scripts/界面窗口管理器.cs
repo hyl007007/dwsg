@@ -233,6 +233,54 @@ public sealed class 界面窗口管理器 : MonoBehaviour
         }
     }
 
+    // Android 返回键沿用窗口原有关闭按钮，让原回调完成清理、刷新和返回路径恢复。
+    public static bool 处理安卓返回()
+    {
+        var 管理器 = 获取当前场景管理器();
+        if (管理器 == null || 管理器.主界面 == null || !管理器.主界面.gameObject.activeInHierarchy)
+            return false;
+        var 窗口 = 管理器.当前窗口;
+        if (窗口 == null || !窗口.gameObject.activeInHierarchy) return false;
+
+        Button 原关闭按钮 = null, 唯一命名按钮 = null;
+        int 命名按钮数 = 0;
+        foreach (var 按钮 in 窗口.GetComponentsInChildren<Button>())
+        {
+            if (!按钮.gameObject.activeInHierarchy || !按钮.IsInteractable() || !是返回按钮名称(按钮.name))
+                continue;
+            if (原回调关闭窗口(按钮, 窗口)) { 原关闭按钮 = 按钮; break; }
+            唯一命名按钮 = 按钮;
+            命名按钮数++;
+        }
+        if (原关闭按钮 == null && 命名按钮数 == 1) 原关闭按钮 = 唯一命名按钮;
+        if (原关闭按钮 != null)
+        {
+            管理器.记录点击来源(窗口);
+            try { 原关闭按钮.onClick.Invoke(); }
+            finally { 管理器.释放指针(); }
+        }
+        else 界面窗口动画.关闭(窗口.gameObject);
+        return true;
+    }
+
+    private static bool 是返回按钮名称(string 名称)
+    {
+        return 名称.Contains("关闭") || 名称.Contains("返回") || 名称.Contains("取消");
+    }
+
+    private static bool 原回调关闭窗口(Button 按钮, 界面互斥窗口 窗口)
+    {
+        for (int i = 0; i < 按钮.onClick.GetPersistentEventCount(); i++)
+        {
+            if (按钮.onClick.GetPersistentMethodName(i) != "SetActive") continue;
+            var 目标 = 按钮.onClick.GetPersistentTarget(i) as GameObject;
+            var 组件 = 按钮.onClick.GetPersistentTarget(i) as Component;
+            if (目标 == null && 组件 != null) 目标 = 组件.gameObject;
+            if (目标 == 窗口.gameObject) return true;
+        }
+        return false;
+    }
+
     public static void 关闭当前场景窗口()
     {
         foreach (var 根对象 in SceneManager.GetActiveScene().GetRootGameObjects())
@@ -264,6 +312,14 @@ public sealed class 界面窗口管理器 : MonoBehaviour
         }
         else 尝试返回上级();
         刚关闭的窗口 = null;
+        // ScrollRect 接管拖动后，按钮可能收不到 PointerUp；手指全部结束时清掉旧点击来源。
+        if (Application.platform == RuntimePlatform.Android && 指针按下 && !Input.GetMouseButton(0))
+        {
+            bool 仍有触摸 = false;
+            foreach (var 触摸 in Input.touches)
+                if (触摸.phase != TouchPhase.Ended && 触摸.phase != TouchPhase.Canceled) { 仍有触摸 = true; break; }
+            if (!仍有触摸) 释放指针();
+        }
         if (有点击来源 && !指针按下 && 释放帧 <= Time.frameCount)
         {
             有点击来源 = false;
