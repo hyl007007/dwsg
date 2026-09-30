@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Newtonsoft.Json;
 using Dwsg.Shared;
 
@@ -54,9 +55,11 @@ namespace Dwsg.Runtime
                 if (receipt != null) return Replay(receipt, fingerprint);
                 var original = store.Load(command.WorldId);
                 if (original == null) return GameResult.Reject(GameCodes.NotFound, "世界不存在。");
+                var expectedRevision = original.Revision;
                 if (!modules.TryGetValue(command.Type, out var module))
                     return GameResult.Reject(GameCodes.InvalidArgument, "未知命令。");
-                var candidate = original.Clone();
+                // Load returns a detached state. A rejected mutation is discarded by reloading it.
+                var candidate = original;
                 GameResult result;
                 try
                 {
@@ -70,13 +73,13 @@ namespace Dwsg.Runtime
                 }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "操作未提交，请稍后重试。"); }
                 if (result == null) return GameResult.Reject(GameCodes.Unavailable, "模块未提供结果。");
-                if (result.Code != GameCodes.Ok) { candidate = original; result.Events.Clear(); }
-                else candidate.Revision = checked(original.Revision + 1);
+                if (result.Code != GameCodes.Ok) { candidate = store.Load(command.WorldId) ?? throw new InvalidOperationException("World missing"); result.Events.Clear(); }
+                else candidate.Revision = checked(expectedRevision + 1);
                 result.RequestId = command.RequestId; result.WorldId = command.WorldId; result.WorldRevision = candidate.Revision;
                 receipt = new CommandReceipt { WorldId = command.WorldId, PlayerId = actor.PlayerId, RequestId = command.RequestId,
                     Fingerprint = fingerprint, ResultJson = JsonConvert.SerializeObject(result) };
                 CommitResult committed;
-                try { committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = original.Revision, Candidate = candidate, Receipt = receipt }); }
+                try { committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = expectedRevision, Candidate = candidate, Receipt = receipt }); }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "保存失败，操作未确认。"); }
                 if (committed.Code != GameCodes.Ok) return GameResult.Reject(committed.Code, "操作未提交。");
                 if (committed.Replayed) return Replay(committed.Receipt, fingerprint);
@@ -155,23 +158,29 @@ namespace Dwsg.Runtime
         }
         public void Tick(string worldId)
         {
-            lock (gates.GetOrAdd(worldId, _ => new object()))
-            {
-                var state = store.Load(worldId);
-                if (state == null) return;
-                foreach (var tick in ticks)
-                    foreach (var command in tick.CollectDueCommands(state.Clone(), utcNow()))
-                        Execute(AuthenticatedActor.System(worldId), command);
-            }
+            var started = Stopwatch.GetTimestamp();
+            var state = store.Load(worldId);
+            if (state == null) return;
+            var loaded = Stopwatch.GetTimestamp();
+            // Collectors inspect one detached world; each command takes the world gate for its commit.
+            foreach (var tick in ticks)
+                foreach (var command in tick.CollectDueCommands(state, utcNow()))
+                    Execute(AuthenticatedActor.System(worldId), command);
+            if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1" && Stopwatch.GetElapsedTime(started).TotalMilliseconds >= 100)
+                Console.Error.WriteLine($"DWSG_LATENCY tick load_ms={Stopwatch.GetElapsedTime(started, loaded).TotalMilliseconds:F1} modules_ms={Stopwatch.GetElapsedTime(loaded).TotalMilliseconds:F1}");
         }
         public WorldSnapshot Snapshot(AuthenticatedActor actor, IWorldProjection projection)
         {
-            lock (gates.GetOrAdd(actor.WorldId, _ => new object()))
-            {
-                if (!authorize(actor)) throw new UnauthorizedAccessException();
-                var state = store.Load(actor.WorldId) ?? throw new InvalidOperationException("World missing");
-                return projection.Build(state, actor, utcNow());
-            }
+            var started = Stopwatch.GetTimestamp();
+            if (!authorize(actor)) throw new UnauthorizedAccessException();
+            // SqliteWorldStore loads a detached, transactionally committed state under its own gate.
+            // Readers need not wait for a candidate command to finish computing under the world gate.
+            var state = store.Load(actor.WorldId) ?? throw new InvalidOperationException("World missing");
+            var loaded = Stopwatch.GetTimestamp();
+            var snapshot = projection.Build(state, actor, utcNow());
+            if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1")
+                Console.Error.WriteLine($"DWSG_LATENCY snapshot load_ms={Stopwatch.GetElapsedTime(started, loaded).TotalMilliseconds:F1} build_ms={Stopwatch.GetElapsedTime(loaded).TotalMilliseconds:F1}");
+            return snapshot;
         }
     }
 }

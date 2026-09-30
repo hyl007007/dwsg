@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Dwsg.Runtime;
 using Dwsg.Shared;
 using Newtonsoft.Json.Linq;
@@ -110,20 +111,30 @@ public sealed class GameSessions
     }
     public async Task<JObject> CommandAsync(string connectionId, JObject input, CancellationToken cancellation)
     {
+        var started = Stopwatch.GetTimestamp();
         var session = Require(connectionId);
         var verified = await ValidateAsync(session, true, cancellation);
         if (verified.Code != GameCodes.Ok) return Reply(verified);
+        var authenticated = Stopwatch.GetTimestamp();
         var command = input.ToObject<GameCommand>();
         var result = Runtime.Execute(session.Actor, command);
         if (!IsCurrent(session)) return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新连接。"));
-        return SnapshotReply(session, result, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0);
+        var executed = Stopwatch.GetTimestamp();
+        var response = SnapshotReply(session, result, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0);
+        if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1")
+            Console.Error.WriteLine($"DWSG_LATENCY command auth_ms={Stopwatch.GetElapsedTime(started, authenticated).TotalMilliseconds:F1} execute_ms={Stopwatch.GetElapsedTime(authenticated, executed).TotalMilliseconds:F1} snapshot_ms={Stopwatch.GetElapsedTime(executed).TotalMilliseconds:F1}");
+        return response;
     }
     public async Task<JObject> PollAsync(string connectionId, JObject input, CancellationToken cancellation)
     {
+        var started = Stopwatch.GetTimestamp();
         var session = Require(connectionId);
         var verified = await ValidateAsync(session, true, cancellation);
         if (verified.Code != GameCodes.Ok) return Reply(verified);
+        var authenticated = Stopwatch.GetTimestamp();
         var response = SnapshotReply(session, verified, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0);
+        if (Environment.GetEnvironmentVariable("DWSG_LATENCY_TRACE") == "1")
+            Console.Error.WriteLine($"DWSG_LATENCY poll auth_ms={Stopwatch.GetElapsedTime(started, authenticated).TotalMilliseconds:F1} snapshot_ms={Stopwatch.GetElapsedTime(authenticated).TotalMilliseconds:F1}");
         response["sessionExpiresUtcMs"] = Interlocked.Read(ref session.ExpiresUtcMs);
         return response;
     }
@@ -167,10 +178,12 @@ public sealed class GameSessions
         }
         if (!IsCurrent(session))
             return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新登录。"));
-        var visibleMessages = new HashSet<string>((snapshot.PublicWorld["chatMessages"] as JArray ?? new JArray())
-            .OfType<JObject>().Select(message => message.Value<string>("messageId")), StringComparer.Ordinal);
         lock (session.StreamGate)
         {
+            if (session.LastSnapshot != null && snapshot.WorldRevision < session.LastSnapshot.WorldRevision)
+                snapshot = session.LastSnapshot;
+            var visibleMessages = new HashSet<string>((snapshot.PublicWorld["chatMessages"] as JArray ?? new JArray())
+                .OfType<JObject>().Select(message => message.Value<string>("messageId")), StringComparer.Ordinal);
             var wire = snapshot;
             var delta = session.LastSnapshot != null && sinceRevision == session.LastSnapshot.WorldRevision;
             if (delta) wire = new WorldSnapshot { WorldId = snapshot.WorldId, PlayerId = snapshot.PlayerId,
