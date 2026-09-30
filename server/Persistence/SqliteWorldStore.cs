@@ -196,28 +196,35 @@ public sealed class SqliteWorldStore : IWorldStore, IWorldRevisionStore, IDispos
                 if (revision != commit.ExpectedRevision ||
                     commit.Candidate.Revision != checked(revision + (result.Code == GameCodes.Ok ? 1 : 0)))
                     return Failure(GameCodes.Conflict);
-                if (commit.Candidate.Revision == revision &&
-                    (commit.Binding != null || !JToken.DeepEquals(JObject.Parse(oldData), commit.Candidate.Data) ||
-                     !JToken.DeepEquals(JObject.Parse(oldMaps), commit.Candidate.EntityMappings)))
-                    return Failure(GameCodes.Conflict);
-
-                var previousPlayers = (JObject)JObject.Parse(oldMaps)["players"]!;
-                var nextPlayers = (JObject)commit.Candidate.EntityMappings["players"]!;
-                foreach (var mapping in previousPlayers.Properties())
-                    if (!JToken.DeepEquals(mapping.Value, nextPlayers[mapping.Name])) return Failure(GameCodes.Conflict);
-
-                if (commit.Binding != null)
+                if (commit.Candidate.Revision == revision)
                 {
-                    if (previousPlayers.Property(commit.Binding.PlayerId) != null ||
-                        commit.Binding.LegacyPlayerIndex < ((JArray)JObject.Parse(oldData)["玩家列表"]!).Count)
+                    // A rejected command persists its receipt, not another copy of the world.
+                    // Normal store output compares directly; imported formatting retains structural validation.
+                    if (commit.Binding != null ||
+                        (oldData != data && !JToken.DeepEquals(JObject.Parse(oldData), commit.Candidate.Data)) ||
+                        (oldMaps != maps && !JToken.DeepEquals(JObject.Parse(oldMaps), commit.Candidate.EntityMappings)))
                         return Failure(GameCodes.Conflict);
-                    InsertBinding(commit.Candidate, commit.Binding, transaction);
                 }
+                else
+                {
+                    var previousPlayers = (JObject)JObject.Parse(oldMaps)["players"]!;
+                    var nextPlayers = (JObject)commit.Candidate.EntityMappings["players"]!;
+                    foreach (var mapping in previousPlayers.Properties())
+                        if (!JToken.DeepEquals(mapping.Value, nextPlayers[mapping.Name])) return Failure(GameCodes.Conflict);
 
-                using var update = Command("UPDATE worlds SET revision=$next,data_json=$data,mappings_json=$maps WHERE world_id=$world AND revision=$expected",
-                    transaction, ("$next", commit.Candidate.Revision), ("$data", data), ("$maps", maps),
-                    ("$world", receipt.WorldId), ("$expected", revision));
-                if (update.ExecuteNonQuery() != 1) return Failure(GameCodes.Conflict);
+                    if (commit.Binding != null)
+                    {
+                        if (previousPlayers.Property(commit.Binding.PlayerId) != null ||
+                            commit.Binding.LegacyPlayerIndex < ((JArray)JObject.Parse(oldData)["玩家列表"]!).Count)
+                            return Failure(GameCodes.Conflict);
+                        InsertBinding(commit.Candidate, commit.Binding, transaction);
+                    }
+
+                    using var update = Command("UPDATE worlds SET revision=$next,data_json=$data,mappings_json=$maps WHERE world_id=$world AND revision=$expected",
+                        transaction, ("$next", commit.Candidate.Revision), ("$data", data), ("$maps", maps),
+                        ("$world", receipt.WorldId), ("$expected", revision));
+                    if (update.ExecuteNonQuery() != 1) return Failure(GameCodes.Conflict);
+                }
                 using var insert = Command("INSERT INTO receipts(world_id,player_id,request_id,fingerprint,result_json) VALUES($world,$player,$request,$fingerprint,$result)",
                     transaction, ("$world", receipt.WorldId), ("$player", receipt.PlayerId), ("$request", receipt.RequestId),
                     ("$fingerprint", receipt.Fingerprint), ("$result", receipt.ResultJson));

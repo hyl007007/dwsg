@@ -25,6 +25,8 @@ namespace Dwsg.Server.Modules.Combat
                 return GameResult.Reject(GameCodes.Forbidden, "战斗推进只能由服务器执行");
             try
             {
+                // The AI scheduler owns its candidate copy; do not clone the world twice.
+                if (command.Type == OriginalAiTick) return ExecuteOriginalAi(candidate, context, command);
                 WorldState working = candidate.Clone();
                 if (command.Type != "combat.bandit.dispatch" && command.Type != "combat.city.dispatch")
                 {
@@ -32,8 +34,7 @@ namespace Dwsg.Server.Modules.Combat
                     if (requested != null && !command.Type.StartsWith("combat." + requested.Kind + ".", StringComparison.Ordinal))
                         return GameResult.Reject(GameCodes.InvalidArgument, "战场类型不匹配");
                 }
-                GameResult result = command.Type == OriginalAiTick ? ExecuteOriginalAi(working, context, command)
-                    : command.Type == PeaceGarrisonTick ? TickPeaceGarrison(working, context, command.Payload)
+                GameResult result = command.Type == PeaceGarrisonTick ? TickPeaceGarrison(working, context, command.Payload)
                     : command.Type == "combat.city.peace.dispatch" ? DispatchPeaceGarrison(working, context, command.Payload)
                     : command.Type.EndsWith(".strategy", StringComparison.Ordinal) ? SetStrategy(working, context, command.Payload)
                     : command.Type == ResourceTick ? TickResources(working, context, command.Payload)

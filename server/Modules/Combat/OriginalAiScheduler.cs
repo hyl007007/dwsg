@@ -34,21 +34,28 @@ namespace Dwsg.Server.Modules.Combat
             if (!Keys(command.Payload, "tickUtcMs", "initialize") || command.Payload["tickUtcMs"].Type != JTokenType.Integer
                 || command.Payload["initialize"].Type != JTokenType.Boolean)
                 return GameResult.Reject(GameCodes.InvalidArgument, "原AI排期参数无效");
-            WorldState world = candidate.Clone();
+            WorldState world = candidate;
             string reference = FirstAiReference(world);
             if (reference == null) return GameResult.Reject(GameCodes.Conflict, "原AI等待本世界首个真人角色");
             JObject schedule = world.Data["原AI推城"] as JObject;
             JArray nations = (JArray)world.Data["国家列表"];
             bool initialize = schedule == null || ((JArray)schedule["各国下次出手UtcMs"]).Count != nations.Count;
             long now = context.ServerUtcMs / 1000 * 1000, expected = initialize ? now : schedule.Value<long>("NextTickUtcMs");
-            if (command.Payload.Value<bool>("initialize") != initialize || command.Payload.Value<long>("tickUtcMs") != expected
+            long requested = command.Payload.Value<long>("tickUtcMs");
+            // Initialization may wait behind another durable command and cross a second.
+            // Existing schedules still require their exact deadline; future work stays rejected.
+            if (command.Payload.Value<bool>("initialize") != initialize || requested < 0
+                || (initialize ? requested > now : requested != expected)
                 || expected > context.ServerUtcMs)
                 return GameResult.Reject(GameCodes.Conflict, "原AI排期未到或已提交");
+            if (schedule != null && schedule.Value<string>("ReferencePlayerId") != reference)
+                return GameResult.Reject(GameCodes.Conflict, "原AI首个真人参考映射已改变");
+            world = candidate.Clone();
+            schedule = world.Data["原AI推城"] as JObject;
+            nations = (JArray)world.Data["国家列表"];
             if (schedule == null)
                 world.Data["原AI推城"] = schedule = new JObject { ["ReferencePlayerId"] = reference,
                     ["RandomState"] = Seed(), ["上次出手UtcMs"] = 0L, ["各国下次出手UtcMs"] = new JArray(), ["军情"] = new JObject() };
-            if (schedule.Value<string>("ReferencePlayerId") != reference)
-                return GameResult.Reject(GameCodes.Conflict, "原AI首个真人参考映射已改变");
             var random = new CombatRandom(schedule["RandomState"].ToObject<ulong>());
             JArray deadlines = (JArray)schedule["各国下次出手UtcMs"];
             while (deadlines.Count > nations.Count) deadlines.RemoveAt(deadlines.Count - 1);

@@ -34,8 +34,9 @@ namespace Dwsg.Network
             return address.IsIPv6LinkLocal || (bytes[0] & 0xfe) == 0xfc;
         }
 
-        public static IEnumerator Post(Uri uri, byte[] body, string contentType, string connectionId, Action<Reply> completed)
+        public static IEnumerator Post(Uri uri, byte[] body, string contentType, string connectionId, Action<Reply> completed, Func<bool> interrupt = null)
         {
+            if (interrupt != null && interrupt()) { completed(new Reply()); yield break; }
 #if !UNITY_WEBGL || UNITY_EDITOR
             if (IsLocalServer(uri))
             {
@@ -44,7 +45,12 @@ namespace Dwsg.Network
                     try
                     {
                         var task = SendDirect(uri, body, contentType, connectionId, cancellation.Token);
-                        while (!task.IsCompleted) yield return null;
+                        while (!task.IsCompleted)
+                        {
+                            if (interrupt != null && interrupt()) { completed(new Reply()); yield break; }
+                            yield return null;
+                        }
+                        if (interrupt != null && interrupt()) { completed(new Reply()); yield break; }
                         completed(task.Status == TaskStatus.RanToCompletion ? task.Result : new Reply());
                     }
                     finally { cancellation.Cancel(); }
@@ -59,7 +65,14 @@ namespace Dwsg.Network
                 request.SetRequestHeader("Content-Type", contentType);
                 if (connectionId != null) request.SetRequestHeader("X-Dwsg-Connection", connectionId);
                 request.timeout = 15;
-                yield return request.SendWebRequest();
+                var operation = request.SendWebRequest();
+                while (!operation.isDone)
+                {
+                    if (interrupt != null && interrupt())
+                    { request.Abort(); completed(new Reply()); yield break; }
+                    yield return null;
+                }
+                if (interrupt != null && interrupt()) { completed(new Reply()); yield break; }
                 completed(new Reply { Success = request.result == UnityWebRequest.Result.Success, Text = request.downloadHandler.text });
             }
         }

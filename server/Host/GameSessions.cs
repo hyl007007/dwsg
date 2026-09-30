@@ -16,6 +16,8 @@ public sealed class GameSession
     public readonly Queue<JObject> Events = new();
     public long Sequence;
     public WorldSnapshot LastSnapshot;
+    public long SnapshotSequence;
+    public readonly Queue<KeyValuePair<long, WorldSnapshot>> RecentSnapshots = new();
 }
 
 public sealed class GameSessions
@@ -122,14 +124,14 @@ public sealed class GameSessions
         var command = input.ToObject<GameCommand>();
         var result = Runtime.Execute(session.Actor, command);
         if (!IsCurrent(session)) return Reply(GameResult.Reject(session.InvalidCode ?? GameCodes.Unauthenticated, "连接已失效，请重新连接。"));
-        return SnapshotReply(session, result, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0);
+        return SnapshotReply(session, result, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0, input.Value<long?>("sinceSnapshot") ?? 0);
     }
     public async Task<JObject> PollAsync(string connectionId, JObject input, CancellationToken cancellation)
     {
         var session = Require(connectionId);
         var verified = await ValidateAsync(session, true, cancellation);
         if (verified.Code != GameCodes.Ok) return Reply(verified);
-        var response = SnapshotReply(session, verified, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0);
+        var response = SnapshotReply(session, verified, input.Value<long?>("sinceRevision") ?? -1, input.Value<long?>("afterSequence") ?? 0, input.Value<long?>("sinceSnapshot") ?? 0);
         response["sessionExpiresUtcMs"] = Interlocked.Read(ref session.ExpiresUtcMs);
         return response;
     }
@@ -160,7 +162,7 @@ public sealed class GameSessions
                 }
             }
     }
-    private JObject SnapshotReply(GameSession session, GameResult result, long sinceRevision, long afterSequence)
+    private JObject SnapshotReply(GameSession session, GameResult result, long sinceRevision, long afterSequence, long sinceSnapshot = 0)
     {
         long sequenceLimit;
         lock (session.StreamGate) sequenceLimit = session.Sequence;
@@ -178,14 +180,18 @@ public sealed class GameSessions
         lock (session.StreamGate)
         {
             var wire = snapshot;
-            var delta = session.LastSnapshot != null && sinceRevision == session.LastSnapshot.WorldRevision;
+            var previous = sinceSnapshot > 0
+                ? session.RecentSnapshots.FirstOrDefault(entry => entry.Key == sinceSnapshot).Value
+                : session.LastSnapshot;
+            var delta = previous != null && sinceRevision == previous.WorldRevision;
             if (delta) wire = new WorldSnapshot { WorldId = snapshot.WorldId, PlayerId = snapshot.PlayerId,
                 WorldRevision = snapshot.WorldRevision, ServerUtcMs = snapshot.ServerUtcMs,
-                PublicWorld = Changed(session.LastSnapshot.PublicWorld, snapshot.PublicWorld),
-                PrivatePlayer = Changed(session.LastSnapshot.PrivatePlayer, snapshot.PrivatePlayer) };
+                PublicWorld = Changed(previous.PublicWorld, snapshot.PublicWorld),
+                PrivatePlayer = Changed(previous.PrivatePlayer, snapshot.PrivatePlayer) };
             var response = Reply(result, wire);
             response["snapshotDelta"] = delta;
             if (delta) response["baseRevision"] = sinceRevision;
+            if (delta && sinceSnapshot > 0) response["baseSnapshotId"] = sinceSnapshot;
             response["events"] = new JArray(session.Events.Where(e => e.Value<long>("sequence") > afterSequence && e.Value<long>("sequence") <= sequenceLimit &&
                 (e["event"].Value<string>("type") != "chat.message" || visibleMessages.Contains(e["event"]["data"]?.Value<string>("messageId"))))
                 .Select(e => e.DeepClone()));
@@ -194,6 +200,12 @@ public sealed class GameSessions
             response["sessionExpiresUtcMs"] = Interlocked.Read(ref session.ExpiresUtcMs);
             response["eventsReset"] = session.Events.Count > 0 && afterSequence < session.Events.Peek().Value<long>("sequence") - 1;
             session.LastSnapshot = snapshot;
+            var snapshotId = ++session.SnapshotSequence;
+            response["snapshotId"] = snapshotId;
+            // One acknowledged reply plus one abandoned poll, bounded independently of session age.
+            // If concurrent requests evict a base, returning a full snapshot remains safe.
+            session.RecentSnapshots.Enqueue(new KeyValuePair<long, WorldSnapshot>(snapshotId, snapshot));
+            while (session.RecentSnapshots.Count > 2) session.RecentSnapshots.Dequeue();
             return response;
         }
     }

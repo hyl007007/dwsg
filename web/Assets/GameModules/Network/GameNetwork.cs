@@ -17,6 +17,7 @@ namespace Dwsg.Network
         private static string connectionId;
         private static JObject proof;
         private static long sequence;
+        private static long snapshotId;
         private static long sessionExpires;
         private static bool connecting, workerRunning, reconnect, forceFull;
         private static readonly Queue<PendingCommand> pending = new Queue<PendingCommand>();
@@ -84,7 +85,7 @@ namespace Dwsg.Network
                 if (result.Code == GameCodes.Ok || result.Code == GameCodes.RoleRequired)
                 {
                     connectionId = response.Value<string>("connectionId");
-                    sequence = 0; forceFull = false; reconnect = false;
+                    sequence = 0; snapshotId = 0; forceFull = false; reconnect = false;
                     ApplyResponse(response);
                 }
                 else if (result.Code == GameCodes.Unauthenticated || result.Code == GameCodes.SessionReplaced)
@@ -115,12 +116,22 @@ namespace Dwsg.Network
                     }
                     var input = active == null ? new JObject() : JObject.FromObject(active.Command);
                     input["sinceRevision"] = forceFull ? -1 : CurrentSnapshot.WorldRevision;
+                    input["sinceSnapshot"] = forceFull ? 0 : snapshotId;
                     input["afterSequence"] = sequence;
                     JObject response = null;
                     var sentConnection = connectionId;
-                    yield return Fetch(active == null ? "poll" : "command", input, sentConnection, value => response = value);
+                    bool interrupted = false;
+                    Func<bool> interruptPoll = active == null ? (Func<bool>)(() => interrupted = pending.Count > 0) : null;
+                    yield return Fetch(active == null ? "poll" : "command", input, sentConnection, value => response = value, interruptPoll);
                     // Responses from a connection superseded locally cannot overwrite its replacement.
                     if (sentConnection != connectionId) continue;
+                    if (interrupted)
+                    {
+                        // New servers retain the exact acknowledged base across an abandoned poll.
+                        // Older servers only know the last revision and need a full recovery reply.
+                        if (snapshotId == 0) forceFull = true;
+                        continue;
+                    }
                     var result = ReadResult(response);
                     if (result.Code == GameCodes.Unavailable)
                     {
@@ -148,7 +159,10 @@ namespace Dwsg.Network
                     }
                     if (active != null) { pending.Dequeue(); active.Completed(result); }
                     var delay = Math.Max(.1, Math.Min(.5, (sessionExpires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 3000.0));
-                    yield return new WaitForSecondsRealtime((float)delay);
+                    var nextPoll = Time.realtimeSinceStartup + (float)delay;
+                    // Idle polling is throttled; queued player actions wake the worker next frame.
+                    while (pending.Count == 0 && Connected && Time.realtimeSinceStartup < nextPoll)
+                        yield return null;
                 }
             }
             finally { workerRunning = false; }
@@ -161,11 +175,13 @@ namespace Dwsg.Network
             if (response.Value<bool?>("snapshotDelta") == true)
             {
                 if (CurrentSnapshot == null || CurrentSnapshot.WorldId != snapshot.WorldId || CurrentSnapshot.PlayerId != snapshot.PlayerId ||
-                    CurrentSnapshot.WorldRevision != response.Value<long>("baseRevision")) { forceFull = true; return false; }
+                    CurrentSnapshot.WorldRevision != response.Value<long>("baseRevision") ||
+                    response["baseSnapshotId"] != null && snapshotId != response.Value<long>("baseSnapshotId")) { forceFull = true; return false; }
                 Merge(CurrentSnapshot.PublicWorld, snapshot.PublicWorld); Merge(CurrentSnapshot.PrivatePlayer, snapshot.PrivatePlayer);
                 CurrentSnapshot.WorldRevision = snapshot.WorldRevision; CurrentSnapshot.ServerUtcMs = snapshot.ServerUtcMs;
             }
             else CurrentSnapshot = snapshot;
+            snapshotId = response.Value<long?>("snapshotId") ?? 0;
             forceFull = false;
             LegacySnapshotAdapter.Apply(CurrentSnapshot, snapshot.PublicWorld, snapshot.PrivatePlayer);
             Notify(SnapshotReceived, CurrentSnapshot);
@@ -196,13 +212,13 @@ namespace Dwsg.Network
             foreach (Action<T> subscriber in subscribers.GetInvocationList())
                 try { subscriber(value); } catch (Exception ex) { Debug.LogError("联机视图更新失败: " + ex.GetType().Name); }
         }
-        private static IEnumerator Fetch(string route, JObject body, string id, Action<JObject> completed)
+        private static IEnumerator Fetch(string route, JObject body, string id, Action<JObject> completed, Func<bool> interrupt = null)
         {
             Uri uri;
             if (!Uri.TryCreate((Endpoint ?? "").TrimEnd('/') + "/" + route, UriKind.Absolute, out uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
             { completed(null); yield break; }
             GameHttp.Reply reply = null;
-            yield return GameHttp.Post(uri, Encoding.UTF8.GetBytes(body.ToString(Formatting.None)), "application/json", id, value => reply = value);
+            yield return GameHttp.Post(uri, Encoding.UTF8.GetBytes(body.ToString(Formatting.None)), "application/json", id, value => reply = value, interrupt);
             JObject response = null;
             if (reply != null && reply.Success)
                 try { response = JObject.Parse(reply.Text); } catch (JsonException) { }
