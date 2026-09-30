@@ -1,5 +1,6 @@
 using System.Text;
 using System.Globalization;
+using System.IO.Compression;
 using Dwsg.Host;
 using Dwsg.Persistence;
 using Dwsg.Runtime;
@@ -11,6 +12,7 @@ using Dwsg.Server.Chat;
 using Dwsg.Server.Modules.Combat;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var database = Environment.GetEnvironmentVariable("DWSG_WORLD_DB") ?? throw new InvalidOperationException("DWSG_WORLD_DB is required");
 var worldId = Environment.GetEnvironmentVariable("DWSG_WORLD_ID") ?? "main";
@@ -31,6 +33,8 @@ if (configuredMaxOnlinePlayers != null &&
     throw new InvalidOperationException("DWSG_MAX_ONLINE_PLAYERS must be a positive Int32.");
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 65536);
+builder.Services.AddResponseCompression(options => options.Providers.Add<GzipCompressionProvider>());
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options => { options.SingleLine = true; options.TimestampFormat = "HH:mm:ss "; });
 var authUrl = Environment.GetEnvironmentVariable("DWSG_AUTH_URL") ?? throw new InvalidOperationException("DWSG_AUTH_URL is required");
@@ -84,6 +88,7 @@ runtime.Register(new Dwsg.Server.Progress.TrainingModule());
 runtime.Register(new Dwsg.Server.Auxiliary.AuxiliaryModule());
 runtime.Committed += sessions.Publish;
 var app = builder.Build();
+app.UseWhen(context => context.Request.Path == "/connect", branch => branch.UseResponseCompression());
 app.MapGet("/health", () => Results.Json(new { protocolVersion = 1, worldId }));
 app.MapPost("/connect", ConnectRequest);
 app.MapPost("/command", CommandRequest);
