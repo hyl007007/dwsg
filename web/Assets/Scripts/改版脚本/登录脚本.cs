@@ -104,6 +104,7 @@ public class 登录脚本 : MonoBehaviour
                 yield break;
             }
             string 地址 = Environment.GetEnvironmentVariable("DWSG_AUTH_URL");
+            if (string.IsNullOrEmpty(地址)) 地址 = PlayerPrefs.GetString("DWSG_AUTH_URL", "");
             if (string.IsNullOrEmpty(地址)) 地址 = 服务器地址;
             Uri 服务器;
             if (!Uri.TryCreate(地址, UriKind.Absolute, out 服务器) ||
