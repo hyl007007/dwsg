@@ -148,7 +148,9 @@ namespace Dwsg.Network
                     }
                     if (active != null) { pending.Dequeue(); active.Completed(result); }
                     var delay = Math.Max(.1, Math.Min(.5, (sessionExpires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 3000.0));
-                    yield return new WaitForSecondsRealtime((float)delay);
+                    var nextPollAt = Time.realtimeSinceStartup + (float)delay;
+                    while (pending.Count == 0 && Time.realtimeSinceStartup < nextPollAt)
+                        yield return null;
                 }
             }
             finally { workerRunning = false; }
