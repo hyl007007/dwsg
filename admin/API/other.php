@@ -1,7 +1,7 @@
 <?php
 
 header("content-type:text/html; charset=utf-8");
-date_default_timezone_set('PRC');
+date_default_timezone_set('Asia/Shanghai');
 
 include 'include/config.php';
 include_once 'include/core.im.php';

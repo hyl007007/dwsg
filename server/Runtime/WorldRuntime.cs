@@ -17,6 +17,8 @@ namespace Dwsg.Runtime
         private readonly Action<WorldState, long> prepareTimedCommit;
         private readonly Dictionary<string, IGameModule> modules = new Dictionary<string, IGameModule>(StringComparer.Ordinal);
         private readonly List<IGameTickModule> ticks = new List<IGameTickModule>();
+        // Kept private: ordinary modules receive a copy, audited read-only collectors share it.
+        private readonly ConcurrentDictionary<string, WorldState> snapshots = new ConcurrentDictionary<string, WorldState>();
         // Five-player worlds serialize candidate evaluation and durable commit under one world gate.
         private readonly ConcurrentDictionary<string, object> gates = new ConcurrentDictionary<string, object>();
         public event Action<GameResult> Committed;
@@ -52,11 +54,14 @@ namespace Dwsg.Runtime
                 var fingerprint = CommandFingerprint.Calculate(command);
                 var receipt = store.FindReceipt(command.WorldId, actor.PlayerId, command.RequestId);
                 if (receipt != null) return Replay(receipt, fingerprint);
-                var original = store.Load(command.WorldId);
+                var original = ReadState(command.WorldId);
                 if (original == null) return GameResult.Reject(GameCodes.NotFound, "世界不存在。");
                 if (!modules.TryGetValue(command.Type, out var module))
                     return GameResult.Reject(GameCodes.InvalidArgument, "未知命令。");
-                var candidate = original.Clone();
+                var candidate = module is ICopyingGameModule
+                    ? new WorldState { WorldId = original.WorldId, Revision = original.Revision,
+                        Data = original.Data, EntityMappings = original.EntityMappings }
+                    : original.Clone();
                 GameResult result;
                 try
                 {
@@ -76,10 +81,17 @@ namespace Dwsg.Runtime
                 receipt = new CommandReceipt { WorldId = command.WorldId, PlayerId = actor.PlayerId, RequestId = command.RequestId,
                     Fingerprint = fingerprint, ResultJson = JsonConvert.SerializeObject(result) };
                 CommitResult committed;
-                try { committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = original.Revision, Candidate = candidate, Receipt = receipt }); }
+                WorldState savedSnapshot;
+                try
+                {
+                    // Own a private copy before committing: results/modules may retain candidate references.
+                    savedSnapshot = result.Code == GameCodes.Ok && store is IWorldRevisionStore ? candidate.Clone() : null;
+                    committed = store.Commit(new WorldCommit { Actor = actor, ExpectedRevision = original.Revision, Candidate = candidate, Receipt = receipt });
+                }
                 catch (Exception) { return GameResult.Reject(GameCodes.Unavailable, "保存失败，操作未确认。"); }
                 if (committed.Code != GameCodes.Ok) return GameResult.Reject(committed.Code, "操作未提交。");
                 if (committed.Replayed) return Replay(committed.Receipt, fingerprint);
+                if (savedSnapshot != null) snapshots[command.WorldId] = savedSnapshot;
                 // Publication failures cannot turn an already durable command into an apparent rollback.
                 var subscribers = Committed;
                 if (subscribers != null)
@@ -106,7 +118,7 @@ namespace Dwsg.Runtime
                     return GameResult.Reject(GameCodes.RoleRequired, "请选择国家并创建角色。");
                 if (string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128)
                     return GameResult.Reject(GameCodes.InvalidArgument, "请求ID无效。");
-                var original = store.Load(worldId);
+                var original = ReadState(worldId);
                 if (original == null) return GameResult.Reject(GameCodes.NotFound, "世界不存在。");
                 var candidate = original.Clone();
                 var createdUtcMs = utcNow();
@@ -133,45 +145,73 @@ namespace Dwsg.Runtime
                     Fingerprint = CommandFingerprint.Calculate(command), ResultJson = JsonConvert.SerializeObject(result) };
                 var actor = new AuthenticatedActor(accountId, playerId, worldId, connectionId);
                 CommitResult committed;
-                try { committed = store.Commit(new WorldCommit { Actor = actor, Candidate = candidate,
-                    ExpectedRevision = original.Revision, Receipt = receipt, Binding = binding }); }
+                WorldState savedSnapshot;
+                try
+                {
+                    savedSnapshot = store is IWorldRevisionStore ? candidate.Clone() : null;
+                    committed = store.Commit(new WorldCommit { Actor = actor, Candidate = candidate,
+                        ExpectedRevision = original.Revision, Receipt = receipt, Binding = binding });
+                }
                 catch (Exception)
                 {
                     binding = store.ResolveRole(worldId, accountId);
                     return binding != null ? GameResult.Success() : GameResult.Reject(GameCodes.Unavailable, "角色保存未确认，请重试。");
                 }
-                if (committed.Code == GameCodes.Ok) return result;
+                if (committed.Code == GameCodes.Ok)
+                {
+                    if (!committed.Replayed && savedSnapshot != null) snapshots[worldId] = savedSnapshot;
+                    return result;
+                }
                 binding = store.ResolveRole(worldId, accountId);
                 return binding != null ? GameResult.Success() : GameResult.Reject(committed.Code, "角色创建未提交。");
             }
         }
         public WorldSnapshot Preview(string worldId, IWorldProjection projection)
         {
-            lock (gates.GetOrAdd(worldId, _ => new object()))
-            {
-                var state = store.Load(worldId) ?? throw new InvalidOperationException("World missing");
-                return projection.Build(state, null, utcNow());
-            }
+            var state = ReadSnapshotState(worldId) ?? throw new InvalidOperationException("World missing");
+            return projection.Build(projection is IReadOnlyWorldProjection ? state : state.Clone(), null, utcNow());
         }
         public void Tick(string worldId)
         {
+            var commands = new List<GameCommand>();
             lock (gates.GetOrAdd(worldId, _ => new object()))
             {
-                var state = store.Load(worldId);
+                var state = ReadState(worldId);
                 if (state == null) return;
                 foreach (var tick in ticks)
-                    foreach (var command in tick.CollectDueCommands(state.Clone(), utcNow()))
-                        Execute(AuthenticatedActor.System(worldId), command);
+                    foreach (var command in tick.CollectDueCommands(tick is IReadOnlyGameTickModule ? state : state.Clone(), utcNow()))
+                        commands.Add(command);
             }
+            // A batch of due work must not hold the world gate across all its transactions.
+            // Each Execute revalidates the collected command against the latest committed state.
+            foreach (var command in commands) Execute(AuthenticatedActor.System(worldId), command);
         }
         public WorldSnapshot Snapshot(AuthenticatedActor actor, IWorldProjection projection)
         {
-            lock (gates.GetOrAdd(actor.WorldId, _ => new object()))
-            {
-                if (!authorize(actor)) throw new UnauthorizedAccessException();
-                var state = store.Load(actor.WorldId) ?? throw new InvalidOperationException("World missing");
-                return projection.Build(state, actor, utcNow());
-            }
+            if (!authorize(actor)) throw new UnauthorizedAccessException();
+            var state = ReadSnapshotState(actor.WorldId) ?? throw new InvalidOperationException("World missing");
+            // The private snapshot is immutable. Serialization/projection must not queue writers.
+            return projection.Build(projection is IReadOnlyWorldProjection ? state : state.Clone(), actor, utcNow());
+        }
+        private WorldState ReadSnapshotState(string worldId)
+        {
+            // Readers can use the last durable immutable snapshot while a writer evaluates its
+            // private candidate. Never expose that candidate, or skip external revision checks.
+            if (store is IWorldRevisionStore revisions && snapshots.TryGetValue(worldId, out var cached) &&
+                revisions.ReadRevision(worldId) == cached.Revision) return cached;
+            lock (gates.GetOrAdd(worldId, _ => new object())) return ReadState(worldId);
+        }
+        // Call only under the world's gate. Revision is checked even for external store commits.
+        private WorldState ReadState(string worldId)
+        {
+            if (!(store is IWorldRevisionStore revisions)) return store.Load(worldId);
+            var revision = revisions.ReadRevision(worldId);
+            if (revision == null) { snapshots.TryRemove(worldId, out _); return null; }
+            if (snapshots.TryGetValue(worldId, out var state) && state.Revision == revision) return state;
+            state = store.Load(worldId);
+            if (state != null) snapshots[worldId] = state;
+            else snapshots.TryRemove(worldId, out _);
+            return state;
         }
     }
 }

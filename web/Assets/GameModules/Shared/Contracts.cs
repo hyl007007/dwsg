@@ -83,15 +83,32 @@ namespace Dwsg.Shared
         GameResult Execute(WorldState candidate, CommandContext context, GameCommand command);
     }
 
+    // Execute clones its input trees before editing and publishes replacements on success.
+    // It must never mutate the supplied Data or EntityMappings trees in place.
+    public interface ICopyingGameModule : IGameModule { }
+
     public interface IGameTickModule
     {
         IEnumerable<GameCommand> CollectDueCommands(WorldState state, long serverUtcMs);
+    }
+
+    // Opt-in: collectors must only read the supplied snapshot, including deferred enumeration.
+    // Commands still execute against an isolated candidate and commit through IWorldStore.
+    public interface IReadOnlyGameTickModule : IGameTickModule { }
+
+    public interface IWorldRevisionStore
+    {
+        // Every committed world change advances the revision. Null means the world is absent.
+        long? ReadRevision(string worldId);
     }
 
     public interface IWorldProjection
     {
         WorldSnapshot Build(WorldState state, AuthenticatedActor actor, long serverUtcMs);
     }
+
+    // Opt-in: Build never mutates its input or returns references into that input.
+    public interface IReadOnlyWorldProjection : IWorldProjection { }
 
     public delegate GameResult CreatePlayer(WorldState candidate, string nickname, string nation,
         long serverUtcMs, out int legacyPlayerIndex);

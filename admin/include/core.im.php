@@ -1,6 +1,6 @@
 <?php
 
-date_default_timezone_set('PRC');
+date_default_timezone_set('Asia/Shanghai');
 define('APP_DEBUG',0);//SQL输出
 define('WEB_URL',(($_SERVER['SERVER_PORT']==443) ? 'https':'http').'://'.$_SERVER['SERVER_NAME']);
 define('ROOT', str_replace("\\",'/', dirname(dirname(__FILE__)).'/'));

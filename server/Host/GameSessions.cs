@@ -62,27 +62,33 @@ public sealed class GameSessions
         if (input.Value<string>("worldId") != worldId) return Reply(GameResult.Reject(GameCodes.NotFound, "世界不存在。"));
         var proof = input["proof"]?.ToObject<PhpSessionProof>();
         var verified = await auth.VerifyAsync(proof, true, cancellation);
+        GameSession session = null;
+        GameResult result;
         lock (connectionGate)
         {
             Sweep();
             if (accounts.Values.Count(s => s.Actor.WorldId == worldId && s.Actor.AccountId != verified.AccountId) >= maxOnlinePlayers)
                 return Reply(GameResult.Reject(GameCodes.WorldFull, "当前世界已有" + maxOnlinePlayers + "名真人在线，请稍后重试。"));
             var connectionId = Guid.NewGuid().ToString("N");
-            var result = Runtime.EnsureRole(verified.AccountId, worldId, connectionId, input.Value<string>("requestId"),
+            result = Runtime.EnsureRole(verified.AccountId, worldId, connectionId, input.Value<string>("requestId"),
                 input.Value<string>("nickname"), input.Value<string>("nation"), create, out var binding);
-            if (result.Code == GameCodes.RoleRequired)
-                return Reply(result, Runtime.Preview(worldId, projection));
-            if (result.Code != GameCodes.Ok) return Reply(result);
-            var session = new GameSession { Actor = new AuthenticatedActor(verified.AccountId, binding.PlayerId, worldId, connectionId),
-                Proof = proof, ExpiresUtcMs = verified.ExpiresUtcMs, LastSeenUtcMs = Now() };
-            if (accounts.TryGetValue(verified.AccountId, out var previous)) previous.InvalidCode = GameCodes.SessionReplaced;
-            connections[connectionId] = session;
-            accounts[verified.AccountId] = session;
-            var response = SnapshotReply(session, result, -1, 0);
-            response["connectionId"] = connectionId;
-            response["sessionExpiresUtcMs"] = verified.ExpiresUtcMs;
-            return response;
+            if (result.Code != GameCodes.Ok && result.Code != GameCodes.RoleRequired) return Reply(result);
+            if (result.Code == GameCodes.Ok)
+            {
+                session = new GameSession { Actor = new AuthenticatedActor(verified.AccountId, binding.PlayerId, worldId, connectionId),
+                    Proof = proof, ExpiresUtcMs = verified.ExpiresUtcMs, LastSeenUtcMs = Now() };
+                if (accounts.TryGetValue(verified.AccountId, out var previous)) previous.InvalidCode = GameCodes.SessionReplaced;
+                connections[connectionId] = session;
+                accounts[verified.AccountId] = session;
+            }
         }
+        // Capacity and takeover remain atomic; projecting a large world must not serialize logins.
+        // SnapshotReply checks the session again if another login replaces it during projection.
+        if (session == null) return Reply(result, Runtime.Preview(worldId, projection));
+        var response = SnapshotReply(session, result, -1, 0);
+        response["connectionId"] = session.Actor.ConnectionId;
+        response["sessionExpiresUtcMs"] = verified.ExpiresUtcMs;
+        return response;
     }
     private GameSession Require(string connectionId)
     {

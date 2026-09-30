@@ -123,42 +123,39 @@ public class 登录脚本 : MonoBehaviour
             form.AddField("uuid", Guid.NewGuid().ToString("N"));
             form.AddField("clientid", 客户端ID);
             form.AddField("t", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
-            using (UnityWebRequest 请求 = UnityWebRequest.Post(地址, form))
+            GameHttp.Reply 请求 = null;
+            yield return GameHttp.Post(服务器, form.data, form.headers["Content-Type"], null, value => 请求 = value);
+            if (请求 == null || !请求.Success)
             {
-                请求.timeout = 15;
-                yield return 请求.SendWebRequest();
-                if (请求.result != UnityWebRequest.Result.Success)
-                {
-                    log.text = "连接服务器失败，请检查网络和服务器地址。";
-                    yield break;
-                }
-                Root 结果;
-                string 提示;
-                if (!尝试解析响应(请求.downloadHandler.text, out 结果, out 提示))
-                {
-                    log.text = 提示;
-                    yield break;
-                }
-                会话令牌 = 结果.data.result.session_token;
-                心跳ID = 结果.data.result.tokenid;
-                if (GameNetwork.Enabled)
-                {
-                    var 凭据 = new JObject { ["user"] = 玩家账号, ["tokenId"] = 心跳ID, ["sessionToken"] = 会话令牌,
-                        ["clientId"] = 客户端ID, ["mac"] = SystemInfo.deviceUniqueIdentifier, ["ip"] = "", ["md5"] = "", ["version"] = "" };
-                    GameResult 联机结果 = null;
-                    yield return GameNetwork.Connect(凭据, value => 联机结果 = value);
-                    if (联机结果 == null || 联机结果.Code != GameCodes.Ok && 联机结果.Code != GameCodes.RoleRequired)
-                    {
-                        log.text = 联机结果?.Message ?? "连接游戏服务器失败，请稍后重试。";
-                        yield break;
-                    }
-                }
-                PlayerPrefs.SetString("name", 玩家账号);
-                全局变量.是否为登录 = true;
-                log.text = 提示;
-                开始游戏.SetActive(true);
-                gameObject.SetActive(false);
+                log.text = "连接服务器失败，请检查网络和服务器地址。";
+                yield break;
             }
+            Root 结果;
+            string 提示;
+            if (!尝试解析响应(请求.Text, out 结果, out 提示))
+            {
+                log.text = 提示;
+                yield break;
+            }
+            会话令牌 = 结果.data.result.session_token;
+            心跳ID = 结果.data.result.tokenid;
+            if (GameNetwork.Enabled)
+            {
+                var 凭据 = new JObject { ["user"] = 玩家账号, ["tokenId"] = 心跳ID, ["sessionToken"] = 会话令牌,
+                    ["clientId"] = 客户端ID, ["mac"] = SystemInfo.deviceUniqueIdentifier, ["ip"] = "", ["md5"] = "", ["version"] = "" };
+                GameResult 联机结果 = null;
+                yield return GameNetwork.Connect(凭据, value => 联机结果 = value);
+                if (联机结果 == null || 联机结果.Code != GameCodes.Ok && 联机结果.Code != GameCodes.RoleRequired)
+                {
+                    log.text = 联机结果?.Message ?? "连接游戏服务器失败，请稍后重试。";
+                    yield break;
+                }
+            }
+            PlayerPrefs.SetString("name", 玩家账号);
+            全局变量.是否为登录 = true;
+            log.text = 提示;
+            开始游戏.SetActive(true);
+            gameObject.SetActive(false);
         }
         finally { 正在登录 = false; }
     }

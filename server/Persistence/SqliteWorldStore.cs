@@ -5,7 +5,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Persistence;
 
-public sealed class SqliteWorldStore : IWorldStore, IDisposable
+public sealed class SqliteWorldStore : IWorldStore, IWorldRevisionStore, IDisposable
 {
     private const int ApplicationId = 0x44575347;
     private const int SchemaVersion = 1;
@@ -35,6 +35,17 @@ public sealed class SqliteWorldStore : IWorldStore, IDisposable
         {
             connection.Dispose();
             throw;
+        }
+    }
+
+    public long? ReadRevision(string worldId)
+    {
+        RequireId(worldId);
+        lock (gate)
+        {
+            using var command = Command("SELECT revision FROM worlds WHERE world_id=$world", null, ("$world", worldId));
+            var value = command.ExecuteScalar();
+            return value == null || value is DBNull ? null : Convert.ToInt64(value);
         }
     }
 

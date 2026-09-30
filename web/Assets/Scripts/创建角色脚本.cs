@@ -180,7 +180,7 @@ public class 创建角色脚本 : MonoBehaviour
         if (正在联机建角) return;
         if (!全局变量.是否为登录)
         {
-            说明文本.text = "请先登录并连接游戏服务器。";
+            显示创建提示("请先登录并连接游戏服务器。");
             return;
         }
         if (Dwsg.Network.GameNetwork.HasRole)
@@ -191,7 +191,7 @@ public class 创建角色脚本 : MonoBehaviour
         string 名字 = 读取君主名();
         if (名字.Length == 0 || 名字.Length > 20 || 名字.IndexOfAny(new[] { '<', '>', '\r', '\n' }) >= 0)
         {
-            说明文本.text = "请输入 1 到 20 字的君主名，不能包含换行或尖括号。";
+            显示创建提示("请输入 1 到 20 字的君主名，不能包含换行或尖括号。");
             return;
         }
         string 国家 = 国家名对象.text;
@@ -203,7 +203,7 @@ public class 创建角色脚本 : MonoBehaviour
             正在联机建角 = false;
             if (result != null && result.Code == Dwsg.Shared.GameCodes.Ok && Dwsg.Network.GameNetwork.HasRole &&
                 Dwsg.Network.GameNetwork.ApplyInitialSnapshot()) SceneManager.LoadScene(1);
-            else 说明文本.text = result?.Message ?? "服务器未确认角色创建，请重试。";
+            else 显示创建提示(result?.Message ?? "服务器未确认角色创建，请重试。");
         });
     }
 

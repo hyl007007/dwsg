@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 namespace Dwsg.Server.Auxiliary;
 
 // 原称号佩戴与赌场规则的权威执行入口，资金、开奖、冷却与回执同一事务保存。
-public sealed class AuxiliaryModule : IGameModule, IGameTickModule
+public sealed class AuxiliaryModule : IGameModule, IReadOnlyGameTickModule
 {
     public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "title.equip", "casino.bet", "casino.advance", "auxiliary.initialize" };
     private static IEnumerable<string> Humans(WorldState world) => (world.EntityMappings["humanPlayers"] as JObject ?? new JObject()).Properties()

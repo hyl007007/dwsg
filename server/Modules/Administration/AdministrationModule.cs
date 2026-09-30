@@ -8,7 +8,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Administration
 {
-    public sealed class AdministrationModule : IGameModule, IGameTickModule
+    public sealed class AdministrationModule : IGameModule, IReadOnlyGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "nation.publish", "nation.appoint", "city.repair", "city.collect", "city.apply", "city.appoint", "city.bookmark", "administration.tick" };
         public IEnumerable<GameCommand> CollectDueCommands(WorldState state, long serverUtcMs)

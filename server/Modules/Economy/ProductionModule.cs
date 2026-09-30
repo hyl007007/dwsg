@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Economy
 {
-    public sealed class ProductionModule : IGameModule, IGameTickModule
+    public sealed class ProductionModule : IGameModule, IReadOnlyGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[]
             { "fief.construct", "fief.upgrade", "fief.demolish", "fief.recruitTroops", "world.production.resume", "world.production.tick" };

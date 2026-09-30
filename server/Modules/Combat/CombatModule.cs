@@ -12,7 +12,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Modules.Combat
 {
-    public sealed partial class CombatModule : IGameModule, IGameTickModule
+    public sealed partial class CombatModule : ICopyingGameModule, IReadOnlyGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "combat.bandit.dispatch", "combat.bandit.reinforce", "combat.bandit.advance", "combat.bandit.withdraw",
             "combat.city.dispatch", "combat.city.reinforce", "combat.city.advance", "combat.city.withdraw", "combat.city.garrison.dispatch", "combat.city.garrison.withdraw", "combat.resource.dispatch", "combat.resource.advance", "combat.resource.withdraw", "combat.resource.reinforce", "resource.abandon", ResourceTick, "combat.city.peace.dispatch", PeaceGarrisonTick, "combat.bandit.strategy", "combat.city.strategy", "combat.resource.strategy", OriginalAiTick };

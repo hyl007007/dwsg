@@ -3,7 +3,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Host;
 
-public sealed class AuthorizedWorldProjection : IWorldProjection
+public sealed class AuthorizedWorldProjection : IReadOnlyWorldProjection
 {
     private static JObject Select(JObject source, params string[] fields)
     {

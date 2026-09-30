@@ -201,19 +201,12 @@ namespace Dwsg.Network
             Uri uri;
             if (!Uri.TryCreate((Endpoint ?? "").TrimEnd('/') + "/" + route, UriKind.Absolute, out uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
             { completed(null); yield break; }
-            using (var request = new UnityWebRequest(uri.AbsoluteUri, "POST"))
-            {
-                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body.ToString(Formatting.None)));
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                if (id != null) request.SetRequestHeader("X-Dwsg-Connection", id);
-                request.timeout = 15;
-                yield return request.SendWebRequest();
-                JObject response = null;
-                if (request.result == UnityWebRequest.Result.Success)
-                    try { response = JObject.Parse(request.downloadHandler.text); } catch (JsonException) { }
-                completed(response);
-            }
+            GameHttp.Reply reply = null;
+            yield return GameHttp.Post(uri, Encoding.UTF8.GetBytes(body.ToString(Formatting.None)), "application/json", id, value => reply = value);
+            JObject response = null;
+            if (reply != null && reply.Success)
+                try { response = JObject.Parse(reply.Text); } catch (JsonException) { }
+            completed(response);
         }
         private sealed class PendingCommand
         {

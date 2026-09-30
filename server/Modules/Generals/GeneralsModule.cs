@@ -15,7 +15,7 @@ namespace Dwsg.Server.Modules.Generals
 		public int Wounded { get; set; }
 	}
 
-	public sealed partial class GeneralsModule : IGameModule, IGameTickModule
+	public sealed partial class GeneralsModule : ICopyingGameModule, IReadOnlyGameTickModule
 	{
 		public IReadOnlyCollection<string> CommandTypes { get { return GeneralRules.CommandTypes.Concat(new[] { "generals.refreshTavern", "generals.recruit", "generals.dismiss", "generals.healWounded", "generals.cultivate", "generals.enhanceEquipment", "generals.refineEquipment", "generals.setSoulLocks", "generals.persuadeCaptive", "generals.releaseCaptive", "generals.useExperienceBook" }).ToArray(); } }
 

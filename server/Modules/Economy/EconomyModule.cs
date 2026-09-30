@@ -9,7 +9,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Dwsg.Server.Economy
 {
-    public sealed class EconomyModule : IGameModule, IGameTickModule
+    public sealed class EconomyModule : IGameModule, IReadOnlyGameTickModule
     {
         public IReadOnlyCollection<string> CommandTypes { get; } = new[] { "shop.purchase", "shop.sell", "shop.refresh", "item.use" };
         private readonly Random random = new Random();
